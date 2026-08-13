@@ -605,11 +605,17 @@ def charger_whisper():
 # ---------------------------------------------------------------- principal
 
 
-def capturer(flux, tampon):
-    """Enregistre depuis le micro jusqu'au silence. Renvoie l'audio ou None."""
+def capturer(flux, tampon, attente_debut=0.0):
+    """Enregistre depuis le micro jusqu'au silence. Renvoie l'audio ou None.
+
+    attente_debut : secondes accordees pour COMMENCER a parler. Sans ca, un
+    reveil suivi d'une hesitation renvoie du silence pur, que Whisper
+    transforme en hallucination.
+    """
     morceaux = list(tampon)
     debut = time.time()
     dernier_son = time.time()
+    parole_vue = False
 
     while True:
         bloc, _ = flux.read(BLOC)
@@ -619,6 +625,14 @@ def capturer(flux, tampon):
 
         if niveau(bloc) > SEUIL_SILENCE:
             dernier_son = time.time()
+            parole_vue = True
+
+        if not parole_vue:
+            # Personne n'a encore parle : on patiente au lieu d'abandonner.
+            if time.time() - debut > attente_debut:
+                break
+            continue
+
         if time.time() - dernier_son > SILENCE_FIN:
             break
         if time.time() - debut > DUREE_MAX:
@@ -945,6 +959,7 @@ def main():
 
     tampon = deque(maxlen=6)
     enchainer = False
+    audio_direct = None
 
     try:
         while True:
@@ -964,6 +979,8 @@ def main():
                 if not par_maman and max(scores.values()) < SEUIL_REVEIL:
                     continue
                 reveil.reset()
+                # Recuperer AVANT de vider : « Maman, lance X » a deja tout dit.
+                audio_direct = maman.recuperer_audio() if par_maman else None
                 maman.vider()
 
                 # Reveil par « Maman » : on bascule en personnalite MU-TH-UR.
@@ -983,7 +1000,11 @@ def main():
                 print("  [micro] Oui ?")
                 bip()
 
-            audio = capturer(flux, tampon)
+            if audio_direct is not None:
+                # La commande etait dans la meme phrase que le mot de reveil.
+                audio, audio_direct = audio_direct, None
+            else:
+                audio = capturer(flux, tampon, attente_debut=4.0)
             if audio is None:
                 print("  (rien entendu)\n")
                 continue

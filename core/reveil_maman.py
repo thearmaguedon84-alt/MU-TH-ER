@@ -43,8 +43,9 @@ class DetecteurMaman:
 
     def __init__(self, actif=True, mots=("maman", "mamans", "mamant", "manman", "mamane",
                           "mother", "muthur"),
-                 seuil_voix=0.020, duree_min=0.25, duree_max=1.9,
-                 mots_max=3, garde=3.0, modele="tiny"):
+                 seuil_voix=0.020, duree_min=0.25, duree_max=6.0,
+                 mots_max=3, garde=3.0, modele="tiny",
+                 blocs_silence=6):
         self.actif = bool(actif)
         self.mots = tuple(m.lower() for m in mots)
         self.seuil_voix = float(seuil_voix)
@@ -52,12 +53,17 @@ class DetecteurMaman:
         self.duree_max = float(duree_max)
         self.mots_max = int(mots_max)      # au-dela, c'est une phrase, pas un appel
         self.garde = float(garde)          # silence impose apres un declenchement
+        # Nombre de blocs de 80 ms de silence qui terminent un segment.
+        # Il en faut assez pour franchir la virgule de "Maman, lance X",
+        # sinon le segment est coupe en deux et la commande est perdue.
+        self.blocs_silence = int(blocs_silence)
         self.nom_modele = modele
 
         self._modele = None
         self._file = queue.Queue(maxsize=2)
         self._signal = threading.Event()
         self._dernier = 0.0
+        self._audio_commande = None   # audio du segment si une commande suit
 
         # Accumulation du segment en cours
         self._segment = []
@@ -100,7 +106,7 @@ class DetecteurMaman:
         if not self._segment:
             return
         self._silences += 1
-        if self._silences < 3:             # ~240 ms de silence = fin de segment
+        if self._silences < self.blocs_silence:
             self._segment.append(bloc)
             return
 
@@ -138,10 +144,23 @@ class DetecteurMaman:
                     audio.astype(np.float32), language="fr", beam_size=1,
                     without_timestamps=True, condition_on_previous_text=False)
                 mots = _plat(" ".join(s.text for s in segments))
-                # Un appel, pas une phrase : peu de mots, dont le mot cible
-                if mots and len(mots) <= self.mots_max and any(m in self.mots for m in mots):
-                    self._dernier = time.time()
-                    self._signal.set()
+                if not mots:
+                    continue
+
+                # Le mot de reveil doit ouvrir le segment : « maman » au milieu
+                # d'une phrase ("j'ai appele ma maman") ne doit rien declencher.
+                if mots[0] not in self.mots:
+                    continue
+
+                self._dernier = time.time()
+                # « Maman » seul dure environ 0,8 s. Au-dela, il y a autre chose
+                # dans le segment : on garde l'audio pour que la boucle le
+                # retranscrive proprement avec le modele medium. On se fie a la
+                # duree autant qu'au nombre de mots, car « tiny » tronque
+                # parfois la fin de la phrase.
+                suite = len(mots) > self.mots_max or len(audio) / TAUX > 1.25
+                self._audio_commande = audio if suite else None
+                self._signal.set()
             except Exception:
                 LOG.debug("reveil_maman: segment ignore", exc_info=True)
 
@@ -153,6 +172,11 @@ class DetecteurMaman:
             self._signal.clear()
             return True
         return False
+
+    def recuperer_audio(self):
+        """Audio du segment si une commande suivait le mot de reveil, sinon None."""
+        audio, self._audio_commande = self._audio_commande, None
+        return audio
 
     def vider(self):
         """Oublie le segment en cours (apres un reveil par un autre moyen)."""
