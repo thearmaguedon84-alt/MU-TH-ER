@@ -53,6 +53,9 @@ _ETAT = {
     "niveau": 0.0,
     "modele": "",
     "stt": "",
+    # Interface souhaitee : "jarvis" ou "mother". Les pages ouvertes s'y
+    # redirigent d'elles-memes quand la valeur change.
+    "interface": "jarvis",
 }
 
 # Une file par onglet connecte. Le verrou protege l'ensemble.
@@ -117,6 +120,15 @@ def outil(nom, detail=""):
     _diffuser(evenement)
 
 
+def interface(nom):
+    """Demande aux pages ouvertes d'afficher « jarvis » ou « mother »."""
+    nom = "mother" if str(nom) == "mother" else "jarvis"
+    if _ETAT.get("interface") == nom:
+        return
+    _ETAT["interface"] = nom
+    _diffuser({"t": "interface", "v": nom})
+
+
 def config(modele, stt):
     """Renseigne le releve d'etat : modele de langage et moteur d'ecoute."""
     _ETAT["modele"] = modele
@@ -176,6 +188,7 @@ class _Poignee(BaseHTTPRequestHandler):
             self._pousser({"t": "niveau", "v": _ETAT["niveau"]})
             self._pousser({"t": "config", "modele": _ETAT["modele"],
                            "stt": _ETAT["stt"]})
+            self._pousser({"t": "interface", "v": _ETAT["interface"]})
             for evenement in list(_HISTORIQUE):
                 self._pousser(evenement)
 

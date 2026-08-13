@@ -367,6 +367,11 @@ function appliquer(ev) {
       ajouter("MU-TH-UR&nbsp;&gt;", auTon(ev.texte), "mere");
       break;
 
+    case "interface":
+      // Retour au mode normal : on rend la main a l'interface Jarvis.
+      if (ev.v !== "mother") location.href = "/";
+      break;
+
     case "outil":
       ajouter("SOUS-ROUTINE",
               auTon(ev.nom + (ev.detail ? " · " + ev.detail : "")),

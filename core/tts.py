@@ -185,6 +185,44 @@ class KokoroProvider(ProviderTTS):
 
 # --------------------------------------------------------------- Edge TTS (Microsoft neural)
 
+def effet_ordinateur(echantillons, taux, intensite=1.0):
+    """Donne a une voix naturelle le grain d'un interphone de vaisseau.
+
+    Trois etages : une bande passante etroite (comme une liaison radio), une
+    saturation douce qui durcit les attaques, puis une tres legere modulation
+    en anneau qui apporte le cote metallique. L'ensemble reste intelligible :
+    c'est un habillage, pas un vocodeur.
+    """
+    import numpy as np
+    from scipy.signal import butter, sosfilt
+
+    x = echantillons.astype(np.float32) / 32768.0
+    sec = float(np.sqrt(np.mean(x ** 2))) or 1e-6
+
+    # 1. Bande passante 320 Hz - 3200 Hz : le timbre « haut-parleur de bord »
+    nyq = taux / 2.0
+    sos = butter(4, [320.0 / nyq, min(3200.0, nyq * 0.98) / nyq],
+                 btype="band", output="sos")
+    y = sosfilt(sos, x)
+
+    # 2. Saturation douce : durcit sans distordre franchement
+    gain = 1.0 + 2.2 * intensite
+    y = np.tanh(y * gain) / np.tanh(gain)
+
+    # 3. Modulation en anneau tres discrete (~55 Hz) : grain electronique
+    t = np.arange(len(y), dtype=np.float32) / taux
+    y *= (1.0 - 0.10 * intensite) + 0.10 * intensite * np.sin(2 * np.pi * 55.0 * t)
+
+    # Reaccorder le volume sur l'original, sans saturer
+    apres = float(np.sqrt(np.mean(y ** 2))) or 1e-6
+    y *= sec / apres
+    crete = float(np.max(np.abs(y))) or 1.0
+    if crete > 0.99:
+        y *= 0.99 / crete
+
+    return (y * 32767.0).astype(np.int16)
+
+
 class EdgeTTSProvider(ProviderTTS):
     nom = "EdgeTTS"
 
@@ -193,8 +231,9 @@ class EdgeTTSProvider(ProviderTTS):
         # Voix distincte du mode MU-TH-UR : plus lente et plus grave, pour un
         # rendu d'ordinateur de bord. Modifiable dans config.yaml.
         self.voix_mere = reglage("edge.voix_mere", "fr-CH-ArianeNeural")
-        self.debit_mere = reglage("edge.debit_mere", "-14%")
-        self.hauteur_mere = reglage("edge.hauteur_mere", "-15Hz")
+        self.debit_mere = reglage("edge.debit_mere", "-16%")
+        self.hauteur_mere = reglage("edge.hauteur_mere", "-22Hz")
+        self.effet_mere = float(reglage("edge.effet_mere", 1.0))
 
     def _reglage_voix(self):
         """Voix et prosodie selon la personnalite active, relue a chaque phrase."""
@@ -238,7 +277,14 @@ class EdgeTTSProvider(ProviderTTS):
                 mp3, nchannels=1, sample_rate=24000,
                 output_format=miniaudio.SampleFormat.SIGNED16
             )
-            return np.frombuffer(decoded.samples, dtype=np.int16), 24000
+            ech = np.frombuffer(decoded.samples, dtype=np.int16)
+            # En mode MU-TH-UR seulement : le reste du temps la voix est intacte.
+            if self.effet_mere > 0 and reglage("assistant.personnalite", "") == "mere":
+                try:
+                    ech = effet_ordinateur(ech, 24000, self.effet_mere)
+                except Exception as err:
+                    print(f"  [voix] effet ignore ({err})")
+            return ech, 24000
         except Exception as e:
             print(f"  [EdgeTTS] echec ({e}), repli voix Windows.")
             return None

@@ -132,19 +132,32 @@ def _film(t):
 
 # --------------------------------------------------------------- applications
 
-def _application(t):
-    """'lance Elden Ring' / 'ouvre Spotify' -> launch_app si le nom est connu."""
-    m = re.search(r"\b(?:" + "|".join(VERBES_LANCER) + r")\b\s+(?:a |au |aux |sur )?(.+)", t)
-    if not m:
-        return None
-    cible = _nettoyer_cible(m.group(1))
-    if len(cible) < 2:
-        return None
+def _proche(cible, apps, seuil):
+    """Meilleure application dont le nom ressemble a `cible`, ou None.
 
-    from tools.apps import _apps, _trouver, launch_app
+    Whisper deforme les noms propres (« Elden Ring » -> « Downring »).
+    Une comparaison exacte echoue alors, une comparaison floue rattrape.
+    """
+    from difflib import SequenceMatcher
+    cible_c = cible.replace(" ", "")
+    meilleur, note_max = None, 0.0
+    for clef in apps:
+        k = _plat(clef).replace(" ", "")
+        if not k:
+            continue
+        note = SequenceMatcher(None, cible_c, k).ratio()
+        if note > note_max:
+            meilleur, note_max = clef, note
+    return meilleur if note_max >= seuil else None
+
+
+def _chercher_app(cible, seuil_flou):
+    """Retrouve une application par nom, avec plusieurs strategies."""
+    from tools.apps import _apps, _trouver
     apps = _apps()
-    if not apps:
-        return None
+    if not apps or len(cible) < 3:
+        return None, None
+
     clef = _trouver(cible, apps)
     if clef is None:
         # L apostrophe est devenue une espace : "baldur s gate" -> "baldurs gate"
@@ -152,12 +165,37 @@ def _application(t):
         if recolle != cible:
             clef = _trouver(recolle, apps)
     if clef is None:
-        # Essai en retirant un eventuel suffixe parasite ("sur steam", "stp")
+        # Suffixe parasite ("sur steam", "s il te plait")
         cible2 = re.sub(r"\b(sur|avec|via)\b.*$", "", cible).strip()
-        clef = _trouver(cible2, apps) if cible2 and cible2 != cible else None
+        if cible2 and cible2 != cible:
+            clef = _trouver(cible2, apps)
     if clef is None:
+        clef = _proche(cible, apps, seuil_flou)
+    return clef, apps
+
+
+def _application(t):
+    """'lance Elden Ring', 'ouvre Spotify', ou un nom d'application seul."""
+    from tools.apps import launch_app
+
+    m = re.search(r"\b(?:" + "|".join(VERBES_LANCER) + r")\b\s+(?:a |au |aux |sur )?(.+)", t)
+    if m:
+        # Un verbe de lancement : on peut se permettre d'etre tolerant.
+        cible = _nettoyer_cible(m.group(1))
+        clef, _ = _chercher_app(cible, seuil_flou=0.72)
+        if clef:
+            return launch_app(nom=clef)
         return None
-    return launch_app(nom=clef)
+
+    # Pas de verbe : « Elden Ring » tout seul. On exige une ressemblance forte,
+    # sinon toute phrase anodine finirait par lancer un programme.
+    cible = _nettoyer_cible(t)
+    if len(cible.split()) > 4:
+        return None
+    clef, _ = _chercher_app(cible, seuil_flou=0.86)
+    if clef:
+        return launch_app(nom=clef)
+    return None
 
 
 # --------------------------------------------------------------- divers

@@ -819,13 +819,55 @@ def _tronquer(historique):
             historique.pop(0)
 
 
+_CONTEXTE = None
+
+
+def _contexte_whisper():
+    """Vocabulaire souffle a Whisper pour qu'il reconnaisse tes noms propres.
+
+    Sans ce contexte, « Elden Ring » devient « Downring » : le modele n'a
+    aucune raison de deviner un titre de jeu. La liste est construite une fois
+    a partir de config.yaml et bornee (Whisper ignore au-dela d'environ 220
+    jetons).
+    """
+    global _CONTEXTE
+    if _CONTEXTE is not None:
+        return _CONTEXTE
+
+    noms = []
+    try:
+        apps = config.reglage("apps", {}) or {}
+        # Une seule entree par application : les alias pointent sur la meme cible
+        vus = set()
+        for nom, cible in apps.items():
+            if cible in vus:
+                continue
+            vus.add(cible)
+            # On privilegie les noms parlants, ni trop courts ni trop longs
+            if 4 <= len(nom) <= 28 and not nom.isdigit():
+                noms.append(nom.title())
+    except Exception:
+        pass
+
+    noms.sort(key=len, reverse=True)
+    noms = noms[:34]
+
+    _CONTEXTE = (
+        "Commandes vocales : lance, ouvre, demarre, mets, joue, arrete, pause, "
+        "monte le son, baisse le volume, film, video. "
+        "Applications et jeux : " + ", ".join(noms) + "."
+    )
+    return _CONTEXTE
+
+
 def traiter(audio, whisper, historique, flux, reveil):
     """Transcrit, repond, parle. Renvoie True si on doit enchainer (relance)."""
     import numpy as _np
     _rms = float(_np.sqrt(_np.mean(audio**2)))
     _dur = len(audio) / TAUX
     print(f"  [debug] durée={_dur:.1f}s  RMS={_rms:.5f}", flush=True)
-    segments, _info = whisper.transcribe(audio, language="fr", beam_size=5)
+    segments, _info = whisper.transcribe(
+        audio, language="fr", beam_size=5, initial_prompt=_contexte_whisper())
     segs = list(segments)
     _brut = " ".join(s.text for s in segs).strip()
     print(f"  [debug] whisper brut={_brut!r}", flush=True)
@@ -953,6 +995,8 @@ def main():
     )
     flux.start()
 
+    _hud("interface", "mother"
+         if config.reglage("assistant.personnalite", "") == "mere" else "jarvis")
     _mots_reveil = 'Hey Jarvis' + (' ou Maman' if maman.actif else '')
     print(f'\nPret. Dites "{_mots_reveil}". Ctrl+C pour quitter.\n')
     print('Vous pouvez le couper en redisant "Hey Jarvis" pendant qu\'il parle.\n')
@@ -991,6 +1035,9 @@ def main():
                     if config.reglage("assistant.personnalite", "") != _voulue:
                         config.definir("assistant.personnalite", _voulue)
                         _refaire_systeme(memoire.charger())
+                    # L'ecran suit le mode, meme si le mode n'a pas change
+                    # (onglet ouvert apres coup, ou page rechargee).
+                    _hud("interface", "mother" if _voulue == "mere" else "jarvis")
                 if par_maman:
                     print("  [micro] Reveil par Maman.")
 

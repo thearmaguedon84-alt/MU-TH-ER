@@ -481,6 +481,12 @@ function appliquer(ev) {
     case "jarvis":
       ajouterLigne(`<span class="qui">Jarvis</span>${echap(ev.texte)}`, "jarvis");
       break;
+    case "interface":
+      // Le mode MU-TH-UR est actif : on bascule sur l'autre page.
+      if (ev.v === "mother" && !location.pathname.startsWith("/mother")) {
+        location.href = "/mother";
+      }
+      break;
     case "outil":
       ajouterLigne(
         `⚙ <b>${echap(ev.nom)}</b>${ev.detail ? " · " + echap(ev.detail) : ""}`,
