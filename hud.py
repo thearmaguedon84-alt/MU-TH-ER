@@ -34,6 +34,9 @@ from pathlib import Path
 
 PORT = 8770
 _FICHIER_HTML = Path(__file__).parent / "hud.html"
+# Interface alternative MU-TH-UR (Nostromo), servie sur /mother.
+# Elle consomme exactement le meme flux : rien d'autre ne change.
+_FICHIER_MOTHER = Path(__file__).parent / "hud_mother.html"
 
 # Etats possibles, envoyes tels quels a la page.
 VEILLE = "veille"
@@ -133,16 +136,19 @@ class _Poignee(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/flux":
             self._flux()
+        elif self.path in ("/mother", "/mother.html", "/muthur", "/maman"):
+            self._page(_FICHIER_MOTHER)
         elif self.path in ("/", "/hud.html", "/index.html"):
             self._page()
         else:
             self.send_error(404)
 
-    def _page(self):
+    def _page(self, fichier=None):
+        fichier = fichier or _FICHIER_HTML
         try:
-            corps = _FICHIER_HTML.read_bytes()
+            corps = fichier.read_bytes()
         except OSError:
-            self.send_error(500, "hud.html introuvable")
+            self.send_error(500, f"{fichier.name} introuvable")
             return
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -223,6 +229,7 @@ def demarrer(ouvrir=True):
     thread.start()
 
     print(f"HUD sur http://127.0.0.1:{PORT}/")
+    print(f"     MU-TH-UR sur http://127.0.0.1:{PORT}/mother")
     if ouvrir:
         try:
             webbrowser.open(f"http://127.0.0.1:{PORT}/")

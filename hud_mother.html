@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MU-TH-UR 6000</title>
+<style>
+  :root {
+    --vert:        #21f341;
+    --vert-vif:    #7dffa0;
+    --vert-faible: #0d7a24;
+    --vert-sombre: #063d12;
+    --fond:        #010703;
+    --ambre:       #ffb23e;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--fond);
+    color: var(--vert);
+    font-family: "Consolas", "DejaVu Sans Mono", "Courier New", monospace;
+    overflow: hidden;
+  }
+
+  /* ---------------------------------------------------- effets d'ecran */
+
+  /* Lignes de balayage du tube cathodique */
+  #scanlines {
+    position: fixed; inset: 0; z-index: 90; pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,0)   0px,
+      rgba(0,0,0,0)   2px,
+      rgba(0,0,0,.28) 3px,
+      rgba(0,0,0,.28) 4px);
+  }
+
+  /* Bande claire qui descend lentement */
+  #balayage {
+    position: fixed; left: 0; right: 0; height: 140px; z-index: 91;
+    pointer-events: none;
+    background: linear-gradient(to bottom,
+      rgba(33,243,65,0) 0%, rgba(33,243,65,.05) 50%, rgba(33,243,65,0) 100%);
+    animation: descendre 7s linear infinite;
+  }
+  @keyframes descendre {
+    from { top: -140px; } to { top: 100%; }
+  }
+
+  /* Assombrissement des bords, comme un tube bombe */
+  #vignette {
+    position: fixed; inset: 0; z-index: 92; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 45%, rgba(0,0,0,.55) 88%, rgba(0,0,0,.85) 100%);
+  }
+
+  /* Papillotement permanent, tres leger */
+  #cadre { animation: papillote 5.5s steps(60) infinite; }
+  @keyframes papillote {
+    0%,100% { opacity: 1; }
+    47%     { opacity: .97; }
+    48%     { opacity: .93; }
+    49%     { opacity: .99; }
+  }
+
+  /* ---------------------------------------------------- structure */
+
+  #cadre {
+    position: relative; z-index: 10;
+    height: 100%; padding: 22px 26px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+
+  .lueur { text-shadow: 0 0 4px rgba(33,243,65,.75), 0 0 12px rgba(33,243,65,.35); }
+
+  /* ---------------------------------------------------- en-tete */
+
+  header {
+    display: flex; align-items: center; gap: 20px;
+    border-bottom: 1px solid var(--vert-faible);
+    padding-bottom: 14px;
+  }
+
+  #emblanc { width: 74px; height: 74px; flex: 0 0 auto; }
+  #emblanc path, #emblanc circle, #emblanc polygon { }
+
+  .titres { flex: 1; }
+  .titres h1 {
+    font-size: 27px; font-weight: 700; letter-spacing: 9px;
+  }
+  .titres .sous {
+    font-size: 11px; letter-spacing: 4.5px; color: var(--vert-faible);
+    margin-top: 5px;
+  }
+
+  .plaque { text-align: right; font-size: 10.5px; line-height: 1.85;
+            letter-spacing: 2px; color: var(--vert-faible); }
+  .plaque b { color: var(--vert); font-weight: 400; }
+
+  /* ---------------------------------------------------- bandeau d'etat */
+
+  #bandeau {
+    display: grid; grid-template-columns: 1fr auto; gap: 26px;
+    align-items: center;
+    border: 1px solid var(--vert-faible); padding: 13px 18px;
+    background: rgba(6,61,18,.16);
+  }
+
+  #libelle-etat {
+    font-size: 21px; letter-spacing: 11px; font-weight: 700;
+  }
+  #ligne-etat { font-size: 10.5px; letter-spacing: 3px;
+                color: var(--vert-faible); margin-top: 6px; }
+
+  /* Barres de niveau du micro */
+  #niveau { display: flex; gap: 3px; align-items: flex-end; height: 42px; }
+  #niveau i {
+    display: block; width: 7px; height: 100%;
+    background: var(--vert-sombre); transition: background .07s linear;
+  }
+  #niveau i.on { background: var(--vert); box-shadow: 0 0 7px rgba(33,243,65,.8); }
+  #niveau i.haut.on { background: var(--ambre); box-shadow: 0 0 7px rgba(255,178,62,.8); }
+
+  /* ---------------------------------------------------- journal */
+
+  #journal {
+    flex: 1; overflow-y: auto; padding-right: 12px;
+    font-size: 14.5px; line-height: 1.62;
+  }
+  #journal::-webkit-scrollbar { width: 9px; }
+  #journal::-webkit-scrollbar-track { background: rgba(6,61,18,.25); }
+  #journal::-webkit-scrollbar-thumb { background: var(--vert-faible); }
+
+  .ligne { margin-bottom: 9px; white-space: pre-wrap; word-break: break-word; }
+  .ligne .etiq {
+    display: inline-block; min-width: 116px;
+    color: var(--vert-faible); letter-spacing: 2px;
+  }
+  .ligne.equipage { color: var(--vert-vif); }
+  .ligne.mere     { color: var(--vert); }
+  .ligne.routine  { color: var(--vert-faible); font-size: 12.5px; letter-spacing: 1.5px; }
+  .ligne.systeme  { color: var(--ambre); font-size: 12.5px; letter-spacing: 2px; }
+
+  /* Curseur clignotant en fin de journal */
+  #curseur {
+    display: inline-block; width: 10px; height: 16px;
+    background: var(--vert); vertical-align: text-bottom;
+    animation: clignote 1.05s steps(2) infinite;
+  }
+  @keyframes clignote { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+  /* ---------------------------------------------------- pied */
+
+  footer {
+    display: flex; justify-content: space-between; align-items: center;
+    border-top: 1px solid var(--vert-faible); padding-top: 11px;
+    font-size: 10.5px; letter-spacing: 2.5px; color: var(--vert-faible);
+  }
+  footer a { color: var(--vert-faible); text-decoration: none;
+             border: 1px solid var(--vert-sombre); padding: 4px 11px; }
+  footer a:hover { color: var(--vert); border-color: var(--vert-faible); }
+  #lien-reseau b { color: var(--vert); font-weight: 400; }
+  #lien-reseau.hs b { color: #cc3b2a; }
+
+  /* ---------------------------------------------------- amorcage */
+
+  #amorce {
+    position: fixed; inset: 0; z-index: 200; background: var(--fond);
+    padding: 46px 54px; font-size: 14px; line-height: 1.95;
+    letter-spacing: 2px; white-space: pre-wrap;
+  }
+  #amorce.parti { display: none; }
+</style>
+</head>
+<body>
+
+<!-- Sequence d'amorcage, remplie par le script -->
+<div id="amorce"></div>
+
+<div id="cadre">
+
+  <header>
+    <!-- Embleme du Nostromo : dessin original dans l'esprit du film -->
+    <svg id="emblanc" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+      <circle cx="50" cy="50" r="47" stroke="var(--vert-faible)" stroke-width="1.6"/>
+      <circle cx="50" cy="50" r="39" stroke="var(--vert-sombre)" stroke-width="1"/>
+      <!-- aile gauche -->
+      <path d="M50 26 L18 52 L28 52 L50 36 Z" fill="var(--vert)"/>
+      <path d="M50 40 L24 60 L34 60 L50 48 Z" fill="var(--vert-faible)"/>
+      <!-- aile droite -->
+      <path d="M50 26 L82 52 L72 52 L50 36 Z" fill="var(--vert)"/>
+      <path d="M50 40 L76 60 L66 60 L50 48 Z" fill="var(--vert-faible)"/>
+      <!-- fuselage -->
+      <polygon points="50,20 54,32 50,72 46,32" fill="var(--vert-vif)"/>
+      <path d="M30 76 H70" stroke="var(--vert-faible)" stroke-width="2"/>
+    </svg>
+
+    <div class="titres">
+      <h1 class="lueur">MU-TH-UR 6000</h1>
+      <div class="sous">USCSS NOSTROMO &middot; 180924609 &middot; ORDINATEUR CENTRAL</div>
+    </div>
+
+    <div class="plaque">
+      <div>NOYAU&nbsp; <b id="p-modele">—</b></div>
+      <div>ECOUTE&nbsp; <b id="p-stt">—</b></div>
+      <div>HORLOGE <b id="p-heure">--:--:--</b></div>
+    </div>
+  </header>
+
+  <div id="bandeau">
+    <div>
+      <div id="libelle-etat" class="lueur">EN ATTENTE</div>
+      <div id="ligne-etat">INTERFACE 2037 PRETE POUR INTERROGATION</div>
+    </div>
+    <div id="niveau"></div>
+  </div>
+
+  <div id="journal"></div>
+
+  <footer>
+    <span id="lien-reseau">LIAISON <b>—</b></span>
+    <span>PRIORITE UN &middot; TOUTES AUTRES CONSIDERATIONS SECONDAIRES</span>
+    <a href="/">INTERFACE JARVIS</a>
+  </footer>
+
+</div>
+
+<div id="scanlines"></div>
+<div id="balayage"></div>
+<div id="vignette"></div>
+
+<script>
+"use strict";
+
+/* ================================================================
+   Interface alternative MU-TH-UR.
+
+   Elle lit le meme flux SSE que l'interface Jarvis et ne fait que
+   l'habiller : rien n'est renvoye au serveur, aucun comportement de
+   l'assistant n'est modifie. La mise en forme "MU-TH-UR" (majuscules,
+   prefixes) est purement locale, a l'affichage.
+   ================================================================ */
+
+const $ = (s) => document.querySelector(s);
+
+/* ---------------------------------------------------- correspondances */
+
+const ETATS = {
+  veille:    { libelle: "EN ATTENTE",  ligne: "INTERFACE 2037 PRETE POUR INTERROGATION" },
+  ecoute:    { libelle: "RECEPTION",   ligne: "CANAL AUDIO OUVERT · ACQUISITION EN COURS" },
+  reflexion: { libelle: "TRAITEMENT",  ligne: "ANALYSE DE LA REQUETE · CALCUL EN COURS" },
+  parole:    { libelle: "EMISSION",    ligne: "TRANSMISSION DE LA REPONSE A L'EQUIPAGE" },
+};
+
+/* ---------------------------------------------------- etat local */
+
+const S = {
+  etat: "veille",
+  niveau: 0,
+  niveauLisse: 0,
+  enligne: false,
+};
+
+/* ---------------------------------------------------- barres de niveau */
+
+const NB_BARRES = 22;
+const barres = [];
+(function construireBarres() {
+  const hote = $("#niveau");
+  for (let i = 0; i < NB_BARRES; i++) {
+    const b = document.createElement("i");
+    // Les dernieres barres passent en ambre : saturation du canal
+    if (i >= NB_BARRES - 5) b.classList.add("haut");
+    b.style.height = (34 + (i / NB_BARRES) * 66) + "%";
+    hote.appendChild(b);
+    barres.push(b);
+  }
+})();
+
+function dessinerNiveau() {
+  // Lissage : evite le clignotement nerveux d'une valeur brute
+  S.niveauLisse += (S.niveau - S.niveauLisse) * 0.28;
+  const allumees = Math.round(S.niveauLisse * NB_BARRES);
+  barres.forEach((b, i) => b.classList.toggle("on", i < allumees));
+  requestAnimationFrame(dessinerNiveau);
+}
+requestAnimationFrame(dessinerNiveau);
+
+/* ---------------------------------------------------- releve */
+
+function majEtat() {
+  const e = ETATS[S.etat] || ETATS.veille;
+  $("#libelle-etat").textContent = e.libelle;
+  $("#ligne-etat").textContent = e.ligne;
+}
+
+function majReseau() {
+  const n = $("#lien-reseau");
+  n.classList.toggle("hs", !S.enligne);
+  n.querySelector("b").textContent = S.enligne ? "ETABLIE" : "ROMPUE";
+}
+
+setInterval(() => {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  $("#p-heure").textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}, 1000);
+
+/* ---------------------------------------------------- journal */
+
+const journal = $("#journal");
+const curseur = document.createElement("span");
+curseur.id = "curseur";
+
+function echapper(t) {
+  return String(t).replace(/[&<>"]/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+/* Mise au ton MU-TH-UR : majuscules, sans ponctuation decorative.
+   Purement cosmetique — la phrase prononcee par l'assistant est intacte. */
+function auTon(texte) {
+  return String(texte)
+    .toUpperCase()
+    .replace(/[«»""]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function ajouter(etiquette, texte, classe) {
+  const l = document.createElement("div");
+  l.className = "ligne " + classe;
+  l.innerHTML = `<span class="etiq">${etiquette}</span>${echapper(texte)}`;
+  journal.appendChild(l);
+  journal.appendChild(curseur);
+  journal.scrollTop = journal.scrollHeight;
+
+  // Au-dela de 200 lignes on elague, sinon la page s'alourdit.
+  while (journal.children.length > 201) journal.removeChild(journal.firstChild);
+}
+
+/* ---------------------------------------------------- evenements du flux */
+
+function appliquer(ev) {
+  switch (ev.t) {
+    case "etat":
+      S.etat = ev.v;
+      majEtat();
+      break;
+
+    case "niveau":
+      S.niveau = Math.max(0, Math.min(1, Number(ev.v) || 0));
+      break;
+
+    case "config":
+      $("#p-modele").textContent = (ev.modele || "—").toUpperCase();
+      $("#p-stt").textContent = (ev.stt || "—").toUpperCase();
+      break;
+
+    case "vous":
+      ajouter("EQUIPAGE&nbsp;&gt;", auTon(ev.texte), "equipage");
+      break;
+
+    case "jarvis":
+      ajouter("MU-TH-UR&nbsp;&gt;", auTon(ev.texte), "mere");
+      break;
+
+    case "outil":
+      ajouter("SOUS-ROUTINE",
+              auTon(ev.nom + (ev.detail ? " · " + ev.detail : "")),
+              "routine");
+      break;
+  }
+}
+
+/* ---------------------------------------------------- liaison SSE */
+
+function connecter() {
+  let source;
+  try {
+    source = new EventSource("/flux");
+  } catch (e) {
+    S.enligne = false; majReseau();
+    return;
+  }
+
+  source.onopen = () => {
+    S.enligne = true;
+    majReseau();
+  };
+
+  source.onmessage = (e) => {
+    try { appliquer(JSON.parse(e.data)); } catch (err) { /* trame illisible */ }
+  };
+
+  source.onerror = () => {
+    S.enligne = false;
+    majReseau();
+    // EventSource se reconnecte seul ; on ne force rien.
+  };
+}
+
+/* ---------------------------------------------------- amorcage */
+
+const LIGNES_AMORCE = [
+  "WEYLAND-YUTANI CORP · RESEAU DE BORD",
+  "USCSS NOSTROMO · IMMATRICULATION 180924609",
+  "",
+  "VERIFICATION DU NOYAU .................. CONFORME",
+  "MEMOIRE CENTRALE 6000 .................. CONFORME",
+  "LIAISON AUDIO EQUIPAGE ................. CONFORME",
+  "SOUS-ROUTINES SCIENCE .................. CHARGEES",
+  "REGULATION ENVIRONNEMENTALE ............ NOMINALE",
+  "",
+  "MU-TH-UR 6000 EN LIGNE",
+  "INTERFACE 2037 PRETE POUR INTERROGATION",
+];
+
+function amorcer() {
+  const zone = $("#amorce");
+  let i = 0;
+
+  function ligneSuivante() {
+    if (i >= LIGNES_AMORCE.length) {
+      setTimeout(() => {
+        zone.classList.add("parti");
+        connecter();
+        majEtat();
+        majReseau();
+      }, 620);
+      return;
+    }
+    zone.textContent += LIGNES_AMORCE[i] + "\n";
+    i++;
+    // Les lignes vides defilent vite, les autres marquent un temps
+    setTimeout(ligneSuivante, LIGNES_AMORCE[i - 1] === "" ? 60 : 165);
+  }
+  ligneSuivante();
+}
+
+// Echap saute l'amorcage
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    const zone = $("#amorce");
+    if (!zone.classList.contains("parti")) {
+      zone.classList.add("parti");
+      connecter(); majEtat(); majReseau();
+    }
+  }
+});
+
+amorcer();
+</script>
+</body>
+</html>
