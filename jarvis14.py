@@ -266,6 +266,9 @@ RESIDUS = (
     "avis", "service", "jarvis", "hey jarvis", "harvis", "arvis",
     "javis", "charvis", "chavis", "davis", "y a vis", "a vis",
     "la vis", "et vis", "ervice", "servi", "sers vis",
+    # Second mot de reveil : sans ca, dire "Maman" pendant la fenetre
+    # d ecoute est pris pour une commande (et finit en remember()).
+    "maman", "mamans", "mamant", "manman", "mamane", "hey maman",
 )
 
 # Ce que Whisper invente quand il n'entend que du silence.
