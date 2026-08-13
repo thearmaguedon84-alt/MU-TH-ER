@@ -67,6 +67,16 @@ _HISTORIQUE = deque(maxlen=40)
 
 _SERVEUR = None
 
+# Fonction appelee quand une page demande un changement de mode (bouton).
+# Renseignee par l'assistant via sur_changement_mode().
+_SUR_MODE = None
+
+
+def sur_changement_mode(fonction):
+    """Enregistre la fonction a appeler quand une page demande un mode."""
+    global _SUR_MODE
+    _SUR_MODE = fonction
+
 
 def _diffuser(evenement):
     """Envoie un evenement (dict) a tous les clients connectes."""
@@ -148,12 +158,30 @@ class _Poignee(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/flux":
             self._flux()
+        elif self.path.startswith("/mode/"):
+            self._mode(self.path.rsplit("/", 1)[-1])
         elif self.path in ("/mother", "/mother.html", "/muthur", "/maman"):
             self._page(_FICHIER_MOTHER)
         elif self.path in ("/", "/hud.html", "/index.html"):
             self._page()
         else:
             self.send_error(404)
+
+    def _mode(self, voulu):
+        """Bascule demandee par un bouton de l'interface."""
+        voulu = "mother" if voulu == "mother" else "jarvis"
+        if _SUR_MODE is not None:
+            try:
+                _SUR_MODE(voulu)
+            except Exception:
+                pass
+        else:
+            interface(voulu)
+        # On renvoie vers la page correspondante
+        self.send_response(303)
+        self.send_header("Location", "/mother" if voulu == "mother" else "/")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def _page(self, fichier=None):
         fichier = fichier or _FICHIER_HTML

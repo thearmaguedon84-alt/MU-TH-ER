@@ -258,6 +258,40 @@ def _capture(t):
 
 
 
+
+def _mode(t):
+    """« mode maman » / « mode jarvis » sans passer par le LLM.
+
+    Le modele local oublie souvent d'appeler changer_personnalite, ce qui
+    laissait l'assistant bloque en MU-TH-UR. Ici c'est deterministe.
+    """
+    vers_mere = ("mode maman", "mode mere", "mode mother", "mode muthur",
+                 "passe en maman", "deviens maman", "mode nostromo",
+                 "mode alien", "active maman")
+    vers_normal = ("mode jarvis", "mode normal", "mode neutre", "mode standard",
+                   "redeviens jarvis", "redeviens normal", "reviens en jarvis",
+                   "quitte le mode maman", "arrete le mode maman",
+                   "desactive maman", "retour normal")
+
+    if _contient(t, vers_mere):
+        cible = "mere"
+    elif _contient(t, vers_normal):
+        cible = "neutre"
+    else:
+        return None
+
+    from core import config, personnalite
+    if config.reglage("assistant.personnalite", "") != cible:
+        config.definir("assistant.personnalite", cible)
+    # L'ecran suit, s'il y a un HUD.
+    try:
+        import hud
+        hud.interface("mother" if cible == "mere" else "jarvis")
+    except Exception:
+        pass
+    return "Mode maman active." if cible == "mere" else "Mode normal active."
+
+
 # --------------------------------------------------------------- ton MU-TH-UR
 
 # Les raccourcis renvoient des phrases toutes faites, ecrites pour Jarvis.
@@ -300,7 +334,8 @@ def _au_ton_mere(reponse):
 # L'ordre compte : une application CONNUE l'emporte (sinon "ouvre Prime Video"
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
-ETAPES = (_media, _application, _film, _heure, _meteo, _minuteur, _stats, _capture)
+ETAPES = (_mode, _media, _application, _film, _heure, _meteo, _minuteur,
+          _stats, _capture)
 
 
 def essayer(question):

@@ -995,6 +995,20 @@ def main():
     )
     flux.start()
 
+    def _bascule_depuis_page(voulu):
+        """Le bouton d'une interface a demande un changement de mode."""
+        cible = "mere" if voulu == "mother" else _persona_normale
+        if config.reglage("assistant.personnalite", "") != cible:
+            config.definir("assistant.personnalite", cible)
+            _refaire_systeme(memoire.charger())
+        _hud("interface", voulu)
+
+    if hud is not None:
+        try:
+            hud.sur_changement_mode(_bascule_depuis_page)
+        except Exception:
+            pass
+
     _hud("interface", "mother"
          if config.reglage("assistant.personnalite", "") == "mere" else "jarvis")
     _mots_reveil = 'Hey Jarvis' + (' ou Maman' if maman.actif else '')
