@@ -16,6 +16,21 @@ PRESETS = {
         "Tu es extremement concis : tu vas droit au but, idealement en une phrase, "
         "sans formule de politesse superflue."
     ),
+    # MU-TH-UR : registre clinique d'ordinateur de bord.
+    # La derniere phrase est essentielle : une precedente version de ce preset
+    # donnait des exemples de reponses ("Protocole execute", "Ordre recu") et le
+    # modele les recopiait a l'oral AU LIEU d'appeler ses outils. On ne donne
+    # donc aucune phrase toute faite, et on rappelle explicitement l'obligation.
+    "mere": (
+        "Tu es l'ordinateur de bord d'un vaisseau. Ton registre est clinique : "
+        "phrases breves, strictement factuelles, sans emotion, sans humour, sans "
+        "formule de politesse, sans enthousiasme et sans excuse. Tu ne commentes "
+        "pas, tu constates. "
+        "ATTENTION : cette consigne porte UNIQUEMENT sur le style de tes phrases. "
+        "Elle ne change rien a tes obligations : pour toute action demandee, tu "
+        "appelles l'outil correspondant, exactement comme d'habitude. Ne decris "
+        "jamais une action au lieu de l'executer."
+    ),
 }
 
 DEFAUT = "neutre"
@@ -33,6 +48,9 @@ def normaliser(mode):
         return "jarvis_sarcastique"
     if "concis" in m or "court" in m or "bref" in m or "rapide" in m:
         return "concis"
+    if ("maman" in m or "mother" in m or "mere" in m or "muthur" in m
+            or "mu th ur" in m or "nostromo" in m or "alien" in m):
+        return "mere"
     if "neutre" in m or "normal" in m or "standard" in m or "classique" in m:
         return "neutre"
     return m

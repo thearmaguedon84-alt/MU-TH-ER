@@ -116,3 +116,8 @@
 2026-08-10 10:28:42  INFO  provider LLM : Ollama (mode local)
 2026-08-10 10:28:42  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
 2026-08-10 10:29:42  INFO  outil lancer_film args={'nom': 'La folle journee de Ferris Bueller'} -> Bambi 2 - Le prince de la foret lance dans VLC.
+2026-08-13 12:19:32  INFO  provider LLM : Ollama (mode local)
+2026-08-13 12:19:32  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-13 12:23:23  INFO  provider LLM : Ollama (mode local)
+2026-08-13 12:23:23  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-13 12:25:03  INFO  provider LLM : Ollama (mode local)

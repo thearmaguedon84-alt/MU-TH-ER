@@ -13,7 +13,7 @@ from core.registre import outil
         "properties": {
             "mode": {
                 "type": "string",
-                "description": "Mode voulu : jarvis_sarcastique, neutre, ou concis.",
+                "description": "Mode voulu : jarvis_sarcastique, neutre, concis, ou mere.",
             }
         },
         "required": ["mode"],
@@ -23,7 +23,8 @@ def changer_personnalite(mode: str) -> str:
     """Change la personnalite et la persiste dans config.yaml."""
     nom = personnalite.normaliser(mode)
     if nom not in personnalite.PRESETS:
-        return "Modes disponibles : jarvis, neutre, concis."
+        return "Modes disponibles : jarvis, neutre, concis, maman."
     config.definir("assistant.personnalite", nom)
-    libelles = {"jarvis_sarcastique": "Jarvis", "neutre": "neutre", "concis": "concis"}
+    libelles = {"jarvis_sarcastique": "Jarvis", "neutre": "neutre",
+                "concis": "concis", "mere": "maman"}
     return f"Mode {libelles.get(nom, nom)} active."

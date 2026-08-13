@@ -219,6 +219,44 @@ def _capture(t):
     return None
 
 
+
+# --------------------------------------------------------------- ton MU-TH-UR
+
+# Les raccourcis renvoient des phrases toutes faites, ecrites pour Jarvis.
+# En mode "mere" on les remplace par leur equivalent clinique. Purement
+# cosmetique : aucune action n'est modifiee.
+TON_MERE = {
+    "C'est fait.": "Execute.",
+    "Film arrete.": "Lecture interrompue.",
+    "VLC n etait pas en cours.": "Aucune lecture en cours.",
+    "Lecture arretee.": "Lecture interrompue.",
+    "Piste suivante.": "Sequence suivante.",
+    "Piste precedente.": "Sequence precedente.",
+    "Volume augmente.": "Niveau sonore augmente.",
+    "Volume baisse.": "Niveau sonore reduit.",
+    "Son coupe.": "Sortie audio coupee.",
+}
+
+
+def _au_ton_mere(reponse):
+    """Adapte la formulation d'un raccourci au registre MU-TH-UR."""
+    from core.config import reglage
+    if reglage("assistant.personnalite", "") != "mere":
+        return reponse
+    if reponse in TON_MERE:
+        return TON_MERE[reponse]
+    # Formulations construites dynamiquement
+    if reponse.endswith(" lance dans VLC."):
+        return "Lecture engagee : " + reponse[:-len(" lance dans VLC.")] + "."
+    if reponse.endswith(" lance."):
+        return "Programme engage : " + reponse[:-len(" lance.")] + "."
+    if reponse.startswith("Volume a "):
+        return "Niveau sonore " + reponse[len("Volume a "):]
+    if reponse.startswith("Je n ai pas trouve"):
+        return "Aucune correspondance dans les archives."
+    return reponse
+
+
 # --------------------------------------------------------------- point d'entree
 
 # L'ordre compte : une application CONNUE l'emporte (sinon "ouvre Prime Video"
@@ -243,5 +281,5 @@ def essayer(question):
             # on laisse simplement le LLM prendre le relais.
             continue
         if reponse:
-            return reponse
+            return _au_ton_mere(reponse)
     return None

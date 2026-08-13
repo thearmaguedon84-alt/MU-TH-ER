@@ -190,6 +190,17 @@ class EdgeTTSProvider(ProviderTTS):
 
     def __init__(self):
         self.voix = reglage("edge.voix", "fr-FR-DeniseNeural")
+        # Voix distincte du mode MU-TH-UR : plus lente et plus grave, pour un
+        # rendu d'ordinateur de bord. Modifiable dans config.yaml.
+        self.voix_mere = reglage("edge.voix_mere", "fr-CH-ArianeNeural")
+        self.debit_mere = reglage("edge.debit_mere", "-14%")
+        self.hauteur_mere = reglage("edge.hauteur_mere", "-15Hz")
+
+    def _reglage_voix(self):
+        """Voix et prosodie selon la personnalite active, relue a chaque phrase."""
+        if reglage("assistant.personnalite", "") == "mere":
+            return self.voix_mere, self.debit_mere, self.hauteur_mere
+        return self.voix, "+0%", "+0Hz"
 
     def disponible(self):
         try:
@@ -205,8 +216,10 @@ class EdgeTTSProvider(ProviderTTS):
             import numpy as np
             import edge_tts
 
+            voix, debit, hauteur = self._reglage_voix()
+
             async def _synth():
-                comm = edge_tts.Communicate(texte, self.voix)
+                comm = edge_tts.Communicate(texte, voix, rate=debit, pitch=hauteur)
                 audio = b""
                 async for chunk in comm.stream():
                     if chunk["type"] == "audio":
