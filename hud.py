@@ -116,9 +116,16 @@ def dire_vous(texte):
     _diffuser(evenement)
 
 
-def dire_jarvis(texte):
-    """Ajoute une ligne de transcription cote assistant."""
+def dire_jarvis(texte, duree=None):
+    """Ajoute une ligne de transcription cote assistant.
+
+    duree : longueur en secondes de la phrase parlee, si elle est connue. Les
+    interfaces qui animent la frappe s'en servent pour finir d'ecrire en meme
+    temps que la voix se tait.
+    """
     evenement = {"t": "jarvis", "texte": str(texte)}
+    if duree:
+        evenement["duree"] = round(float(duree), 2)
     _HISTORIQUE.append(evenement)
     _diffuser(evenement)
 

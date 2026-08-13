@@ -53,6 +53,9 @@ TAUX = 16000
 BLOC = 1280
 
 SEUIL_REVEIL = 0.5
+# Avance de l'ecriture sur la parole, en secondes. Assez pour voir le texte
+# demarrer, assez peu pour que les deux restent lies.
+DECALAGE_FRAPPE = 0.22
 SEUIL_INTERRUPTION = 0.7   # plus strict : le micro entend aussi l'enceinte
 SEUIL_PAROLE_SUR = 0.025
 BLOCS_AVANT_VERIF = 5      # 5 x 80 ms = 0,4 s de parole continue
@@ -205,6 +208,16 @@ def dire(texte, interruptible=True):
         return
     from core.tts import tts
     resultat = tts().synthetiser(texte)
+
+    # L'ecran commence a ecrire AVANT que la voix ne parte, et connait la duree
+    # exacte de la phrase : il peut donc finir sa frappe en meme temps qu'elle.
+    if resultat is not None:
+        _duree = len(resultat[0]) / float(resultat[1] or 1)
+    else:
+        _duree = max(0.8, len(texte) / 14.0)   # estimation pour la voix Windows
+    _hud("dire_jarvis", texte, _duree)
+    time.sleep(DECALAGE_FRAPPE)
+
     if interruptible:
         _PARLE.set()      # a partir d'ici Jarvis parle : on peut l'interrompre
     try:
@@ -894,7 +907,6 @@ def traiter(audio, whisper, historique, flux, reveil):
     _res = _raccourcis.essayer(question)
     if _res:
         _hud("dire_vous", question)
-        _hud("dire_jarvis", _res)
         print(f"  Vous : {question}")
         print(f"  Jarvis : {_res}\n")
         dire(_res)
@@ -916,7 +928,10 @@ def traiter(audio, whisper, historique, flux, reveil):
             _hud("etat", "parole")
             dire(texte)
 
-    _hud("dire_jarvis", texte)
+    # Si la phrase a ete interrompue, dire() n'a pas eu le temps de prevenir
+    # l'ecran : on rattrape ici pour que la transcription reste complete.
+    if interrompu:
+        _hud("dire_jarvis", texte)
     print(f"  Jarvis : {texte}\n")
     _tronquer(historique)
     return relancer

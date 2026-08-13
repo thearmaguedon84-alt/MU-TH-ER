@@ -83,12 +83,11 @@
     padding-bottom: 14px;
   }
 
-  #emblanc { width: 74px; height: 74px; flex: 0 0 auto; }
-  #emblanc path, #emblanc circle, #emblanc polygon { }
+  #logo { width: 224px; height: 92px; flex: 0 0 auto; }
 
   .titres { flex: 1; }
   .titres h1 {
-    font-size: 27px; font-weight: 700; letter-spacing: 9px;
+    font-size: 23px; font-weight: 700; letter-spacing: 8px;
   }
   .titres .sous {
     font-size: 11px; letter-spacing: 4.5px; color: var(--vert-faible);
@@ -192,24 +191,64 @@
 <div id="cadre">
 
   <header>
-    <!-- Embleme du Nostromo : dessin original dans l'esprit du film -->
-    <svg id="emblanc" viewBox="0 0 100 100" fill="none" aria-hidden="true">
-      <circle cx="50" cy="50" r="47" stroke="var(--vert-faible)" stroke-width="1.6"/>
-      <circle cx="50" cy="50" r="39" stroke="var(--vert-sombre)" stroke-width="1"/>
-      <!-- aile gauche -->
-      <path d="M50 26 L18 52 L28 52 L50 36 Z" fill="var(--vert)"/>
-      <path d="M50 40 L24 60 L34 60 L50 48 Z" fill="var(--vert-faible)"/>
-      <!-- aile droite -->
-      <path d="M50 26 L82 52 L72 52 L50 36 Z" fill="var(--vert)"/>
-      <path d="M50 40 L76 60 L66 60 L50 48 Z" fill="var(--vert-faible)"/>
-      <!-- fuselage -->
-      <polygon points="50,20 54,32 50,72 46,32" fill="var(--vert-vif)"/>
-      <path d="M30 76 H70" stroke="var(--vert-faible)" stroke-width="2"/>
+    <!-- Logo NOSTROMO : dessin original inspire de l'esthetique du film -->
+    <svg id="logo" viewBox="0 0 300 124" fill="none" aria-label="Nostromo">
+      <defs>
+        <!-- Patine : deplace legerement les contours pour l'effet pochoir use -->
+        <filter id="use" x="-12%" y="-12%" width="124%" height="124%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.9"
+                        numOctaves="3" seed="7" result="bruit"/>
+          <feDisplacementMap in="SourceGraphic" in2="bruit" scale="2.2"
+                             xChannelSelector="R" yChannelSelector="G"/>
+        </filter>
+        <!-- Rayures horizontales qui evident le lettrage, comme une serigraphie -->
+        <mask id="usure">
+          <rect width="300" height="124" fill="#fff"/>
+          <g fill="#000" opacity="0.55">
+            <rect x="0" y="14" width="300" height="1.6"/>
+            <rect x="0" y="31" width="300" height="1.2"/>
+            <rect x="0" y="45" width="300" height="2"/>
+            <rect x="0" y="86" width="300" height="1.4"/>
+            <rect x="0" y="103" width="300" height="1.2"/>
+          </g>
+        </mask>
+      </defs>
+
+      <g filter="url(#use)" mask="url(#usure)">
+        <!-- Mot-symbole -->
+        <text x="150" y="50" text-anchor="middle"
+              font-family="'Arial Black','Arial Bold',Impact,sans-serif"
+              font-size="47" font-weight="900" letter-spacing="1.5"
+              fill="var(--vert)" style="paint-order:stroke"
+              stroke="var(--vert)" stroke-width="1.5">NOSTROMO</text>
+
+        <!-- Emblent aile : lames degressives de part et d'autre du disque -->
+        <g fill="var(--vert)">
+          <!-- aile gauche -->
+          <path d="M138 74 L34 74 L14 82 L138 82 Z"/>
+          <path d="M136 86 L52 86 L36 93 L136 93 Z" opacity="0.92"/>
+          <path d="M134 97 L70 97 L58 103 L134 103 Z" opacity="0.8"/>
+          <path d="M132 107 L88 107 L80 112 L132 112 Z" opacity="0.62"/>
+          <!-- aile droite (miroir) -->
+          <path d="M162 74 L266 74 L286 82 L162 82 Z"/>
+          <path d="M164 86 L248 86 L264 93 L164 93 Z" opacity="0.92"/>
+          <path d="M166 97 L230 97 L242 103 L166 103 Z" opacity="0.8"/>
+          <path d="M168 107 L212 107 L220 112 L168 112 Z" opacity="0.62"/>
+        </g>
+
+        <!-- Disque central -->
+        <circle cx="150" cy="92" r="17" fill="none"
+                stroke="var(--vert)" stroke-width="5"/>
+        <circle cx="150" cy="92" r="7" fill="var(--vert)"/>
+
+        <!-- Montants verticaux qui relient le disque au lettrage -->
+        <rect x="146" y="60" width="8" height="16" fill="var(--vert)"/>
+      </g>
     </svg>
 
     <div class="titres">
       <h1 class="lueur">MU-TH-UR 6000</h1>
-      <div class="sous">USCSS NOSTROMO &middot; 180924609 &middot; ORDINATEUR CENTRAL</div>
+      <div class="sous">180924609 &middot; ORDINATEUR CENTRAL &middot; WEYLAND-YUTANI</div>
     </div>
 
     <div class="plaque">
@@ -430,7 +469,7 @@ function auTon(texte) {
 const fileFrappe = [];
 let enFrappe = false;
 
-function ajouter(etiquette, texte, classe, instantane) {
+function ajouter(etiquette, texte, classe, instantane, duree) {
   const l = document.createElement("div");
   l.className = "ligne " + classe;
   l.innerHTML = `<span class="etiq">${etiquette}</span>`;
@@ -446,18 +485,24 @@ function ajouter(etiquette, texte, classe, instantane) {
     journal.scrollTop = journal.scrollHeight;
     return;
   }
-  fileFrappe.push({ zone, texte });
+  fileFrappe.push({ zone, texte, duree });
   defilerFile();
 }
 
 function defilerFile() {
   if (enFrappe || !fileFrappe.length) return;
   enFrappe = true;
-  const { zone, texte } = fileFrappe.shift();
+  const { zone, texte, duree } = fileFrappe.shift();
   let i = 0;
 
-  // Vitesse : assez vive pour ne pas ennuyer, assez lente pour s'entendre
-  const pas = texte.length > 90 ? 12 : 26;
+  // Si le serveur nous a donne la duree de la phrase parlee, on cale la frappe
+  // dessus : l'ecriture se termine avec la voix. Sinon vitesse par defaut.
+  let pas;
+  if (duree && texte.length) {
+    pas = Math.max(8, Math.min(70, (duree * 1000) / texte.length));
+  } else {
+    pas = texte.length > 90 ? 12 : 26;
+  }
 
   (function frapper() {
     if (i >= texte.length) {
@@ -471,7 +516,7 @@ function defilerFile() {
     if (c !== " ") Audio_.frappe();
     journal.scrollTop = journal.scrollHeight;
     // Petite irregularite : une machine n'est jamais parfaitement reguliere
-    setTimeout(frapper, pas + Math.random() * 14);
+    setTimeout(frapper, pas + Math.random() * pas * 0.35);
   })();
 }
 
@@ -498,7 +543,7 @@ function appliquer(ev) {
       break;
 
     case "jarvis":
-      ajouter("MU-TH-UR&nbsp;&gt;", auTon(ev.texte), "mere");
+      ajouter("MU-TH-UR&nbsp;&gt;", auTon(ev.texte), "mere", false, ev.duree);
       break;
 
     case "interface":
