@@ -276,7 +276,24 @@ HALLUCINATIONS = (
     "amara.org", "sous-titres", "sous titres", "merci d'avoir regarde",
     "abonnez-vous", "abonnez vous", "a la prochaine video",
     "n'oubliez pas de vous abonner", "sous-titrage",
+    # Formules de politesse que Whisper invente sur du souffle ou du silence.
+    # Aucune n'est une commande, les jeter ne fait donc rien perdre.
+    "au revoir", "a bientot", "bonne journee", "bonne soiree",
+    "bon appetit", "a plus tard", "merci beaucoup", "merci a tous",
+    "generique", "musique", "radio-canada", "traduction",
 )
+
+
+def _repetitif(texte):
+    """Vrai si la meme phrase courte revient plusieurs fois.
+
+    Whisper qui boucle ("Au revoir.  Au revoir.") est un signe fiable
+    d'hallucination, independant du volume sonore.
+    """
+    parts = [p.strip().lower() for p in re.split(r"[.!?\n]+", texte) if p.strip()]
+    if len(parts) < 2:
+        return False
+    return len(set(parts)) == 1 and len(parts[0]) <= 30
 
 # Mots qui coupent la parole PUIS relancent l'ecoute (tu veux redire quelque chose).
 MOTS_RELANCE = (
@@ -798,6 +815,16 @@ def traiter(audio, whisper, historique, flux, reveil):
     segs = list(segments)
     _brut = " ".join(s.text for s in segs).strip()
     print(f"  [debug] whisper brut={_brut!r}", flush=True)
+
+    # Rejets avant toute interpretation : sous le seuil de silence il n'y avait
+    # rien a entendre, et une phrase qui se repete est une boucle du modele.
+    if _rms < SEUIL_SILENCE * 0.8:
+        print("  (silence)\n")
+        return False
+    if _repetitif(_brut):
+        print("  (hallucination : phrase repetee)\n")
+        return False
+
     question = nettoyer(_brut)
 
     if not question or len(question) < 3:
