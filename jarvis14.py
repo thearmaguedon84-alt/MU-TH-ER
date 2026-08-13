@@ -842,6 +842,19 @@ def main():
     registre.charger_outils()
     voix.definir_parleur(dire)
 
+    # Second mot de reveil « Maman » : fil separe, n'influence jamais la
+    # detection « Hey Jarvis » ci-dessous. Voir core/reveil_maman.py.
+    from core.reveil_maman import DetecteurMaman
+    _cfg_maman = config.reglage("reveil_maman", {}) or {}
+    maman = DetecteurMaman(
+        actif=_cfg_maman.get("actif", True),
+        seuil_voix=_cfg_maman.get("seuil_voix", 0.020),
+        garde=_cfg_maman.get("garde", 3.0),
+        modele=_cfg_maman.get("modele", "tiny"),
+    )
+    _persona_normale = _cfg_maman.get("persona_normale", "neutre")
+    _bascule_persona = _cfg_maman.get("bascule_persona", True)
+
     reveil = WakeModel(wakeword_model_paths=[str(
         Path(openwakeword.__file__).parent / "resources" / "models" / "hey_jarvis_v0.1.onnx"
     )])
@@ -896,7 +909,8 @@ def main():
     )
     flux.start()
 
-    print('\nPret. Dites "Hey Jarvis". Ctrl+C pour quitter.\n')
+    _mots_reveil = 'Hey Jarvis' + (' ou Maman' if maman.actif else '')
+    print(f'\nPret. Dites "{_mots_reveil}". Ctrl+C pour quitter.\n')
     print('Vous pouvez le couper en redisant "Hey Jarvis" pendant qu\'il parle.\n')
 
     tampon = deque(maxlen=6)
@@ -913,10 +927,25 @@ def main():
                 _hud("etat", "veille")
                 _hud("niveau", _niv_hud(bloc))
 
+                maman.alimenter(bloc)
+                par_maman = maman.declenche()
+
                 scores = reveil.predict((bloc * 32767).astype(np.int16))
-                if max(scores.values()) < SEUIL_REVEIL:
+                if not par_maman and max(scores.values()) < SEUIL_REVEIL:
                     continue
                 reveil.reset()
+                maman.vider()
+
+                # Reveil par « Maman » : on bascule en personnalite MU-TH-UR.
+                # Reveil par « Hey Jarvis » : on revient a la personnalite
+                # habituelle. Rien n'est ecrit si le mode est deja le bon.
+                if _bascule_persona:
+                    _voulue = "mere" if par_maman else _persona_normale
+                    if config.reglage("assistant.personnalite", "") != _voulue:
+                        config.definir("assistant.personnalite", _voulue)
+                        _refaire_systeme(memoire.charger())
+                if par_maman:
+                    print("  [micro] Reveil par Maman.")
 
             enchainer = False
             _hud("etat", "ecoute")
