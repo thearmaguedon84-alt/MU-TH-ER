@@ -1,0 +1,6 @@
+[10-08-2026 07:04:52:117][D:\Jenkins\workspace\Repo\FW4\Release\Stable\LSProjects\Framework\Code\RenderFramework\vk\API.cpp 1248 rf::vk::API::CreateVkDevice]: Driver info:
+  ID: NVIDIA_PROPRIETARY
+  Name: NVIDIA
+  Info: 610.62
+
+[10-08-2026 07:04:53:148][D:\Jenkins\workspace\Repo\FW4\Release\Stable\LSProjects\Framework\Code\RenderFramework\vk\RenderFrame.cpp 488 rf::vk::RenderFrame::CreateSwapChain]: SwapChain: created

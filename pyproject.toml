@@ -1,0 +1,49 @@
+[project]
+name = "jarvis-vocal"
+version = "0.1.0"
+description = "Assistant vocal local en francais, pilote par Claude (outils domotique, PC, web, communication)."
+readme = "README.md"
+authors = [
+    { name = "jarvis-vocal" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "anthropic>=0.120.2",
+    "audioop-lts>=0.2.2",
+    "ddgs>=9.14.4",
+    "discord-py>=2.7.1",
+    "edge-tts>=7.2.8",
+    "faster-whisper>=1.2.1",
+    "google-api-python-client>=2.198.0",
+    "google-auth-httplib2>=0.4.1",
+    "google-auth-oauthlib>=1.4.0",
+    "icalendar>=7.2.2",
+    "mcp>=2.0.0",
+    "miniaudio>=1.71",
+    "mss>=10.2.0",
+    "numpy>=2.5.1",
+    "nvidia-cublas-cu12>=12.9.2.10",
+    "nvidia-cudnn-cu12>=9.24.0.43",
+    "nvidia-ml-py>=13.610.43",
+    "obsws-python>=1.8.0",
+    "ollama>=0.6.2",
+    "onnxruntime>=1.28.0",
+    "openwakeword>=0.4.0",
+    "pillow>=12.3.0",
+    "piper-tts>=1.3.0",
+    "playwright>=1.62.0",
+    "psutil>=7.2.2",
+    "pyngrok>=8.1.2",
+    "pyyaml>=6.0.3",
+    "sounddevice>=0.5.5",
+    "truststore>=0.10.4",
+    "twilio>=9.10.9",
+    "websockets>=17.0.1",
+]
+
+[project.scripts]
+jarvis-vocal = "jarvis_vocal:main"
+
+[build-system]
+requires = ["uv_build>=0.12.1,<0.13.0"]
+build-backend = "uv_build"

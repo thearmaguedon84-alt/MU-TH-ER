@@ -1,0 +1,118 @@
+2026-08-08 19:53:58  INFO  provider LLM : Ollama (mode local)
+2026-08-08 19:53:58  INFO  provider TTS : Piper (mode local)
+2026-08-08 19:57:41  INFO  provider LLM : Ollama (mode local)
+2026-08-08 19:57:41  INFO  provider TTS : Piper (mode local)
+2026-08-09 08:20:23  INFO  provider LLM : Ollama (mode local)
+2026-08-09 08:20:23  INFO  provider TTS : Piper (mode local)
+2026-08-09 23:39:04  INFO  provider LLM : Ollama (mode local)
+2026-08-09 23:39:04  INFO  provider TTS : Piper (mode local)
+2026-08-09 23:40:30  INFO  outil ouvrir_application args={'nom': 'explorateur windu'} -> explorateur windu lance.
+2026-08-09 23:40:41  INFO  outil ouvrir_application args={'nom': 'explorateur windows'} -> explorateur windows lance.
+2026-08-09 23:40:52  INFO  outil launch_app args={'nom': 'Claude'} -> Je ne connais pas Claude. Donne-moi son chemin d'installation, ou son identifiant Steam (steam deux points slash slash rungameid slash numero), et je l'ajouterai.
+2026-08-09 23:43:05  INFO  outil launch_app args={'nom': "Baldur's Gate 3"} -> Je ne connais pas Baldur's Gate 3. Donne-moi son chemin d'installation, ou son identifiant Steam (steam deux points slash slash rungameid slash numero), et je l'ajouterai.
+2026-08-09 23:43:26  INFO  outil launch_app args={'nom': "Baldur's Gate 3"} -> Je ne connais pas Baldur's Gate 3. Donne-moi son chemin d'installation, ou son identifiant Steam (steam deux points slash slash rungameid slash numero), et je l'ajouterai.
+2026-08-09 23:45:39  INFO  outil launch_app args={'nom': "D:\\Badger's Game 3\\Bean\\bg3.exe"} -> Je ne connais pas D:\Badger's Game 3\Bean\bg3.exe. Donne-moi son chemin d'installation, ou son identifiant Steam (steam deux points slash slash rungameid slash numero), et je l'ajouterai.
+2026-08-10 00:11:45  INFO  provider LLM : Ollama (mode local)
+2026-08-10 00:11:45  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 00:13:58  INFO  outil ouvrir_application args={'nom': 'VLC'} -> VLC lancé (trouvé : VLC media player.lnk).
+2026-08-10 00:14:12  INFO  outil launch_app args={'nom': 'Bulgers Gate 3'} -> Je ne connais pas Bulgers Gate 3. Donne-moi son chemin d'installation, ou son identifiant Steam (steam deux points slash slash rungameid slash numero), et je l'ajouterai.
+2026-08-10 00:15:37  INFO  outil launch_app args={'nom': 'Bulgers Gate 3'} -> Je ne connais pas Bulgers Gate 3. Donne-moi son chemin d'installation, ou son identifiant Steam (steam deux points slash slash rungameid slash numero), et je l'ajouterai.
+2026-08-10 00:17:52  INFO  outil launch_app args={'nom': "Baldur's Gate 3"} -> Je ne connais pas Baldur's Gate 3. Donne-moi son chemin d'installation, ou son identifiant Steam (steam deux points slash slash rungameid slash numero), et je l'ajouterai.
+2026-08-10 00:21:47  INFO  outil launch_app args={'nom': "Baldur's Gate 3"} -> Je ne connais pas Baldur's Gate 3. Donne-moi son chemin d'installation, ou son identifiant Steam (steam deux points slash slash rungameid slash numero), et je l'ajouterai.
+2026-08-10 00:32:14  INFO  provider LLM : Ollama (mode local)
+2026-08-10 00:32:14  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 00:32:29  INFO  outil launch_app args={'nom': "Baldur's Gate 3"} -> baldurs gate lance.
+2026-08-10 00:35:00  INFO  outil ouvrir_application args={'nom': 'VLC'} -> VLC lancé (trouvé : VLC media player.lnk).
+2026-08-10 00:39:48  INFO  outil launch_app args={'nom': 'Expedition 33'} -> Je ne connais pas Expedition 33. Donne-moi son chemin d'installation, ou son identifiant Steam (steam deux points slash slash rungameid slash numero), et je l'ajouterai.
+2026-08-10 00:40:20  INFO  provider LLM : Ollama (mode local)
+2026-08-10 00:40:20  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 00:40:35  INFO  outil launch_app args={'nom': 'Expedition 33'} -> Je ne connais pas Expedition 33. Donne-moi son chemin d'installation, ou son identifiant Steam (steam deux points slash slash rungameid slash numero), et je l'ajouterai.
+2026-08-10 00:41:15  INFO  provider LLM : Ollama (mode local)
+2026-08-10 00:41:15  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 00:47:59  INFO  provider LLM : Ollama (mode local)
+2026-08-10 00:47:59  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 00:48:17  INFO  outil lancer_film args={'lecteur': '', 'nom': "d'Oli"} -> Dolittle.2020.FRENCH.BDRip.XviD-EXTREME_wWw.Extreme-Down.Ninja lance dans VLC.
+2026-08-10 00:49:54  INFO  provider LLM : Ollama (mode local)
+2026-08-10 00:49:54  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 00:50:15  INFO  outil lancer_film args={'nom': 'D O L L Y'} -> Dolly.2025.Multi.WEBRIP lance dans VLC.
+2026-08-10 00:54:29  INFO  provider LLM : Ollama (mode local)
+2026-08-10 00:54:29  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 00:54:41  INFO  outil launch_app args={'nom': 'Expedition 33'} -> expedition 33 lance.
+2026-08-10 00:56:03  INFO  outil lancer_film args={'lecteur': 'Z', 'nom': ''} -> Columbo - 29 - Eaux troubles lance dans VLC.
+2026-08-10 00:58:03  INFO  outil ouvrir_application args={'nom': 'Chrome'} -> Chrome lancé (trouvé : Google Chrome.lnk).
+2026-08-10 00:58:41  INFO  outil ouvrir_application args={'nom': 'Explorateur Windows'} -> Je ne trouve pas 'Explorateur Windows'. Dis-moi son chemin complet ou ajoute-le avec la commande ajouter_app.
+2026-08-10 00:59:06  INFO  outil ouvrir_fichier args={'chemin': 'Z:\\Projet\\Projet Annuel Décembre 2023.pptx'} -> Ouverture tentée : Z:\Projet\Projet Annuel Décembre 2023.pptx
+2026-08-10 01:02:04  INFO  provider LLM : Ollama (mode local)
+2026-08-10 01:02:04  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 01:02:31  INFO  outil lancer_film args={'lecteur': 'Z', 'nom': ''} -> Columbo - 26 - Exercice fatal lance dans VLC.
+2026-08-10 01:03:32  INFO  outil lancer_film args={'lecteur': 'Film-Film', 'nom': ''} -> Aucun fichier video trouve dans les dossiers disponibles.
+2026-08-10 01:03:45  INFO  outil lancer_film args={'lecteur': 'Z', 'nom': ''} -> Columbo - 27 - Réaction négative lance dans VLC.
+2026-08-10 01:05:56  INFO  provider LLM : Ollama (mode local)
+2026-08-10 01:05:56  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 01:06:14  INFO  outil lancer_film args={'nom': '', 'lecteur': 'Z'} -> The.Hunger.Games.Catching.Fire.2013.MULTi.VFF.2160p.10bit.4KLight.DV.HDR.BluRay.DDP.7.1.x265-QTZ-Wawacity.fit lance dans VLC.
+2026-08-10 01:07:05  INFO  outil lancer_film args={'lecteur': '', 'nom': 'The.Hunger.Games.Catching.Fire.2013'} -> Je n ai pas trouve de film correspondant a 'The.Hunger.Games.Catching.Fire.2013'.
+2026-08-10 01:08:01  INFO  outil lancer_film args={'nom': 'la planète des singes', 'lecteur': 'Z'} -> Je n ai pas trouve de film correspondant a 'la planète des singes'.
+2026-08-10 01:09:30  INFO  outil lancer_film args={'lecteur': 'Z', 'nom': 'la folle journée de ferris bueller'} -> Je n ai pas trouve de film correspondant a 'la folle journée de ferris bueller'.
+2026-08-10 01:09:46  INFO  outil stopper_film args={} -> VLC n'etait pas en cours d'execution.
+2026-08-10 01:10:02  INFO  outil lancer_film args={'lecteur': 'Z-Film-Film'} -> Aucun fichier video trouve dans les dossiers disponibles.
+2026-08-10 01:11:40  INFO  outil lancer_film args={'lecteur': 'Z-Film-Film', 'nom': 'Mandalorian'} -> Je n ai pas trouve de film correspondant a 'Mandalorian'.
+2026-08-10 01:15:43  INFO  provider LLM : Ollama (mode local)
+2026-08-10 01:15:43  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 01:16:07  INFO  outil lancer_film args={'lecteur': 'Z', 'nom': 'Man de la Réunion'} -> Bad.Man.2025.French.WEBRIP-Wawacity.irish lance dans VLC.
+2026-08-10 01:17:05  INFO  outil lancer_film args={'lecteur': 'Z', 'nom': 'Mandalorian'} -> The.Mandalorian.S01E01.FRENCH.WEBRip.x264-NEO lance dans VLC.
+2026-08-10 01:17:51  INFO  outil lancer_film args={'lecteur': 'Z', 'nom': 'Drogon'} -> Ooops.Noah.Is.Gone-Lost lance dans VLC.
+2026-08-10 01:18:23  INFO  outil lancer_film args={'lecteur': 'Z', 'nom': 'Planète des singes'} -> Elvira.Maitresse.des.Tenebres.1988.x265 lance dans VLC.
+2026-08-10 01:24:43  INFO  provider LLM : Ollama (mode local)
+2026-08-10 01:24:43  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 01:28:24  INFO  provider LLM : Ollama (mode local)
+2026-08-10 01:28:24  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 01:28:52  INFO  outil changer_personnalite args={'mode': 'maman'} -> Mode MU-TH-UR active.
+2026-08-10 01:31:36  INFO  provider LLM : Ollama (mode local)
+2026-08-10 01:31:36  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 01:32:36  INFO  outil lancer_film args={'lecteur': '', 'nom': 'Z-Film-Film'} -> Bigfoot.Family.2020.FRENCH.HDRip.XviD-EXTREME_wWw.Extreme-Down.Video lance dans VLC.
+2026-08-10 01:37:52  INFO  provider LLM : Ollama (mode local)
+2026-08-10 01:37:52  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 01:40:46  INFO  provider LLM : Ollama (mode local)
+2026-08-10 01:40:46  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 01:41:10  INFO  outil lancer_film args={'lecteur': '', 'nom': ''} -> Qui Veut La Peau De Roger Rabbit - 1080p FR EN x264 ac3 mHDgz lance dans VLC.
+2026-08-10 01:41:28  INFO  outil changer_personnalite args={'mode': 'maman'} -> Mode MU-TH-UR active.
+2026-08-10 01:42:26  INFO  outil changer_personnalite args={'mode': 'normal'} -> Mode neutre active.
+2026-08-10 01:43:53  INFO  provider LLM : Ollama (mode local)
+2026-08-10 01:43:53  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 01:44:25  INFO  outil lancer_film args={'lecteur': '', 'nom': ''} -> Moi, Moche et Méchant 3 2017 lance dans VLC.
+2026-08-10 01:44:38  INFO  outil controler_media args={'action': 'pause'} -> Fait : pause.
+2026-08-10 01:44:55  INFO  outil regler_volume args={'sens': 'baisser'} -> Volume baisser.
+2026-08-10 01:45:26  INFO  outil changer_personnalite args={'mode': 'maman'} -> Mode MU-TH-UR active.
+2026-08-10 01:46:32  INFO  outil changer_personnalite args={'mode': 'normal'} -> Mode neutre active.
+2026-08-10 01:51:13  INFO  provider LLM : Ollama (mode local)
+2026-08-10 01:51:13  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 01:55:26  INFO  provider LLM : Ollama (mode local)
+2026-08-10 01:55:26  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 01:56:09  INFO  outil lancer_film args={'lecteur': '', 'nom': 'planète des sages'} -> Parent lance dans VLC.
+2026-08-10 01:56:45  INFO  outil lancer_film args={'lecteur': '', 'nom': 'Oli'} -> Aladdin 3 - Le roi des voleurs lance dans VLC.
+2026-08-10 08:59:08  INFO  provider LLM : Ollama (mode local)
+2026-08-10 08:59:08  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 09:00:14  INFO  provider LLM : Ollama (mode local)
+2026-08-10 09:00:14  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 09:01:35  INFO  provider LLM : Ollama (mode local)
+2026-08-10 09:01:35  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 09:01:50  INFO  outil lancer_film args={'nom': '', 'lecteur': ''} -> Pokemon.Detective.Pikachu.2019.TRUEFRENCH.BDRip.XviD-EXTREME_wWw.Extreme-Down.Xyz lance dans VLC.
+2026-08-10 09:04:51  INFO  outil launch_app args={'nom': "Baldur's Gate 3"} -> baldurs gate lance.
+2026-08-10 09:06:31  INFO  provider LLM : Ollama (mode local)
+2026-08-10 09:06:31  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 09:06:56  INFO  outil lancer_film args={'lecteur': '', 'nom': 'planete_des_singes'} -> Parent lance dans VLC.
+2026-08-10 09:10:29  INFO  provider LLM : Ollama (mode local)
+2026-08-10 09:10:29  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 09:24:36  INFO  provider LLM : Ollama (mode local)
+2026-08-10 09:24:36  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 09:46:00  INFO  provider LLM : Claude (mode cloud)
+2026-08-10 09:46:46  INFO  provider LLM : Claude (mode cloud)
+2026-08-10 09:46:46  WARNING  Claude indisponible (credits Anthropic epuises) : bascule sur Ollama
+2026-08-10 09:55:05  INFO  provider LLM : Claude (mode cloud)
+2026-08-10 09:55:05  WARNING  Claude indisponible (credits Anthropic epuises) : bascule sur Ollama
+2026-08-10 10:08:09  INFO  provider LLM : Claude (abonnement) (mode abonnement)
+2026-08-10 10:26:33  INFO  provider LLM : Ollama (mode local)
+2026-08-10 10:26:33  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 10:28:42  INFO  provider LLM : Ollama (mode local)
+2026-08-10 10:28:42  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-10 10:29:42  INFO  outil lancer_film args={'nom': 'La folle journee de Ferris Bueller'} -> Bambi 2 - Le prince de la foret lance dans VLC.

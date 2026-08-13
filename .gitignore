@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.cache_films.json
+*.bak
+*.zip
+config.yaml
