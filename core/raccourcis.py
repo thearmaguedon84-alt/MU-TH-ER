@@ -155,7 +155,7 @@ RE_ARRET = re.compile(
     r"couper|ferme|fermes|fermer|quitte|quittes|quitter|termine|termines)\b"
     # Articles et petits mots tolerees : « arretes LA musique »
     r".{0,16}?\b(?:vlc|film|films|video|videos|lecture|musique|zik|"
-    r"diffusion|plex|serie|episode|morceau|chanson|album|tout)\b")
+    r"diffusion|plex|serie|episode|morceau|chanson|album|spotify|tout)\b")
 
 
 def _media(t):
@@ -169,9 +169,12 @@ def _media(t):
         return stopper_film()
 
     if RE_ARRET.search(t) or _contient(t, STOP_FILM):
-        # « arrete le film » doit arreter CE QUI JOUE, ou que ce soit.
-        arretes = _arreter_diffusion()
         from tools.media import stopper_film
+        # « vlc » nomme explicitement : inutile d aller couper les televisions.
+        if re.search(r"\bvlc\b", t):
+            return stopper_film()
+        # Sinon « arrete le film » doit arreter CE QUI JOUE, ou que ce soit.
+        arretes = _arreter_diffusion()
         vlc = stopper_film()
         if arretes:
             return "Diffusion coupee sur " + ", ".join(arretes) + "."
@@ -274,6 +277,11 @@ def _chercher_app(cible, seuil_flou):
 def _application(t):
     """'lance Elden Ring', 'ouvre Spotify', ou un nom d'application seul."""
     from tools.apps import launch_app
+
+    # Une phrase d'arret ne doit jamais lancer un programme : « Stopez Spotify »
+    # ouvrait l'application au lieu de couper la musique.
+    if RE_ARRET.search(t) or _contient(t, ARRETS):
+        return None
 
     m = re.search(r"\b(?:" + "|".join(VERBES_LANCER) + r")\b\s+(?:a |au |aux |sur )?(.+)", t)
     if m:
@@ -413,6 +421,30 @@ def _courrier(t):
     from tools.mail import lire_mails
     return lire_mails(nombre=nombre)
 
+
+
+def _arret_spotify(t):
+    """« arrete Spotify », « stoppe la lecture Spotify » -> pause Spotify.
+
+    Ce raccourci passe AVANT l'arret generique : sans lui, une phrase
+    mentionnant Spotify coupait les televisions, ce qui n'a aucun rapport.
+    """
+    if "spotify" not in t:
+        return None
+
+    arret = bool(RE_ARRET.search(t)) or _contient(t, ARRETS)
+    pause = _contient(t, ("pause", "suspends", "sur pause"))
+    reprise = _contient(t, ("reprends", "reprend", "continue", "relance la lecture",
+                            "remets", "remet"))
+    if not (arret or pause or reprise):
+        return None
+
+    from tools import spotify as S
+    if not S.configure():
+        return None
+    if reprise and not arret:
+        return S.spotify_controle(action="reprendre")
+    return S.spotify_controle(action="pause")
 
 
 def _spotify(t):
@@ -736,9 +768,10 @@ def _au_ton_mere(reponse):
 # L'ordre compte : une application CONNUE l'emporte (sinon "ouvre Prime Video"
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
-ETAPES = (_mode, _memoire, _cast, _spotify_appareil, _spotify, _plex,
-          _plex_sans_ecran, _media, _courrier, _application, _film, _heure,
-          _meteo, _minuteur, _stats, _capture)
+ETAPES = (_mode, _memoire, _arret_spotify, _cast, _spotify_appareil,
+          _spotify, _plex, _plex_sans_ecran, _media, _courrier,
+          _application, _film, _heure, _meteo, _minuteur, _stats,
+          _capture)
 
 
 def essayer(question):
