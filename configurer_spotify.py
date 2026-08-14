@@ -62,10 +62,28 @@ class _Retour(BaseHTTPRequestHandler):
 
 
 def main():
-    print(__doc__)
-    print("-" * 68)
-    cid = input("Client ID     : ").strip()
-    secret = input("Client Secret : ").strip()
+    # Les identifiants sont peut-etre deja dans config.yaml : on ne redemande
+    # que ce qui manque.
+    try:
+        with open("config.yaml", encoding="utf-8") as f:
+            deja = (yaml.safe_load(f.read()) or {}).get("spotify", {}) or {}
+    except Exception:
+        deja = {}
+
+    cid = (deja.get("client_id") or "").strip()
+    secret = (deja.get("client_secret") or "").strip()
+
+    if cid and secret:
+        print("Identifiants trouves dans config.yaml.")
+        print(f"  Client ID     : {cid[:4]}...{cid[-4:]}")
+        print("  Client Secret : (enregistre)")
+    else:
+        print(__doc__)
+        print("-" * 68)
+        if not cid:
+            cid = input("Client ID     : ").strip()
+        if not secret:
+            secret = input("Client Secret : ").strip()
     if not cid or not secret:
         sys.exit("Il faut les deux valeurs. Abandon.")
 

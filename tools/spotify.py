@@ -78,10 +78,20 @@ def _appel(methode, chemin, **kw):
 
     if r.status_code == 204:
         return True, {}
-    if r.status_code == 404:
-        return False, "Aucun appareil Spotify actif. Ouvre Spotify et lance un titre."
+    # Le corps precise la vraie cause : sans ca on annoncait « Premium
+    # necessaire » pour un simple appareil endormi.
+    raison = ""
+    try:
+        raison = (r.json().get("error") or {}).get("reason") or ""
+    except Exception:
+        pass
+
+    if r.status_code == 404 or raison == "NO_ACTIVE_DEVICE":
+        return False, "aucun appareil"
     if r.status_code == 403:
-        return False, "Spotify refuse : un compte Premium est necessaire."
+        if raison == "PREMIUM_REQUIRED":
+            return False, "Spotify refuse : un compte Premium est necessaire."
+        return False, "Spotify a refuse la commande."
     if r.status_code == 401:
         _ACCES["jeton"] = None
         return False, "Autorisation Spotify expiree."
@@ -93,18 +103,74 @@ def _appel(methode, chemin, **kw):
         return True, {}
 
 
-def _appareil():
-    """Identifiant d'un appareil disponible, en privilegiant l'actif."""
+def _lister_appareils():
     ok, d = _appel("GET", "/me/player/devices")
     if not ok or not isinstance(d, dict):
-        return None
-    appareils = d.get("devices") or []
-    if not appareils:
-        return None
+        return []
+    return d.get("devices") or []
+
+
+def _appareil():
+    """Identifiant d'un appareil disponible, en privilegiant l'actif."""
+    appareils = _lister_appareils()
     for a in appareils:
         if a.get("is_active"):
             return a.get("id")
-    return appareils[0].get("id")
+    return appareils[0].get("id") if appareils else None
+
+
+def _preparer_appareil(patienter=True):
+    """Garantit qu'un appareil est pret a recevoir la lecture.
+
+    Renvoie (identifiant, message). Si l'identifiant est None, le message
+    explique ce qui manque.
+    """
+    import time
+
+    appareils = _lister_appareils()
+
+    # Un appareil deja actif : rien a faire.
+    for a in appareils:
+        if a.get("is_active"):
+            return a.get("id"), ""
+
+    # Ouvrir l application du PC si aucun ordinateur n est disponible. Un
+    # telephone en veille compte comme un appareil, mais lui transferer la
+    # lecture echoue : il faut une cible reellement joignable.
+    a_un_ordi = any(a.get("type") == "Computer" for a in appareils)
+    if not a_un_ordi and patienter:
+        try:
+            from tools.apps import launch_app
+            launch_app("spotify")
+        except Exception:
+            pass
+        for _ in range(14):              # jusqu'a ~21 s le temps qu'elle demarre
+            time.sleep(1.5)
+            nouveaux = _lister_appareils()
+            if any(a.get("type") == "Computer" for a in nouveaux):
+                appareils = nouveaux
+                break
+            if nouveaux:
+                appareils = nouveaux
+
+    if not appareils:
+        return None, ("Aucun appareil Spotify. Ouvre l application Spotify, "
+                      "puis redemande.")
+
+    # Des appareils existent mais aucun n'est actif : on reveille le meilleur.
+    # Un ordinateur est preferable a un telephone en veille.
+    ordre = {"Computer": 0, "Speaker": 1, "TV": 2, "Smartphone": 3}
+    appareils.sort(key=lambda a: ordre.get(a.get("type"), 9))
+    cible = appareils[0]
+
+    # Le transfert peut echouer alors que l appareil est parfaitement
+    # utilisable (Spotify renvoie « Restriction violated » quand la cible est
+    # deja selectionnee). On tente la lecture malgre tout : c est elle qui
+    # tranchera.
+    _appel("PUT", "/me/player",
+           json={"device_ids": [cible.get("id")], "play": False})
+    time.sleep(1.2)
+    return cible.get("id"), ""
 
 
 # ------------------------------------------------------------------ outils
@@ -142,9 +208,11 @@ def spotify_jouer(recherche: str, genre: str = "") -> str:
     t = genres.get((genre or "").strip().lower(), "")
     types = t or "track,album,artist,playlist"
 
+    # Pas de market=from_token : ce parametre exige la portee
+    # user-read-private, absente de l autorisation, et Spotify renvoie alors
+    # « Insufficient client scope » sur une simple recherche.
     ok, d = _appel("GET", "/search",
-                   params={"q": recherche, "type": types, "limit": 5,
-                           "market": "from_token"})
+                   params={"q": recherche, "type": types, "limit": 5})
     if not ok:
         return d
 
@@ -164,14 +232,17 @@ def spotify_jouer(recherche: str, genre: str = "") -> str:
     corps = ({"uris": [item["uri"]]} if cle == "track"
              else {"context_uri": item["uri"]})
 
-    params = {}
-    app = _appareil()
-    if app:
-        params["device_id"] = app
+    app, souci = _preparer_appareil()
+    if not app:
+        return souci
 
-    ok, msg = _appel("PUT", "/me/player/play", params=params, json=corps)
+    ok, msg = _appel("PUT", "/me/player/play",
+                     params={"device_id": app}, json=corps)
     if not ok:
-        return msg
+        if msg == "aucun appareil":
+            return ("Spotify n a pas d appareil pret. Ouvre l application "
+                    "Spotify, puis redemande.")
+        return f"Spotify a refuse de lancer {item.get('name', recherche)}."
 
     nom = item.get("name", recherche)
     if cle == "track":
@@ -194,9 +265,9 @@ def spotify_jouer(recherche: str, genre: str = "") -> str:
 def spotify_en_cours() -> str:
     if not configure():
         return "Spotify n est pas configure."
-    ok, d = _appel("GET", "/me/player/currently-playing", params={"market": "from_token"})
+    ok, d = _appel("GET", "/me/player/currently-playing")
     if not ok:
-        return d
+        return "Rien ne joue en ce moment." if d == "aucun appareil" else d
     if not d or not d.get("item"):
         return "Rien ne joue en ce moment."
     item = d["item"]
@@ -208,6 +279,31 @@ def spotify_en_cours() -> str:
     if album and album != item.get("name"):
         reponse += f", sur l album {album}"
     return reponse + "."
+
+
+def _basculer(commande, etat_voulu, succes, deja):
+    """Pause ou reprise, avec une seconde tentative.
+
+    Spotify refuse parfois la commande juste apres un changement de piste
+    (« Restriction violated ») ; une pause d une seconde suffit. Et si l etat
+    est deja celui demande, autant le dire plutot que d annoncer une erreur.
+    """
+    import time
+
+    ok, m = _appel("PUT", f"/me/player/{commande}")
+    if ok:
+        return succes
+
+    time.sleep(1.0)
+    ok, m = _appel("PUT", f"/me/player/{commande}")
+    if ok:
+        return succes
+
+    # Toujours refuse : peut-etre parce que c est deja fait.
+    ok2, etat = _appel("GET", "/me/player")
+    if ok2 and isinstance(etat, dict) and etat.get("is_playing") == etat_voulu:
+        return deja
+    return m
 
 
 @outil(
@@ -229,11 +325,9 @@ def spotify_controle(action: str) -> str:
     a = (action or "").strip().lower()
 
     if a in ("pause", "stop", "arreter"):
-        ok, m = _appel("PUT", "/me/player/pause")
-        return "En pause." if ok else m
+        return _basculer("pause", False, "En pause.", "C etait deja en pause.")
     if a in ("reprendre", "play", "lecture", "continuer"):
-        ok, m = _appel("PUT", "/me/player/play")
-        return "Lecture reprise." if ok else m
+        return _basculer("play", True, "Lecture reprise.", "Ca joue deja.")
     if a in ("suivant", "next", "prochain"):
         ok, m = _appel("POST", "/me/player/next")
         return "Morceau suivant." if ok else m
