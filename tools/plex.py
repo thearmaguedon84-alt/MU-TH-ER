@@ -508,3 +508,181 @@ def plex_controle(action: str, ecran: str = "") -> str:
     except Exception as e:
         return f"Commande impossible : {e}"
     return "Action inconnue."
+
+
+# ------------------------------------------------------------------ musique
+
+# Types audio renvoyes par la recherche Plex
+TYPES_AUDIO = ("artist", "album", "track")
+
+# Nombre de pistes envoyees d'un coup : au-dela le Chromecast s'etrangle
+PISTES_MAX = 40
+
+
+def _chercher_audio(recherche, limite=12):
+    """Cherche un artiste, un album ou un morceau."""
+    racine = _get("/search", {"query": recherche, "limit": limite})
+    trouves = []
+    if racine is not None:
+        for n in racine:
+            if n.get("type") in TYPES_AUDIO:
+                trouves.append(n)
+    if trouves:
+        return trouves
+
+    # Repli sur l'index : la recherche Plex ne pardonne pas les fautes
+    for rk in _proches_dans_index(recherche):
+        fiche = _get(f"/library/metadata/{rk}")
+        if fiche is None:
+            continue
+        for n in fiche:
+            if n.get("type") in TYPES_AUDIO:
+                trouves.append(n)
+    return trouves
+
+
+def _pistes(element, profondeur=0):
+    """Toutes les pistes d'un artiste, d'un album, ou la piste elle-meme."""
+    genre = element.get("type")
+
+    if genre == "track":
+        return [element]
+
+    if profondeur > 2:
+        return []
+
+    contenu = _get(element.get("key") or "")
+    if contenu is None:
+        return []
+
+    sortie = []
+    for n in contenu:
+        if n.get("type") == "track" or n.tag == "Track":
+            sortie.append(n)
+        elif n.get("type") in ("album", "artist"):
+            sortie.extend(_pistes(n, profondeur + 1))
+        if len(sortie) >= PISTES_MAX:
+            break
+    return sortie[:PISTES_MAX]
+
+
+def _flux_audio(piste, hote_cast=None):
+    """URL et type de contenu d'une piste, ou (None, None)."""
+    import os
+
+    for media in piste:
+        if media.tag != "Media":
+            continue
+        conteneur = (media.get("container") or "mp3").lower()
+        for part in media:
+            if part.tag != "Part" or not part.get("key"):
+                continue
+            fichier = part.get("file") or ""
+            if fichier and not os.path.exists(fichier):
+                continue                 # disque debranche
+            hote = reglage("plex.hote_reseau", "")
+            if not hote:
+                from tools.cast import _adresse_pour
+                hote = _adresse_pour(hote_cast or "192.168.1.1")
+            url = (f"http://{hote}:{PORT}{part.get('key')}"
+                   f"?X-Plex-Token={_jeton()}")
+            types = {"mp3": "audio/mpeg", "flac": "audio/flac",
+                     "m4a": "audio/mp4", "aac": "audio/aac",
+                     "ogg": "audio/ogg", "wav": "audio/wav",
+                     "wma": "audio/x-ms-wma"}
+            return url, types.get(conteneur, "audio/mpeg")
+    return None, None
+
+
+@outil(
+    nom="plex_musique",
+    description=(
+        "Cherche de la musique dans la bibliotheque Plex et la diffuse sur un "
+        "ecran ou une enceinte Chromecast. Pour 'mets AC/DC sur la tele', "
+        "'joue l album Combat Rock dans le salon', 'diffuse The Clash'. "
+        "A la difference de Spotify, tout se pilote sans toucher au telephone."
+    ),
+    parametres={
+        "type": "object",
+        "properties": {
+            "recherche": {"type": "string",
+                          "description": "Artiste, album ou titre a chercher."},
+            "ecran": {"type": "string",
+                      "description": "Nom de l ecran ou de l enceinte. Vide = le premier."},
+        },
+        "required": ["recherche"],
+    },
+    lent=True,
+    phrase_attente="Je cherche dans ta musique.",
+)
+def plex_musique(recherche: str, ecran: str = "") -> str:
+    if not disponible():
+        return "Le serveur Plex ne repond pas."
+
+    candidats = _chercher_audio(recherche)
+    if not candidats:
+        return f"Je n ai pas trouve {recherche} dans ta musique."
+
+    # On identifie l ecran d abord : son adresse determine l URL a annoncer.
+    from tools.cast import _choisir
+    appareil = _choisir(ecran)
+    if appareil is None:
+        return ("Je ne vois pas cet ecran." if ecran
+                else "Je ne vois aucun ecran Chromecast.")
+    hote_cast = appareil.cast_info.host
+
+    # Le meilleur candidat qui donne au moins une piste jouable
+    pistes, nom_affiche = [], ""
+    for choix in candidats[:5]:
+        p = _pistes(choix)
+        if not p:
+            continue
+        flux = [(u, ct, t) for t in p
+                for u, ct in [_flux_audio(t, hote_cast)] if u]
+        if flux:
+            pistes = flux
+            titre = choix.get("title") or recherche
+            genre = choix.get("type")
+            nom_affiche = (f"l album {titre}" if genre == "album"
+                           else titre)
+            break
+
+    if not pistes:
+        # Distinguer « rien trouve » de « trouve mais disque debranche » :
+        # l essentiel de la musique vit souvent sur un disque externe.
+        manquants = 0
+        for choix in candidats[:3]:
+            for t in _pistes(choix):
+                for m in t:
+                    if m.tag != "Media":
+                        continue
+                    for part in m:
+                        if part.tag == "Part" and part.get("file"):
+                            import os as _os
+                            if not _os.path.exists(part.get("file")):
+                                manquants += 1
+                            break
+                    break
+        if manquants:
+            return (f"J ai trouve {recherche}, mais les fichiers sont sur un "
+                    "disque qui n est pas connecte.")
+        return f"J ai trouve {recherche} mais aucun fichier lisible."
+
+    try:
+        appareil.wait(timeout=12)
+        lecteur = appareil.media_controller
+        premier_url, premier_type, premiere = pistes[0]
+        lecteur.play_media(premier_url, premier_type,
+                           title=premiere.get("title") or nom_affiche,
+                           stream_type="BUFFERED")
+        lecteur.block_until_active(timeout=15)
+        # Les suivantes en file d attente
+        for url, ct, t in pistes[1:]:
+            lecteur.play_media(url, ct, title=t.get("title") or "",
+                               stream_type="BUFFERED", enqueue=True)
+    except Exception as e:
+        return f"Echec de la diffusion : {e}"
+
+    combien = len(pistes)
+    return (f"{nom_affiche} sur {appareil.cast_info.friendly_name}"
+            + (f", {combien} morceaux." if combien > 1 else "."))

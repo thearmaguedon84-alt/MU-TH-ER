@@ -510,6 +510,8 @@ def _plex(t):
 
     if generique and not ecran_n:
         # « sur la tele » sans autre precision : le premier ecran fera l affaire
+        if _musical(t):
+            return P.plex_musique(recherche=_sans_mot_musical(titre), ecran="")
         return P.plex_jouer(titre=titre, ecran="")
 
     # Sinon l ecran doit correspondre a un Chromecast connu, sans quoi ce n est
@@ -517,6 +519,9 @@ def _plex(t):
     from tools.cast import _choisir
     if _choisir(ecran_n or ecran) is None:
         return None
+    if _musical(t):
+        return P.plex_musique(recherche=_sans_mot_musical(titre),
+                              ecran=ecran_n or ecran)
     return P.plex_jouer(titre=titre, ecran=ecran_n or ecran)
 
 
@@ -571,6 +576,30 @@ def _spotify_appareil(t):
     if len(cible) < 3:
         return None
     return S.spotify_transferer(appareil=cible)
+
+
+
+# Indices qu'il s'agit de musique et non d'un film
+MOTS_MUSIQUE = ("album", "chanson", "morceau", "musique", "titre de",
+                "disque", "playlist", "zik", "artiste", "groupe",
+                "en musique", "de la musique")
+
+
+def _musical(t):
+    """Vrai si la phrase parle de musique plutot que de video."""
+    return _contient(t, MOTS_MUSIQUE)
+
+
+def _sans_mot_musical(titre):
+    """Retire l indice de genre : « l album Combat Rock » -> « Combat Rock ».
+
+    Sans ca, la recherche portait sur « album combat rock » et ne trouvait
+    rien, le mot parasite faisant chuter la ressemblance.
+    """
+    t = re.sub(r"\b(album|chanson|morceau|musique|disque|playlist|zik|"
+               r"artiste|groupe|titre)\b", " ", titre)
+    t = re.sub(r"\b(de la|du|des|de|d)\b", " ", t)
+    return _nettoyer_cible(t) or titre
 
 
 # --------------------------------------------------------------- ton MU-TH-UR
