@@ -477,7 +477,7 @@ def _cast(t):
     cible = re.sub(r"\b(ecran|television|tele|tv|chromecast)\b", " ", cible).strip()
     from tools.cast import caster_jarvis
     # Sans nom exploitable, on laisse l outil choisir le premier ecran
-    return caster_jarvis(ecran=cible if len(cible) >= 3 else "")
+    return caster_jarvis(ecran=cible if len(cible) >= 3 else _premier_ecran())
 
 
 
@@ -510,9 +510,12 @@ def _plex(t):
 
     if generique and not ecran_n:
         # « sur la tele » sans autre precision : le premier ecran fera l affaire
+        premier = _premier_ecran()
+        if not premier:
+            return "Je ne vois aucun ecran Chromecast."
         if _musical(t):
-            return P.plex_musique(recherche=_sans_mot_musical(titre), ecran="")
-        return P.plex_jouer(titre=titre, ecran="")
+            return P.plex_musique(recherche=_sans_mot_musical(titre), ecran=premier)
+        return P.plex_jouer(titre=titre, ecran=premier)
 
     # Sinon l ecran doit correspondre a un Chromecast connu, sans quoi ce n est
     # pas une demande de diffusion (ex : « mets un film sur VLC »).
@@ -585,6 +588,18 @@ MOTS_MUSIQUE = ("album", "chanson", "morceau", "musique", "titre de",
                 "en musique", "de la musique")
 
 
+def _premier_ecran():
+    """Nom du premier Chromecast trouve, ou "" s il n y en a aucun.
+
+    Depuis que l absence de destination signifie « sur le PC », une demande
+    « sur la tele » doit etre resolue en un nom reel, sans quoi elle repartirait
+    vers l ordinateur.
+    """
+    from tools.cast import _decouvrir
+    appareils = _decouvrir()
+    return str(appareils[0].cast_info.friendly_name) if appareils else ""
+
+
 def _musical(t):
     """Vrai si la phrase parle de musique plutot que de video."""
     return _contient(t, MOTS_MUSIQUE)
@@ -604,6 +619,60 @@ def _sans_mot_musical(titre):
     t = re.sub(r"\b(de la|du|des|de|d)\b", " ", t)
     t = re.sub(r"\s+(en|de|du|des|a|au|aux|sur|dans|avec)\s*$", " ", t)
     return _nettoyer_cible(t) or titre
+
+
+
+def _plex_sans_ecran(t):
+    """« mets Black Sabbath dans Zik », « lance Matrix dans Plex ».
+
+    Sans destination nommee, la lecture se fait sur le PC. Ces formulations
+    n etaient reconnues par aucun raccourci et partaient au LLM, qui choisissait
+    souvent la video alors qu on demandait de la musique.
+    """
+    from tools import plex as P
+
+    # Faut-il chercher dans la musique ou dans les films ?
+    dans_zik = _contient(t, ("dans zik", "dans la zik", "dans ma musique",
+                             "dans la musique", "en musique", "dans mes albums"))
+    dans_plex = _contient(t, ("dans plex", "sur plex", "depuis plex",
+                              "dans la bibliotheque"))
+    if not (dans_zik or dans_plex):
+        return None
+
+    m = re.search(r"\b(?:mets|met|joue|lance|passe|balance|ecoute|regarde)\b"
+                  r"\s+(?:moi\s+)?(?:du|de la|des|le|la|les|l|un|une)?\s*(.+)", t)
+    cible = m.group(1) if m else t
+
+    # Une destination peut malgre tout etre nommee : « ... en musique sur la
+    # tv en bas ». On l extrait avant de nettoyer le titre.
+    ecran = ""
+    m_ecran = re.search(r"\bsur\s+(?:la|le|l|mon|ma)?\s*(.+)$", cible)
+    if m_ecran:
+        candidat = m_ecran.group(1)
+        if not re.search(r"\bplex\b", candidat):
+            propre = re.sub(r"\b(ecran|television|tele|tv|chromecast)\b", " ", candidat)
+            propre = _nettoyer_cible(propre)
+            generique = re.search(r"\b(ecran|television|tele|tv|chromecast)\b", candidat)
+            from tools.cast import _choisir
+            if propre and _choisir(propre) is not None:
+                ecran = propre
+                cible = cible[:m_ecran.start()]
+            elif generique:
+                ecran = _premier_ecran()      # « sur la tele » : premier ecran
+                cible = cible[:m_ecran.start()]
+
+    # On retire les localisations et les mots de genre
+    cible = re.sub(r"\b(?:qui est|qu il y a|qui se trouve|se trouve)\b", " ", cible)
+    cible = re.sub(r"\bdans (?:la |le |les |ma |mes )?(?:zik|musique|plex|"
+                   r"bibliotheque|albums)\b", " ", cible)
+    cible = re.sub(r"\b(?:sur|depuis) plex\b", " ", cible)
+    cible = _sans_mot_musical(_nettoyer_cible(cible))
+    if len(cible) < 2:
+        return None
+
+    if dans_zik:
+        return P.plex_musique(recherche=cible, ecran=ecran)
+    return P.plex_jouer(titre=cible, ecran=ecran)
 
 
 # --------------------------------------------------------------- ton MU-TH-UR
@@ -652,8 +721,8 @@ def _au_ton_mere(reponse):
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
 ETAPES = (_mode, _memoire, _cast, _spotify_appareil, _spotify, _plex,
-          _media, _courrier, _application, _film, _heure, _meteo,
-          _minuteur, _stats, _capture)
+          _plex_sans_ecran, _media, _courrier, _application, _film, _heure,
+          _meteo, _minuteur, _stats, _capture)
 
 
 def essayer(question):

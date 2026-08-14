@@ -390,6 +390,39 @@ def plex_chercher(titre: str) -> str:
     return "J ai trouve : " + " ; ".join(noms) + "."
 
 
+def _fichier(element):
+    """Chemin disque de la premiere version accessible, ou None."""
+    import os
+    for media in element:
+        if media.tag != "Media":
+            continue
+        for part in media:
+            if part.tag == "Part" and part.get("file"):
+                if os.path.exists(part.get("file")):
+                    return part.get("file")
+    return None
+
+
+def _jouer_local(chemins, titre):
+    """Ouvre les fichiers dans VLC, sur cet ordinateur."""
+    import subprocess
+    from tools.media import _vlc_chemin
+
+    chemins = [c for c in chemins if c]
+    if not chemins:
+        return None
+    try:
+        subprocess.Popen([_vlc_chemin(), *chemins])
+    except Exception:
+        try:
+            import os
+            os.startfile(chemins[0])
+        except Exception:
+            return None
+    suite = f", {len(chemins)} morceaux" if len(chemins) > 1 else ""
+    return f"{titre} sur le PC{suite}."
+
+
 @outil(
     nom="plex_jouer",
     description=(
@@ -420,14 +453,16 @@ def plex_jouer(titre: str, ecran: str = "") -> str:
     # On essaie les resultats dans l ordre : le premier dont le fichier est
     # reellement accessible l emporte. Un meme titre existe souvent en
     # plusieurs exemplaires, dont certains sur un disque debranche.
-    # On identifie l ecran d abord : son adresse determine quelle interface
-    # reseau annoncer dans l URL du flux.
-    from tools.cast import _choisir
-    appareil = _choisir(ecran)
-    if appareil is None:
-        return ("Je ne vois pas cet ecran." if ecran
-                else "Je ne vois aucun ecran Chromecast.")
-    hote_cast = appareil.cast_info.host
+    # Sans ecran nomme, on reste sur le PC : allumer la television parce que
+    # personne n a precise de destination est le contraire de ce qu on veut.
+    appareil = None
+    hote_cast = None
+    if ecran:
+        from tools.cast import _choisir
+        appareil = _choisir(ecran)
+        if appareil is None:
+            return "Je ne vois pas cet ecran."
+        hote_cast = appareil.cast_info.host
 
     url = type_contenu = nom_affiche = None
     hors_ligne = None
@@ -442,6 +477,15 @@ def plex_jouer(titre: str, ecran: str = "") -> str:
             annee = choix.get("year")
             nom = choix.get("title") + (f" ({annee})" if annee else "")
             cible = choix
+
+        if appareil is None:
+            # Lecture locale : le chemin disque suffit
+            f = _fichier(cible)
+            if f:
+                resultat = _jouer_local([f], nom)
+                if resultat:
+                    return resultat
+            continue
 
         u, ct = _flux(cible, hote_cast)
         if u:
@@ -635,19 +679,32 @@ def plex_musique(recherche: str, ecran: str = "") -> str:
     if not candidats:
         return f"Je n ai pas trouve {recherche} dans ta musique."
 
-    # On identifie l ecran d abord : son adresse determine l URL a annoncer.
-    from tools.cast import _choisir
-    appareil = _choisir(ecran)
-    if appareil is None:
-        return ("Je ne vois pas cet ecran." if ecran
-                else "Je ne vois aucun ecran Chromecast.")
-    hote_cast = appareil.cast_info.host
+    # Sans ecran nomme : lecture sur le PC.
+    appareil = None
+    hote_cast = None
+    if ecran:
+        from tools.cast import _choisir
+        appareil = _choisir(ecran)
+        if appareil is None:
+            return "Je ne vois pas cet ecran."
+        hote_cast = appareil.cast_info.host
 
     # Le meilleur candidat qui donne au moins une piste jouable
     pistes, nom_affiche = [], ""
     for choix in candidats[:5]:
         p = _pistes(choix)
         if not p:
+            continue
+
+        if appareil is None:
+            fichiers = [f for t in p for f in [_fichier(t)] if f]
+            if fichiers:
+                titre = choix.get("title") or recherche
+                nom = (f"l album {titre}" if choix.get("type") == "album"
+                       else titre)
+                resultat = _jouer_local(fichiers, nom)
+                if resultat:
+                    return resultat
             continue
         flux = [(u, ct, t) for t in p
                 for u, ct in [_flux_audio(t, hote_cast)] if u]
