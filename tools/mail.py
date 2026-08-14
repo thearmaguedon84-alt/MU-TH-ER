@@ -92,14 +92,13 @@ def lire_mails(nombre: int = 5) -> str:
         for i, num in enumerate(derniers, 1):
             # BODY.PEEK : lire sans marquer le mail comme lu.
             _, d = imap.uid("fetch", num, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])")
-            entete = d[0][1].decode("utf-8", "replace") if d and d[0] else ""
-            exp, sujet = "", ""
-            for ligne in entete.splitlines():
-                bas = ligne.lower()
-                if bas.startswith("from:"):
-                    exp = _decoder_entete(ligne[5:].strip())
-                elif bas.startswith("subject:"):
-                    sujet = _decoder_entete(ligne[8:].strip())
+            # On passe par le parseur email : un en-tete long est replie sur
+            # plusieurs lignes (RFC 5322), et une lecture ligne par ligne
+            # tronquerait le sujet a sa premiere portion.
+            brut_entete = d[0][1] if d and d[0] else b""
+            tete = email.message_from_bytes(brut_entete)
+            exp = _decoder_entete(tete.get("From", ""))
+            sujet = _decoder_entete(tete.get("Subject", ""))
             nom, adresse = parseaddr(exp)
             lignes.append(f"{i}. De {nom or adresse or exp} : « {sujet or 'sans objet'} »")
         imap.logout()
