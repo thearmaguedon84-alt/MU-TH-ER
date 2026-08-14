@@ -463,7 +463,8 @@ def _spotify(t):
         return S.spotify_en_cours()
 
     # « mets/joue/lance/cherche <quelque chose> sur Spotify »
-    m = re.search(r"\b(?:mets|met|joue|lance|balance|passe|recherche|cherche)\b"
+    m = re.search(r"\b(?:mets|met|mettez|joue|jouez|lance|lancez|balance|passe|"
+                  r"passez|recherche|cherche|ecoute|ecoutez)\b"
                   r"\s+(.+?)\s+sur\s+spotify\b", t)
     if not m:
         # « sur Spotify, mets <quelque chose> »
@@ -723,6 +724,68 @@ def _plex_sans_ecran(t):
     return P.plex_jouer(titre=cible, ecran=ecran)
 
 
+
+def _musique_sans_source(t):
+    """« ecoute l album X », « mets du Green Day » -> Spotify par defaut.
+
+    Sans source nommee, on privilegie Spotify : son catalogue couvre tout,
+    alors que la bibliotheque locale ne contient qu'une partie. Une demande
+    visant explicitement Plex a deja ete traitee plus haut.
+    """
+    from tools import spotify as S
+
+    # Il faut une intention musicale claire, sinon on capterait « lance un film »
+    if not _musical(t):
+        return None
+    if _contient(t, ("film", "video", "serie", "episode")):
+        return None
+
+    m = re.search(r"\b(?:mets|met|mettez|joue|jouez|lance|lancez|passe|passez|"
+                  r"balance|ecoute|ecoutez|met moi|mets moi)\b"
+                  r"\s+(?:moi\s+)?(?:du|de la|des|de|le|la|les|l|un|une)?\s*(.+)", t)
+    if not m:
+        return None
+
+    cible = m.group(1)
+
+    # Destination eventuelle : « ... sur la tele » vise un ecran, pas Spotify
+    ecran = ""
+    m_ecran = re.search(r"\bsur\s+(?:la|le|l|mon|ma)?\s*(.+)$", cible)
+    if m_ecran:
+        candidat = m_ecran.group(1)
+        propre = re.sub(r"\b(ecran|television|tele|tv|chromecast)\b", " ", candidat)
+        propre = _nettoyer_cible(propre)
+        generique = re.search(r"\b(ecran|television|tele|tv|chromecast)\b", candidat)
+        from tools.cast import _choisir
+        if propre and _choisir(propre) is not None:
+            ecran, cible = propre, cible[:m_ecran.start()]
+        elif generique:
+            ecran, cible = _premier_ecran(), cible[:m_ecran.start()]
+
+    genre = ""
+    for mot, g in (("album", "album"), ("playlist", "playlist"),
+                   ("artiste", "artiste"), ("groupe", "artiste"),
+                   ("chanson", "titre"), ("morceau", "titre"),
+                   ("titre", "titre")):
+        if re.search(r"\b" + mot + r"\b", cible):
+            genre = g
+            break
+
+    cible = _sans_mot_musical(_nettoyer_cible(cible))
+    if len(cible) < 2:
+        return None
+
+    # Un ecran a ete demande : la musique locale sait diffuser, pas Spotify
+    if ecran:
+        from tools import plex as P
+        return P.plex_musique(recherche=cible, ecran=ecran)
+
+    if not S.configure():
+        from tools import plex as P
+        return P.plex_musique(recherche=cible, ecran="")
+    return S.spotify_jouer(recherche=cible, genre=genre)
+
+
 # --------------------------------------------------------------- ton MU-TH-UR
 
 # Les raccourcis renvoient des phrases toutes faites, ecrites pour Jarvis.
@@ -769,9 +832,9 @@ def _au_ton_mere(reponse):
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
 ETAPES = (_mode, _memoire, _arret_spotify, _cast, _spotify_appareil,
-          _spotify, _plex, _plex_sans_ecran, _media, _courrier,
-          _application, _film, _heure, _meteo, _minuteur, _stats,
-          _capture)
+          _spotify, _plex, _plex_sans_ecran, _musique_sans_source,
+          _media, _courrier, _application, _film, _heure, _meteo,
+          _minuteur, _stats, _capture)
 
 
 def essayer(question):

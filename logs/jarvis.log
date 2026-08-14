@@ -198,3 +198,7 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-15 00:34:45  INFO  provider LLM : Ollama (mode local)
 2026-08-15 00:34:45  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
 2026-08-15 00:36:13  INFO  outil spotify_jouer args={'recherche': 'Jours Étrange', 'genre': 'album'} -> Je lance l album Jours Etranges de Saez.
+2026-08-15 00:40:49  INFO  provider LLM : Ollama (mode local)
+2026-08-15 00:40:49  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-15 00:41:52  INFO  provider LLM : Ollama (mode local)
+2026-08-15 00:41:52  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
