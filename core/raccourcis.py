@@ -319,6 +319,54 @@ def _courrier(t):
     return lire_mails(nombre=nombre)
 
 
+
+def _spotify(t):
+    """« mets Nirvana sur Spotify », « c est quoi cette chanson ».
+
+    Les touches media couvrent deja pause et volume ; ici on gere ce qu elles
+    ne savent pas faire : choisir quoi jouer, et dire ce qui passe.
+    """
+    from tools import spotify as S
+
+    if _contient(t, ("qu est ce qui passe", "c est quoi cette chanson",
+                     "c est quoi ce morceau", "quel est ce morceau",
+                     "quelle est cette chanson", "quelle chanson",
+                     "c est quoi cette musique", "qu est ce qu on ecoute")):
+        return S.spotify_en_cours()
+
+    if not S.configure():
+        return None          # pas configure : inutile d intercepter le reste
+
+    # « mets/joue/lance <quelque chose> sur Spotify »
+    m = re.search(r"\b(?:mets|met|joue|lance|balance|passe)\b\s+(.+?)"
+                  r"\s+sur\s+spotify\b", t)
+    if not m:
+        # « sur Spotify, mets <quelque chose> »
+        m = re.search(r"\bspotify\b.*?\b(?:mets|met|joue|lance)\b\s+(.+)", t)
+    if not m:
+        return None
+
+    cible = _nettoyer_cible(m.group(1))
+    if len(cible) < 2:
+        return None
+
+    # Genre demande explicitement ?
+    genre = ""
+    for mot, g in (("album", "album"), ("playlist", "playlist"),
+                   ("artiste", "artiste"), ("groupe", "artiste"),
+                   ("titre", "titre"), ("chanson", "titre"),
+                   ("morceau", "titre")):
+        if re.search(r"\b" + mot + r"\b", cible):
+            genre = g
+            cible = re.sub(r"\b" + mot + r"\b", " ", cible).strip()
+            break
+
+    cible = _nettoyer_cible(cible)
+    if len(cible) < 2:
+        return None
+    return S.spotify_jouer(recherche=cible, genre=genre)
+
+
 # --------------------------------------------------------------- ton MU-TH-UR
 
 # Les raccourcis renvoient des phrases toutes faites, ecrites pour Jarvis.
@@ -364,8 +412,8 @@ def _au_ton_mere(reponse):
 # L'ordre compte : une application CONNUE l'emporte (sinon "ouvre Prime Video"
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
-ETAPES = (_mode, _media, _courrier, _application, _film, _heure, _meteo,
-          _minuteur, _stats, _capture)
+ETAPES = (_mode, _spotify, _media, _courrier, _application, _film, _heure,
+          _meteo, _minuteur, _stats, _capture)
 
 
 def essayer(question):
