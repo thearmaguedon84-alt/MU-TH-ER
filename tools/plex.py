@@ -542,24 +542,36 @@ def _chercher_audio(recherche, limite=12):
 
 
 def _pistes(element, profondeur=0):
-    """Toutes les pistes d'un artiste, d'un album, ou la piste elle-meme."""
-    genre = element.get("type")
+    """Toutes les pistes d'un artiste, d'un album, ou la piste elle-meme.
 
-    if genre == "track":
+    On interroge « allLeaves » plutot que de descendre artiste -> album ->
+    piste : pendant une analyse, la hierarchie des albums peut etre vide
+    alors que les pistes existent deja.
+    """
+    if element.get("type") == "track" or element.tag == "Track":
         return [element]
 
-    if profondeur > 2:
+    rk = element.get("ratingKey")
+    if not rk:
+        # La clef ressemble a /library/metadata/7198/children
+        cle = element.get("key") or ""
+        morceaux = [m for m in cle.split("/") if m.isdigit()]
+        rk = morceaux[-1] if morceaux else None
+    if not rk:
         return []
 
-    contenu = _get(element.get("key") or "")
+    contenu = _get(f"/library/metadata/{rk}/allLeaves")
     if contenu is None:
-        return []
+        # Repli : descente classique par les enfants
+        contenu = _get(element.get("key") or "")
+        if contenu is None:
+            return []
 
     sortie = []
     for n in contenu:
-        if n.get("type") == "track" or n.tag == "Track":
+        if n.tag == "Track" or n.get("type") == "track":
             sortie.append(n)
-        elif n.get("type") in ("album", "artist"):
+        elif profondeur < 2 and n.get("type") in ("album", "artist"):
             sortie.extend(_pistes(n, profondeur + 1))
         if len(sortie) >= PISTES_MAX:
             break

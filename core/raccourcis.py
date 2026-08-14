@@ -596,9 +596,13 @@ def _sans_mot_musical(titre):
     Sans ca, la recherche portait sur « album combat rock » et ne trouvait
     rien, le mot parasite faisant chuter la ressemblance.
     """
-    t = re.sub(r"\b(album|chanson|morceau|musique|disque|playlist|zik|"
-               r"artiste|groupe|titre)\b", " ", titre)
+    # « en musique », « de la musique » : on retire la locution entiere,
+    # sinon la preposition orpheline pollue la recherche.
+    t = re.sub(r"\b(en|de la|du|des|de|d|avec)\s+(musique|zik)\b", " ", titre)
+    t = re.sub(r"\b(l|le|la|les)?\s*(album|chanson|morceau|musique|disque|"
+               r"playlist|zik|artiste|groupe|titre)\b", " ", t)
     t = re.sub(r"\b(de la|du|des|de|d)\b", " ", t)
+    t = re.sub(r"\s+(en|de|du|des|a|au|aux|sur|dans|avec)\s*$", " ", t)
     return _nettoyer_cible(t) or titre
 
 
