@@ -150,3 +150,24 @@ TypeError: lancer_film() got an unexpected keyword argument 'recherche'
 2026-08-14 14:42:13  INFO  outil lancer_film args={'recherche': 'Les Minions, Les Monstres'} -> Desole, je n'ai pas reussi a faire ca.
 2026-08-14 14:43:42  INFO  provider LLM : Ollama (mode local)
 2026-08-14 14:43:42  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-14 14:47:41  INFO  provider LLM : Ollama (mode local)
+2026-08-14 14:47:41  INFO  provider LLM : Ollama (mode local)
+2026-08-14 14:47:41  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-14 14:47:41  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-14 14:48:45  INFO  provider LLM : Ollama (mode local)
+2026-08-14 14:48:45  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-14 14:49:02  INFO  outil plex_jouer args={'titre': 'Toy Story', 'ecran': 'Ambar'} -> Je ne vois pas cet ecran.
+2026-08-14 14:50:05  INFO  outil stopper_film args={} -> VLC n etait pas en cours.
+2026-08-14 14:50:20  INFO  outil stop_stream args={} -> En attente de la confirmation vocale de l'utilisateur.
+2026-08-14 14:50:47  INFO  outil stopper_film args={} -> VLC n etait pas en cours.
+2026-08-14 14:51:10  INFO  outil arreter_cast args={} -> Affichage coupe sur Tv en bas, Chambre parents, Vidéo projecetur.
+2026-08-14 14:52:40  ERROR  outil lancer_film a plante (args={'lecteur': '', 'titre': 'les minions et les monstres'})
+Traceback (most recent call last):
+  File "C:\Users\thear\Documents\jarvis-assistant-vocal\jarvis14.py", line 455, in _executer_outils
+    resultat = outil.fonction(**arguments)
+TypeError: lancer_film() got an unexpected keyword argument 'titre'
+2026-08-14 14:52:40  INFO  outil lancer_film args={'lecteur': '', 'titre': 'les minions et les monstres'} -> Desole, je n'ai pas reussi a faire ca.
+2026-08-14 14:53:16  INFO  outil stop_stream args={} -> En attente de la confirmation vocale de l'utilisateur.
+2026-08-14 14:54:23  INFO  provider LLM : Ollama (mode local)
+2026-08-14 14:54:23  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-14 14:54:33  INFO  outil lancer_film args={'lecteur': '', 'nom': 'TV Damba'} -> la bamba lance dans VLC.

@@ -81,17 +81,89 @@ MEDIA = (
      "muet", 1),
 )
 
-STOP_FILM = ("stop vlc", "ferme vlc", "quitte vlc", "arrete vlc", "coupe vlc",
+STOP_FILM = ("arrete le film", "coupe le film", "stoppe le film",
+             "arrete la video", "coupe la video", "arrete la lecture",
+             "arrete la diffusion", "coupe la diffusion",
+             "stop la diffusion", "stoppe la diffusion", "arrete le cast",
+             "stop vlc", "ferme vlc", "quitte vlc", "arrete vlc", "coupe vlc",
              "stoppe vlc", "stop le film", "arrete le film", "coupe le film",
              "stoppe le film", "arrete la lecture", "coupe la video",
              "stoppe la video", "ferme le film", "arrete la video",
              "stop film", "arrete film", "stopper le film")
 
 
+# Mots qui designent un ecran de diffusion
+ECRANS = ("tele", "television", "tv", "chromecast", "videoprojecteur",
+          "video projecteur", "projecteur", "ecran", "en bas", "chambre",
+          "salon", "dante")
+
+# Verbes d'arret
+ARRETS = ("arrete", "arrete", "stop", "stoppe", "coupe", "ferme", "quitte",
+          "eteins", "termine")
+
+
+def _arreter_diffusion(silencieux=False):
+    """Coupe ce qui joue sur les Chromecast. Renvoie la liste des ecrans.
+
+    Les appareils sont interroges en parallele : en serie, quatre ecrans
+    injoignables faisaient attendre pres d une demi-minute avant la reponse.
+    """
+    import threading
+    from tools.cast import _decouvrir
+
+    arretes = []
+    verrou = threading.Lock()
+
+    def traiter(c):
+        try:
+            c.wait(timeout=3)
+            if c.app_id:                 # quelque chose tourne dessus
+                c.quit_app()
+                with verrou:
+                    arretes.append(str(c.cast_info.friendly_name))
+        except Exception:
+            pass
+
+    fils = [threading.Thread(target=traiter, args=(c,), daemon=True)
+            for c in _decouvrir()]
+    for f in fils:
+        f.start()
+    for f in fils:
+        f.join(timeout=5)
+    return arretes
+
+
+def _diffusion_active():
+    """Vrai si au moins un ecran joue quelque chose."""
+    from tools.cast import _decouvrir
+    for c in _decouvrir():
+        try:
+            c.wait(timeout=4)
+            if c.app_id:
+                return True
+        except Exception:
+            continue
+    return False
+
+
 def _media(t):
-    if _contient(t, STOP_FILM):
+    # Arret vise sur un ecran : « coupe les minions sur la tv en bas »
+    if _contient(t, ARRETS) and _contient(t, ECRANS):
+        arretes = _arreter_diffusion()
+        if arretes:
+            return "Diffusion coupee sur " + ", ".join(arretes) + "."
+        # Rien sur les ecrans : peut-etre VLC
         from tools.media import stopper_film
         return stopper_film()
+
+    if _contient(t, STOP_FILM):
+        # « arrete le film » doit arreter CE QUI JOUE, ou que ce soit.
+        arretes = _arreter_diffusion()
+        from tools.media import stopper_film
+        vlc = stopper_film()
+        if arretes:
+            return "Diffusion coupee sur " + ", ".join(arretes) + "."
+        return vlc
     for cles, action, rep in MEDIA:
         if _contient(t, cles):
             from tools.controle import controler_media
@@ -153,11 +225,19 @@ def _proche(cible, apps, seuil):
     return meilleur if note_max >= seuil else None
 
 
+# On ne lance jamais ces applications a la voix : Jarvis se relancerait
+# lui-meme (il y a un raccourci JARVIS sur le bureau), ce qui fait tourner
+# deux instances en concurrence sur le micro.
+APPS_INTERDITES = ("jarvis", "javis", "harvis", "jarvis assistant")
+
+
 def _chercher_app(cible, seuil_flou):
     """Retrouve une application par nom, avec plusieurs strategies."""
     from tools.apps import _apps, _trouver
     apps = _apps()
     if not apps or len(cible) < 3:
+        return None, None
+    if cible in APPS_INTERDITES:
         return None, None
 
     clef = _trouver(cible, apps)
@@ -173,6 +253,8 @@ def _chercher_app(cible, seuil_flou):
             clef = _trouver(cible2, apps)
     if clef is None:
         clef = _proche(cible, apps, seuil_flou)
+    if clef and _plat(clef) in APPS_INTERDITES:
+        return None, apps
     return clef, apps
 
 
