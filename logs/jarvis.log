@@ -191,3 +191,7 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-15 00:15:17  INFO  outil spotify_controle args={'action': 'stop'} -> En pause.
 2026-08-15 00:16:27  INFO  outil plex_jouer args={'titre': 'Black Sabbath', 'ecran': ''} -> Black Adam (2022) sur Tv en bas.
 2026-08-15 00:16:33  INFO  outil plex_chercher args={'titre': 'Black Sabbath'} -> J ai trouve : Black Adam (2022), film ; Black Adam (2022), film ; Black Cat, White Cat (1998), film ; Black Dynamite (2009), film ; Black Dynamite (2009), film.
+2026-08-15 00:24:57  INFO  provider LLM : Ollama (mode local)
+2026-08-15 00:24:57  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-15 00:26:12  INFO  provider LLM : Ollama (mode local)
+2026-08-15 00:26:12  INFO  provider TTS : EdgeTTS (mode local, moteur edge)

@@ -82,6 +82,8 @@ MEDIA = (
 )
 
 STOP_FILM = ("arrete le film", "coupe le film", "stoppe le film",
+             "coupe la lecture", "stoppe la lecture", "arrete la musique",
+             "coupe la musique", "arrete tout", "coupe tout",
              "arrete la video", "coupe la video", "arrete la lecture",
              "arrete la diffusion", "coupe la diffusion",
              "stop la diffusion", "stoppe la diffusion", "arrete le cast",
@@ -146,6 +148,16 @@ def _diffusion_active():
     return False
 
 
+# Verbe d'arret conjugue, suivi de ce qu'il faut arreter. Une liste figee
+# ratait « coupes VLC » pour un simple pluriel de transcription.
+RE_ARRET = re.compile(
+    r"\b(?:arrete|arretes|arreter|stop|stoppe|stoppes|stopper|coupe|coupes|"
+    r"couper|ferme|fermes|fermer|quitte|quittes|quitter|termine|termines)\b"
+    # Articles et petits mots tolerees : « arretes LA musique »
+    r".{0,16}?\b(?:vlc|film|films|video|videos|lecture|musique|zik|"
+    r"diffusion|plex|serie|episode|morceau|chanson|album|tout)\b")
+
+
 def _media(t):
     # Arret vise sur un ecran : « coupe les minions sur la tv en bas »
     if _contient(t, ARRETS) and _contient(t, ECRANS):
@@ -156,7 +168,7 @@ def _media(t):
         from tools.media import stopper_film
         return stopper_film()
 
-    if _contient(t, STOP_FILM):
+    if RE_ARRET.search(t) or _contient(t, STOP_FILM):
         # « arrete le film » doit arreter CE QUI JOUE, ou que ce soit.
         arretes = _arreter_diffusion()
         from tools.media import stopper_film
@@ -179,7 +191,8 @@ def _media(t):
 # --------------------------------------------------------------- films
 
 MOTS_FILM = ("film", "video", "episode", "serie", "documentaire")
-VERBES_LANCER = ("lance", "lancer", "ouvre", "ouvrir", "demarre", "demarrer",
+VERBES_LANCER = ("lance", "lancez", "lancer", "ouvre", "ouvrez", "ouvrir",
+                 "demarre", "demarrez", "demarrer",
                  "mets", "met", "joue", "jouer", "execute", "demarrez",
                  "active", "start")
 
@@ -639,7 +652,8 @@ def _plex_sans_ecran(t):
     if not (dans_zik or dans_plex):
         return None
 
-    m = re.search(r"\b(?:mets|met|joue|lance|passe|balance|ecoute|regarde)\b"
+    m = re.search(r"\b(?:mets|met|mettez|joue|jouez|lance|lancez|passe|passez|"
+                  r"balance|ecoute|ecoutez|regarde|regardez|met moi|mets moi)\b"
                   r"\s+(?:moi\s+)?(?:du|de la|des|le|la|les|l|un|une)?\s*(.+)", t)
     cible = m.group(1) if m else t
 
@@ -670,7 +684,9 @@ def _plex_sans_ecran(t):
     if len(cible) < 2:
         return None
 
-    if dans_zik:
+    # « l album de X sur Plex » : le mot « album » l emporte sur « Plex ».
+    # Sans ca, toute demande musicale mentionnant Plex partait vers les films.
+    if dans_zik or _musical(t):
         return P.plex_musique(recherche=cible, ecran=ecran)
     return P.plex_jouer(titre=cible, ecran=ecran)
 
