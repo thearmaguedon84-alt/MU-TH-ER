@@ -123,6 +123,8 @@ def _film(t):
     # Retirer le mot "film"/"video" et les articles
     reste = re.sub(r"\b(le|la|les|un|une|des|du)\b", " ", reste)
     reste = re.sub(r"\b(film|video|episode|serie|documentaire)\b", " ", reste)
+    # « ... sur VLC » designe le lecteur, pas le titre du film
+    reste = re.sub(r"\b(?:sur|avec|dans)\s+(?:vlc|le lecteur|le player|media player)\b.*$", " ", reste)
     titre = _nettoyer_cible(reste)
     if titre in ("", "au hasard", "aleatoire", "random", "n importe quoi"):
         titre = ""
@@ -292,6 +294,31 @@ def _mode(t):
     return "Mode maman active." if cible == "mere" else "Mode normal active."
 
 
+
+def _courrier(t):
+    """« lis mes mails », « j ai des mails ? » -> lire_mails.
+
+    Passe par un raccourci car les outils mail ne sont pas proposes au modele
+    local (voir _NON_LOCAUX dans core/registre.py).
+    """
+    cles = ("mes mails", "mes mail", "mes e mails", "mes emails", "mes courriels",
+            "ma boite mail", "ma messagerie", "ma boite aux lettres",
+            "lis les mails", "lire les mails", "nouveaux mails",
+            "j ai des mails", "j ai du courrier", "regarde les mails",
+            "consulte les mails", "verifie les mails", "tri de ma boite")
+    # « lis mes 3 derniers mails » : le nombre s intercale dans la formule
+    motif = re.search(r"\b(?:mes|les)\b.{0,14}?\b(?:mails?|e ?mails?|courriels?)\b", t)
+    if not _contient(t, cles) and not motif:
+        return None
+    # Combien ? « lis mes trois derniers mails »
+    nombre = 5
+    m = re.search(r"(\d+)\s+(?:derniers?\s+)?(?:mails?|e ?mails?|courriels?)", t)
+    if m:
+        nombre = max(1, min(int(m.group(1)), 10))
+    from tools.mail import lire_mails
+    return lire_mails(nombre=nombre)
+
+
 # --------------------------------------------------------------- ton MU-TH-UR
 
 # Les raccourcis renvoient des phrases toutes faites, ecrites pour Jarvis.
@@ -326,6 +353,9 @@ def _au_ton_mere(reponse):
         return "Niveau sonore " + reponse[len("Volume a "):]
     if reponse.startswith("Je n ai pas trouve"):
         return "Aucune correspondance dans les archives."
+    if reponse.startswith("La messagerie n est pas configuree") or \
+       reponse.startswith("La messagerie n'est pas configuree"):
+        return "Liaison de communication non etablie."
     return reponse
 
 
@@ -334,8 +364,8 @@ def _au_ton_mere(reponse):
 # L'ordre compte : une application CONNUE l'emporte (sinon "ouvre Prime Video"
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
-ETAPES = (_mode, _media, _application, _film, _heure, _meteo, _minuteur,
-          _stats, _capture)
+ETAPES = (_mode, _media, _courrier, _application, _film, _heure, _meteo,
+          _minuteur, _stats, _capture)
 
 
 def essayer(question):

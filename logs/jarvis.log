@@ -133,3 +133,5 @@
 2026-08-13 14:00:17  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
 2026-08-13 14:14:16  INFO  provider LLM : Ollama (mode local)
 2026-08-13 14:14:16  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-14 08:10:16  INFO  provider LLM : Ollama (mode local)
+2026-08-14 08:10:16  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
