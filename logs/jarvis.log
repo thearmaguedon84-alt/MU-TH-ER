@@ -135,3 +135,18 @@
 2026-08-13 14:14:16  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
 2026-08-14 08:10:16  INFO  provider LLM : Ollama (mode local)
 2026-08-14 08:10:16  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-14 14:36:22  INFO  provider LLM : Ollama (mode local)
+2026-08-14 14:36:22  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-14 14:37:12  INFO  outil lancer_film args={} -> the lowdown lance dans VLC.
+2026-08-14 14:37:29  INFO  outil caster_jarvis args={'ecran': 'TV_d_en_bas'} -> Interface envoyee sur Tv en bas.
+2026-08-14 14:38:13  INFO  outil caster_jarvis args={'ecran': 'TV_d_en_bas'} -> Interface envoyee sur Tv en bas.
+2026-08-14 14:38:28  INFO  outil caster_jarvis args={'ecran': 'TV_d_en_bas'} -> Interface envoyee sur Tv en bas.
+2026-08-14 14:39:51  INFO  outil caster_jarvis args={'ecran': 'TV_d_en_bas', 'interface': 'jarvis'} -> Interface envoyee sur Tv en bas.
+2026-08-14 14:42:13  ERROR  outil lancer_film a plante (args={'recherche': 'Les Minions, Les Monstres'})
+Traceback (most recent call last):
+  File "C:\Users\thear\Documents\jarvis-assistant-vocal\jarvis14.py", line 455, in _executer_outils
+    resultat = outil.fonction(**arguments)
+TypeError: lancer_film() got an unexpected keyword argument 'recherche'
+2026-08-14 14:42:13  INFO  outil lancer_film args={'recherche': 'Les Minions, Les Monstres'} -> Desole, je n'ai pas reussi a faire ca.
+2026-08-14 14:43:42  INFO  provider LLM : Ollama (mode local)
+2026-08-14 14:43:42  INFO  provider TTS : EdgeTTS (mode local, moteur edge)

@@ -334,12 +334,9 @@ def _spotify(t):
                      "c est quoi cette musique", "qu est ce qu on ecoute")):
         return S.spotify_en_cours()
 
-    if not S.configure():
-        return None          # pas configure : inutile d intercepter le reste
-
-    # « mets/joue/lance <quelque chose> sur Spotify »
-    m = re.search(r"\b(?:mets|met|joue|lance|balance|passe)\b\s+(.+?)"
-                  r"\s+sur\s+spotify\b", t)
+    # « mets/joue/lance/cherche <quelque chose> sur Spotify »
+    m = re.search(r"\b(?:mets|met|joue|lance|balance|passe|recherche|cherche)\b"
+                  r"\s+(.+?)\s+sur\s+spotify\b", t)
     if not m:
         # « sur Spotify, mets <quelque chose> »
         m = re.search(r"\bspotify\b.*?\b(?:mets|met|joue|lance)\b\s+(.+)", t)
@@ -349,6 +346,13 @@ def _spotify(t):
     cible = _nettoyer_cible(m.group(1))
     if len(cible) < 2:
         return None
+
+    # La demande est claire : si Spotify n est pas configure, on le DIT.
+    # Avant, on laissait la main et « lance l album X sur Spotify » finissait
+    # par simplement ouvrir l application, ce qui n a aucun sens.
+    if not S.configure():
+        return ("Spotify n est pas encore configure. "
+                "Lance le script de configuration une fois.")
 
     # Genre demande explicitement ?
     genre = ""
@@ -361,6 +365,7 @@ def _spotify(t):
             cible = re.sub(r"\b" + mot + r"\b", " ", cible).strip()
             break
 
+    cible = re.sub(r"^(?:de|du|des|d)\s+", "", _nettoyer_cible(cible))
     cible = _nettoyer_cible(cible)
     if len(cible) < 2:
         return None
@@ -390,6 +395,46 @@ def _cast(t):
     from tools.cast import caster_jarvis
     # Sans nom exploitable, on laisse l outil choisir le premier ecran
     return caster_jarvis(ecran=cible if len(cible) >= 3 else "")
+
+
+
+def _plex(t):
+    """« mets Toy Story sur la tele », « cherche Matrix dans Plex »."""
+    from tools import plex as P
+
+    if _contient(t, ("cherche", "est ce que j ai", "tu as", "trouve")) and \
+       _contient(t, ("dans plex", "sur plex", "dans la bibliotheque")):
+        m = re.search(r"\b(?:cherche|trouve|est ce que j ai|tu as)\s+(.+?)"
+                      r"\s+(?:dans|sur)\s+(?:plex|la bibliotheque)", t)
+        if m:
+            return P.plex_chercher(titre=_nettoyer_cible(m.group(1)))
+
+    # « mets/lance/joue <titre> sur <ecran> », avec ou sans "depuis plex"
+    m = re.search(r"\b(?:mets|met|lance|joue|diffuse|balance)\b\s+(.+?)"
+                  r"\s+sur\s+(?:la|le|l|mon|ma)?\s*(.+)", t)
+    if not m:
+        return None
+    titre = _nettoyer_cible(re.sub(r"\b(?:depuis|avec|via)\s+plex\b", " ", m.group(1)))
+    ecran = _nettoyer_cible(m.group(2))
+    ecran = re.sub(r"\b(depuis|avec|via)\s+plex\b", " ", ecran).strip()
+
+    # Spotify a son propre raccourci ; ici on ne traite que les ecrans
+    if "spotify" in ecran or len(titre) < 2:
+        return None
+    generique = re.search(r"\b(ecran|television|tele|tv|chromecast|salon)\b", ecran)
+    ecran_n = re.sub(r"\b(ecran|television|tele|tv|chromecast)\b", " ", ecran)
+    ecran_n = re.sub(r"\s+", " ", ecran_n).strip()
+
+    if generique and not ecran_n:
+        # « sur la tele » sans autre precision : le premier ecran fera l affaire
+        return P.plex_jouer(titre=titre, ecran="")
+
+    # Sinon l ecran doit correspondre a un Chromecast connu, sans quoi ce n est
+    # pas une demande de diffusion (ex : « mets un film sur VLC »).
+    from tools.cast import _choisir
+    if _choisir(ecran_n or ecran) is None:
+        return None
+    return P.plex_jouer(titre=titre, ecran=ecran_n or ecran)
 
 
 # --------------------------------------------------------------- ton MU-TH-UR
@@ -437,8 +482,8 @@ def _au_ton_mere(reponse):
 # L'ordre compte : une application CONNUE l'emporte (sinon "ouvre Prime Video"
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
-ETAPES = (_mode, _cast, _spotify, _media, _courrier, _application, _film,
-          _heure, _meteo, _minuteur, _stats, _capture)
+ETAPES = (_mode, _cast, _spotify, _plex, _media, _courrier, _application,
+          _film, _heure, _meteo, _minuteur, _stats, _capture)
 
 
 def essayer(question):
