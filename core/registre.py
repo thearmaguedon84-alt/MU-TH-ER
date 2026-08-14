@@ -50,6 +50,65 @@ def charger_outils():
         importlib.import_module(f"tools.{module.name}")
 
 
+def ajuster_arguments(outil_obj, arguments):
+    """Rapproche les arguments recus des parametres reellement declares.
+
+    Un modele local invente volontiers un synonyme : 'titre' pour 'nom',
+    'texte' pour 'contenu'. Plutot que de planter sur un TypeError, on
+    reattribue chaque valeur au parametre le plus proche encore libre.
+    """
+    from difflib import SequenceMatcher
+
+    if not isinstance(arguments, dict):
+        return {}
+    attendus = list((outil_obj.parametres or {}).get("properties", {}).keys())
+    if not attendus:
+        return {}
+
+    propres, restants = {}, []
+    for cle, valeur in arguments.items():
+        if cle in attendus:
+            propres[cle] = valeur
+        else:
+            restants.append((cle, valeur))
+
+    libres = [a for a in attendus if a not in propres]
+    orphelins = []
+    for cle, valeur in restants:
+        if not libres:
+            break
+        # Le parametre libre dont le nom ressemble le plus a la clef recue
+        note = [(SequenceMatcher(None, str(cle).lower(), a.lower()).ratio(), a)
+                for a in libres]
+        note.sort(reverse=True)
+        meilleur_score, meilleur = note[0]
+        if meilleur_score >= 0.45 or len(libres) == 1:
+            propres[meilleur] = valeur
+            libres.remove(meilleur)
+        else:
+            orphelins.append(valeur)
+
+    # Aucune ressemblance mais un parametre obligatoire manque : on attribue
+    # dans l ordre plutot que de perdre la valeur. Sans ca, spotify_jouer
+    # appele avec {'query': ...} arrivait sans aucune recherche.
+    if orphelins:
+        requis = [a for a in (outil_obj.parametres or {}).get("required", [])
+                  if a in libres]
+        for a in requis:
+            if not orphelins:
+                break
+            propres[a] = orphelins.pop(0)
+            libres.remove(a)
+        # Puis les parametres optionnels encore libres, dans l ordre declare
+        for a in list(libres):
+            if not orphelins:
+                break
+            propres[a] = orphelins.pop(0)
+            libres.remove(a)
+
+    return propres
+
+
 def get(nom):
     return _REGISTRE.get(nom)
 
@@ -69,6 +128,9 @@ _NON_LOCAUX = {
     #   launch_app     -> couvert par ouvrir_application, qui lui delegue
     #   regler_volume  -> couvert par controler_media + regler_volume_systeme
     "launch_app", "regler_volume",
+    # Le modele local enregistrait des souvenirs sur des remarques
+    # anodines. La memoire passe maintenant par un raccourci explicite.
+    "remember",
     "capture_screen", "faire_brief",
     "lire_mails", "lire_mail", "preparer_mail", "envoyer_mail", "mettre_a_la_corbeille",
     "get_events", "create_event", "delete_event", "get_deadlines",

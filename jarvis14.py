@@ -452,7 +452,10 @@ def _executer_outils(blocs):
             resultat = registre.mettre_en_attente(outil, arguments)
         else:
             try:
-                resultat = outil.fonction(**arguments)
+                # Le modele local se trompe souvent de nom de parametre :
+                # on ramene ce qu il envoie vers ce que l outil attend.
+                args_ok = registre.ajuster_arguments(outil, arguments)
+                resultat = outil.fonction(**args_ok)
             except Exception:
                 LOG.exception("outil %s a plante (args=%s)", nom, arguments)
                 resultat = "Desole, je n'ai pas reussi a faire ca."

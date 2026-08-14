@@ -519,6 +519,33 @@ def _plex(t):
     return P.plex_jouer(titre=titre, ecran=ecran_n or ecran)
 
 
+
+def _memoire(t):
+    """Memoire sur demande explicite seulement.
+
+    Le modele local enregistrait spontanement des remarques de conversation.
+    Ici il faut une intention claire : « souviens-toi que... », « retiens
+    que... », « rappelle-moi que... ».
+    """
+    m = re.search(r"\b(?:souviens? toi|retiens|rappelle toi|note|memorise)\b"
+                  r"(?:\s+(?:que|qu|de|du|des))?\s+(.+)", t)
+    if m:
+        contenu = m.group(1).strip()
+        if len(contenu) < 3:
+            return None
+        from tools.memoire import remember
+        return remember(categorie="note", contenu=contenu, cle="")
+
+    m = re.search(r"\b(?:qu est ce que tu sais|de quoi tu te souviens|"
+                  r"tu te souviens|rappelle moi)\b(?:\s+(?:sur|de|du|des|a propos de))?"
+                  r"\s*(.*)", t)
+    if m:
+        sujet = m.group(1).strip()
+        from tools.memoire import recall
+        return recall(requete=sujet) if sujet else recall(requete="")
+    return None
+
+
 # --------------------------------------------------------------- ton MU-TH-UR
 
 # Les raccourcis renvoient des phrases toutes faites, ecrites pour Jarvis.
@@ -564,8 +591,9 @@ def _au_ton_mere(reponse):
 # L'ordre compte : une application CONNUE l'emporte (sinon "ouvre Prime Video"
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
-ETAPES = (_mode, _cast, _spotify, _plex, _media, _courrier, _application,
-          _film, _heure, _meteo, _minuteur, _stats, _capture)
+ETAPES = (_mode, _memoire, _cast, _spotify, _plex, _media, _courrier,
+          _application, _film, _heure, _meteo, _minuteur, _stats,
+          _capture)
 
 
 def essayer(question):
