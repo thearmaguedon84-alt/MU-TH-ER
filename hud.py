@@ -33,6 +33,10 @@ from pathlib import Path
 # ---------------------------------------------------------------- reglages
 
 PORT = 8770
+# Adresse d ecoute. 127.0.0.1 = accessible seulement depuis ce PC.
+# 0.0.0.0 = visible sur le reseau local, indispensable pour qu un
+# Chromecast puisse afficher la page.
+HOTE = "127.0.0.1"
 _FICHIER_HTML = Path(__file__).parent / "hud.html"
 # Interface alternative MU-TH-UR (Nostromo), servie sur /mother.
 # Elle consomme exactement le meme flux : rien d'autre ne change.
@@ -270,13 +274,13 @@ def demarrer(ouvrir=True):
     if _SERVEUR is not None:
         return _SERVEUR
 
-    _SERVEUR = _Serveur(("127.0.0.1", PORT), _Poignee)
+    _SERVEUR = _Serveur((HOTE, PORT), _Poignee)
     _SERVEUR.daemon_threads = True
 
     thread = threading.Thread(target=_SERVEUR.serve_forever, daemon=True)
     thread.start()
 
-    print(f"HUD sur http://127.0.0.1:{PORT}/")
+    print(f"HUD sur http://127.0.0.1:{PORT}/" + ("  (visible sur le reseau)" if HOTE == "0.0.0.0" else ""))
     print(f"     MU-TH-UR sur http://127.0.0.1:{PORT}/mother")
     if ouvrir:
         try:

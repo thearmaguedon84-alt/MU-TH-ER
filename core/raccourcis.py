@@ -367,6 +367,31 @@ def _spotify(t):
     return S.spotify_jouer(recherche=cible, genre=genre)
 
 
+
+def _cast(t):
+    """« affiche toi sur la tele », « caste sur le videoprojecteur »."""
+    if _contient(t, ("arrete le cast", "stop le cast", "coupe le cast",
+                     "enleve toi de la tele", "arrete de caster",
+                     "arrete l affichage")):
+        from tools.cast import arreter_cast
+        return arreter_cast()
+
+    if _contient(t, ("quels ecrans", "liste les ecrans", "liste les chromecast",
+                     "quels chromecast", "ecrans disponibles")):
+        from tools.cast import lister_ecrans
+        return lister_ecrans()
+
+    m = re.search(r"\b(?:affiche toi|affiche s? ?toi|caste?|diffuse|envoie toi|"
+                  r"mets toi|balance toi)\b.*?\bsur\s+(?:la|le|l|mon|ma)?\s*(.+)", t)
+    if not m:
+        return None
+    cible = _nettoyer_cible(m.group(1))
+    cible = re.sub(r"\b(ecran|television|tele|tv|chromecast)\b", " ", cible).strip()
+    from tools.cast import caster_jarvis
+    # Sans nom exploitable, on laisse l outil choisir le premier ecran
+    return caster_jarvis(ecran=cible if len(cible) >= 3 else "")
+
+
 # --------------------------------------------------------------- ton MU-TH-UR
 
 # Les raccourcis renvoient des phrases toutes faites, ecrites pour Jarvis.
@@ -412,8 +437,8 @@ def _au_ton_mere(reponse):
 # L'ordre compte : une application CONNUE l'emporte (sinon "ouvre Prime Video"
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
-ETAPES = (_mode, _spotify, _media, _courrier, _application, _film, _heure,
-          _meteo, _minuteur, _stats, _capture)
+ETAPES = (_mode, _cast, _spotify, _media, _courrier, _application, _film,
+          _heure, _meteo, _minuteur, _stats, _capture)
 
 
 def essayer(question):

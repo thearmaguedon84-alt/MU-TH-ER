@@ -995,6 +995,10 @@ def main():
             print("ATTENTION : aucune cle Claude dans config.yaml (anthropic.cle). "
                   "L'assistant ne pourra pas repondre.")
 
+    # Ecoute reseau si demandee : necessaire pour caster sur un Chromecast.
+    if hud is not None:
+        hud.HOTE = config.reglage("hud.hote", "127.0.0.1")
+        hud.PORT = int(config.reglage("hud.port", 8770))
     _hud("demarrer")
     _hud("config", _fournisseur.nom, f"whisper {MODELE_WHISPER}")
 
