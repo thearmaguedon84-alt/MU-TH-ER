@@ -260,9 +260,10 @@ def spotify_jouer(recherche: str, genre: str = "", appareil: str = "") -> str:
         vise = _appareil_nomme(appareil)
         if vise is None:
             connus = ", ".join(a.get("name", "?") for a in _lister_appareils())
-            return (f"Spotify ne connait pas d appareil nomme {appareil}. "
-                    + (f"Il voit : {connus}." if connus else
-                       "Il ne voit aucun appareil."))
+            return (f"Je ne peux pas viser {appareil} : Spotify ne le voit pas. "
+                    "Demarre la diffusion depuis ton telephone, je prendrai "
+                    "le relais."
+                    + (f" Disponibles : {connus}." if connus else ""))
         _appel("PUT", "/me/player",
                json={"device_ids": [vise.get("id")], "play": False})
         import time as _t
@@ -439,12 +440,16 @@ def spotify_transferer(appareil: str) -> str:
     vise = _appareil_nomme(appareil)
     if vise is None:
         connus = ", ".join(a.get("name", "?") for a in _lister_appareils())
-        if not connus:
-            return ("Spotify ne voit aucun appareil. Ouvre l application "
-                    "Spotify sur l appareil voulu.")
-        return (f"Spotify ne connait pas {appareil}. Il voit : {connus}. "
-                "Un Chromecast n apparait qu apres avoir ete choisi une fois "
-                "depuis l application Spotify du telephone.")
+        # Un Chromecast n est visible de l API que pendant qu il diffuse
+        # reellement du Spotify. Le recepteur peut etre lance a distance, mais
+        # il ne rejoint pas le compte sans une authentification que Spotify
+        # n expose plus. Il faut donc demarrer la diffusion depuis un
+        # telephone ou le PC ; ensuite tout est pilotable a la voix.
+        base = (f"Je ne peux pas envoyer Spotify sur {appareil} tout seul. "
+                "Lance la lecture sur cet ecran depuis ton telephone, "
+                "ensuite je pourrai la piloter.")
+        return base + (f" Pour l instant Spotify joue sur : {connus}."
+                       if connus else "")
     ok, m = _appel("PUT", "/me/player",
                    json={"device_ids": [vise.get("id")], "play": True})
     if not ok:
