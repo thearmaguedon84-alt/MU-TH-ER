@@ -173,3 +173,5 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-14 14:54:33  INFO  outil lancer_film args={'lecteur': '', 'nom': 'TV Damba'} -> la bamba lance dans VLC.
 2026-08-14 18:16:36  INFO  provider LLM : Ollama (mode local)
 2026-08-14 18:16:36  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-14 18:30:04  INFO  provider LLM : Ollama (mode local)
+2026-08-14 18:30:04  INFO  provider TTS : EdgeTTS (mode local, moteur edge)

@@ -8,8 +8,11 @@ Le jeton d'acces est lu dans la base de registre, la ou Plex l'ecrit sur
 Windows (HKCU\\Software\\Plex, Inc.\\Plex Media Server). Rien a configurer tant
 que le serveur tourne sur cette machine.
 """
+import json
+import time
 import urllib.parse
 import urllib.request
+from pathlib import Path
 import xml.etree.ElementTree as ET
 
 from core.config import reglage
@@ -74,17 +77,169 @@ def _normaliser(s):
     return sans_accents(str(s or "").lower()).strip()
 
 
-def _chercher(titre, limite=12):
-    """Cherche un film ou un episode. Renvoie une liste d'elements Video."""
-    racine = _get("/search", {"query": titre, "limit": limite})
+# Mots vides : ils ne servent a rien pour retrouver un titre
+VIDES = {"le", "la", "les", "un", "une", "des", "du", "de", "et", "a", "au",
+         "aux", "the", "and", "of", "in", "on", "sur", "dans", "film", "video"}
+
+
+def _brut(requete, limite=12):
+    """Un appel de recherche Plex, sans traitement."""
+    racine = _get("/search", {"query": requete, "limit": limite})
     if racine is None:
         return []
-    resultats = []
-    for n in racine:
-        if n.tag in ("Video", "Directory") and n.get("type") in (
-                "movie", "episode", "show"):
-            resultats.append(n)
-    return resultats
+    return [n for n in racine
+            if n.tag in ("Video", "Directory")
+            and n.get("type") in ("movie", "episode", "show")]
+
+
+# ------------------------------------------------------------------- index
+# Plex ne pardonne aucune faute de frappe. On conserve la liste des titres pour
+# pouvoir retrouver « Les Minions » a partir de « mignon ».
+
+_TITRES = None
+_MOTS = None
+_CACHE_TITRES = Path(__file__).resolve().parent.parent / ".cache_plex.json"
+_AGE_MAX = 24 * 3600
+
+
+def _construire_index():
+    """[(ratingKey, titre, annee, type)] pour toute la bibliotheque."""
+    entrees = []
+    sections = _get("/library/sections")
+    if sections is None:
+        return entrees
+    for d in sections:
+        if d.get("type") not in ("movie", "show"):
+            continue
+        contenu = _get(f"/library/sections/{d.get('key')}/all")
+        if contenu is None:
+            continue
+        for n in contenu:
+            rk, t = n.get("ratingKey"), n.get("title")
+            if rk and t:
+                entrees.append([rk, t, n.get("year") or "",
+                                n.get("type") or "movie"])
+    return entrees
+
+
+def index_titres(forcer=False):
+    """Titres de la bibliotheque, construits une fois puis reutilises."""
+    global _TITRES
+    if _TITRES is not None and not forcer:
+        return _TITRES
+
+    if not forcer and _CACHE_TITRES.exists():
+        try:
+            if time.time() - _CACHE_TITRES.stat().st_mtime < _AGE_MAX:
+                _TITRES = json.loads(_CACHE_TITRES.read_text(encoding="utf-8"))
+                return _TITRES
+        except Exception:
+            pass
+
+    _TITRES = _construire_index()
+    try:
+        _CACHE_TITRES.write_text(json.dumps(_TITRES, ensure_ascii=False),
+                                 encoding="utf-8")
+    except Exception:
+        pass
+    return _TITRES
+
+
+def _mots_index():
+    """Dictionnaire mot -> identifiants, construit une fois."""
+    global _MOTS
+    if _MOTS is not None:
+        return _MOTS
+    _MOTS = {}
+    for rk, t, annee, genre in index_titres():
+        for m in _normaliser(t).split():
+            if len(m) >= 4 and m not in VIDES:
+                _MOTS.setdefault(m, []).append(rk)
+    return _MOTS
+
+
+def _proches_dans_index(titre, seuil=0.62, combien=6):
+    """Titres ressemblant a `titre`, du plus proche au moins proche.
+
+    On s appuie sur get_close_matches, qui elimine tres vite les candidats
+    sans rapport : une comparaison exhaustive sur 4600 titres prenait une
+    quinzaine de secondes, ici c est immediat.
+    """
+    from difflib import get_close_matches
+
+    cible = _normaliser(titre)
+    if not cible:
+        return []
+
+    entrees = index_titres()
+    normalises = {}
+    for rk, t, annee, genre in entrees:
+        normalises.setdefault(_normaliser(t), rk)
+
+    trouves = []
+
+    # 1. Ressemblance sur le titre entier
+    for t in get_close_matches(cible, list(normalises), n=combien, cutoff=seuil):
+        trouves.append(normalises[t])
+
+    # 2. Ressemblance mot a mot : « mignon » rattrape « minions » la ou la
+    #    comparaison globale echoue sur un titre long.
+    mots_cible = [m for m in cible.split() if len(m) >= 4 and m not in VIDES]
+    if len(trouves) < combien and mots_cible:
+        table = _mots_index()
+        vocabulaire = list(table)
+        for mc in mots_cible[:3]:
+            for mot in get_close_matches(mc, vocabulaire, n=3, cutoff=0.7):
+                for rk in table[mot][:4]:
+                    if rk not in trouves:
+                        trouves.append(rk)
+            if len(trouves) >= combien:
+                break
+
+    return trouves[:combien]
+
+
+def _fiches(cles):
+    """Recupere les elements complets a partir de leurs identifiants."""
+    out = []
+    for rk in cles:
+        fiche = _get(f"/library/metadata/{rk}")
+        if fiche is None:
+            continue
+        for n in fiche:
+            if n.tag in ("Video", "Directory"):
+                out.append(n)
+                break
+    return out
+
+
+def _chercher(titre, limite=12):
+    """Cherche un film ou un episode.
+
+    La recherche de Plex est litterale : « mignon » ne trouve pas
+    « Les Minions ». Comme la reconnaissance vocale deforme reguliement les
+    titres, on retente mot par mot quand la requete complete ne donne rien,
+    puis on laisse le classement par ressemblance faire le tri.
+    """
+    resultats = _brut(titre, limite)
+    if resultats:
+        return resultats
+
+    mots = [m for m in _normaliser(titre).split()
+            if len(m) >= 4 and m not in VIDES]
+    vus, groupes = set(), []
+    for mot in mots[:4]:
+        for n in _brut(mot, limite):
+            cle = n.get("ratingKey")
+            if cle and cle not in vus:
+                vus.add(cle)
+                groupes.append(n)
+
+    # Toujours rien : l index local, seul capable de rattraper une faute
+    # (« mignon » -> « Les Minions »), ce que la recherche Plex ne fait pas.
+    if not groupes:
+        groupes = _fiches(_proches_dans_index(titre))
+    return groupes
 
 
 def _meilleur(titre, candidats):
