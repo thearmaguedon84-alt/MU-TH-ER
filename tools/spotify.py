@@ -19,6 +19,7 @@ import requests
 
 from core.config import reglage
 from core.registre import outil
+from core.util import sans_accents
 
 API = "https://api.spotify.com/v1"
 JETON_URL = "https://accounts.spotify.com/api/token"
@@ -119,6 +120,26 @@ def _appareil():
     return appareils[0].get("id") if appareils else None
 
 
+def _appareil_nomme(nom):
+    """Appareil Spotify dont le nom ressemble a `nom`, ou None."""
+    from difflib import SequenceMatcher
+
+    cible = sans_accents(str(nom or "").lower()).strip()
+    if not cible:
+        return None
+    meilleur, note_max = None, 0.0
+    for a in _lister_appareils():
+        n = sans_accents(str(a.get("name") or "").lower())
+        if not n:
+            continue
+        if cible in n or n in cible:
+            return a
+        note = SequenceMatcher(None, cible, n).ratio()
+        if note > note_max:
+            meilleur, note_max = a, note
+    return meilleur if note_max >= 0.55 else None
+
+
 def _preparer_appareil(patienter=True):
     """Garantit qu'un appareil est pret a recevoir la lecture.
 
@@ -189,13 +210,16 @@ def _preparer_appareil(patienter=True):
                           "description": "Ce qu il faut chercher : titre, album, artiste, playlist."},
             "genre": {"type": "string",
                       "description": "titre, album, artiste ou playlist. Vide = au mieux."},
+            "appareil": {"type": "string",
+                         "description": ("Nom de l enceinte ou de l ecran Spotify vise. "
+                                         "Vide = l appareil courant.")},
         },
         "required": ["recherche"],
     },
     lent=True,
     phrase_attente="Je cherche sur Spotify.",
 )
-def spotify_jouer(recherche: str, genre: str = "") -> str:
+def spotify_jouer(recherche: str, genre: str = "", appareil: str = "") -> str:
     if not configure():
         return "Spotify n est pas configure."
     recherche = (recherche or "").strip()
@@ -232,9 +256,22 @@ def spotify_jouer(recherche: str, genre: str = "") -> str:
     corps = ({"uris": [item["uri"]]} if cle == "track"
              else {"context_uri": item["uri"]})
 
-    app, souci = _preparer_appareil()
-    if not app:
-        return souci
+    if appareil:
+        vise = _appareil_nomme(appareil)
+        if vise is None:
+            connus = ", ".join(a.get("name", "?") for a in _lister_appareils())
+            return (f"Spotify ne connait pas d appareil nomme {appareil}. "
+                    + (f"Il voit : {connus}." if connus else
+                       "Il ne voit aucun appareil."))
+        _appel("PUT", "/me/player",
+               json={"device_ids": [vise.get("id")], "play": False})
+        import time as _t
+        _t.sleep(1.2)
+        app = vise.get("id")
+    else:
+        app, souci = _preparer_appareil()
+        if not app:
+            return souci
 
     ok, msg = _appel("PUT", "/me/player/play",
                      params={"device_id": app}, json=corps)
@@ -360,3 +397,56 @@ def spotify_volume(pourcentage: int = 50) -> str:
         return "Il me faut un nombre entre 0 et 100."
     ok, m = _appel("PUT", "/me/player/volume", params={"volume_percent": v})
     return f"Volume Spotify a {v} pour cent." if ok else m
+
+
+@outil(
+    nom="spotify_appareils",
+    description="Enumere les appareils sur lesquels Spotify peut diffuser "
+                "(ordinateur, telephone, enceintes, Chromecast reveilles). "
+                "Pour 'ou peut jouer Spotify', 'quels appareils Spotify'.",
+    parametres={"type": "object", "properties": {}, "required": []},
+)
+def spotify_appareils() -> str:
+    if not configure():
+        return "Spotify n est pas configure."
+    apps = _lister_appareils()
+    if not apps:
+        return "Spotify ne voit aucun appareil."
+    parts = []
+    for a in apps:
+        marque = " (en cours)" if a.get("is_active") else ""
+        parts.append(f"{a.get('name')}{marque}")
+    return "Spotify peut jouer sur : " + ", ".join(parts) + "."
+
+
+@outil(
+    nom="spotify_transferer",
+    description=("Envoie la musique Spotify en cours vers un autre appareil. "
+                 "Pour 'envoie la musique sur la tele', 'mets Spotify dans la "
+                 "chambre', 'bascule le son sur l enceinte'."),
+    parametres={
+        "type": "object",
+        "properties": {
+            "appareil": {"type": "string",
+                         "description": "Nom de l appareil de destination."},
+        },
+        "required": ["appareil"],
+    },
+)
+def spotify_transferer(appareil: str) -> str:
+    if not configure():
+        return "Spotify n est pas configure."
+    vise = _appareil_nomme(appareil)
+    if vise is None:
+        connus = ", ".join(a.get("name", "?") for a in _lister_appareils())
+        if not connus:
+            return ("Spotify ne voit aucun appareil. Ouvre l application "
+                    "Spotify sur l appareil voulu.")
+        return (f"Spotify ne connait pas {appareil}. Il voit : {connus}. "
+                "Un Chromecast n apparait qu apres avoir ete choisi une fois "
+                "depuis l application Spotify du telephone.")
+    ok, m = _appel("PUT", "/me/player",
+                   json={"device_ids": [vise.get("id")], "play": True})
+    if not ok:
+        return f"Spotify n a pas pu basculer vers {vise.get('name')}."
+    return f"Musique envoyee sur {vise.get('name')}."

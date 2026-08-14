@@ -403,6 +403,7 @@ def _courrier(t):
 
 
 def _spotify(t):
+    """Voir aussi _spotify_appareil, appele en premier pour les transferts."""
     """« mets Nirvana sur Spotify », « c est quoi cette chanson ».
 
     Les touches media couvrent deja pause et volume ; ici on gere ce qu elles
@@ -546,6 +547,32 @@ def _memoire(t):
     return None
 
 
+
+def _spotify_appareil(t):
+    """Deplacer la musique d un appareil a l autre, ou lister les destinations."""
+    from tools import spotify as S
+
+    if _contient(t, ("quels appareils spotify", "ou peut jouer spotify",
+                     "appareils spotify", "ou joue spotify")):
+        return S.spotify_appareils()
+
+    if not S.configure():
+        return None
+
+    m = re.search(r"\b(?:envoie|bascule|balance|passe|mets|met|deplace)\b\s+"
+                  r"(?:la|le|l)?\s*(?:musique|zik|son|audio|spotify)\s+"
+                  r"(?:sur|dans|vers)\s+(?:la|le|l|mon|ma)?\s*(.+)", t)
+    if not m:
+        m = re.search(r"\bspotify\s+(?:sur|dans|vers)\s+(?:la|le|l)?\s*(.+)", t)
+    if not m:
+        return None
+
+    cible = _nettoyer_cible(m.group(1))
+    if len(cible) < 3:
+        return None
+    return S.spotify_transferer(appareil=cible)
+
+
 # --------------------------------------------------------------- ton MU-TH-UR
 
 # Les raccourcis renvoient des phrases toutes faites, ecrites pour Jarvis.
@@ -591,9 +618,9 @@ def _au_ton_mere(reponse):
 # L'ordre compte : une application CONNUE l'emporte (sinon "ouvre Prime Video"
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
-ETAPES = (_mode, _memoire, _cast, _spotify, _plex, _media, _courrier,
-          _application, _film, _heure, _meteo, _minuteur, _stats,
-          _capture)
+ETAPES = (_mode, _memoire, _cast, _spotify_appareil, _spotify, _plex,
+          _media, _courrier, _application, _film, _heure, _meteo,
+          _minuteur, _stats, _capture)
 
 
 def essayer(question):
