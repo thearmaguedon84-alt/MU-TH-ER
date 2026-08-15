@@ -30,6 +30,10 @@
   #pastille { width: 8px; height: 8px; border-radius: 50%; background: var(--faible); }
   #pastille.on { background: var(--ok); }
 
+  #voix { background: none; border: 1px solid var(--bord); color: var(--faible);
+    font-size: 15px; padding: 5px 10px; border-radius: 9px; }
+  #voix.on { color: var(--accent); border-color: var(--accent); }
+
   #journal { flex: 1; overflow-y: auto; padding: 14px 16px; font-size: 15px;
     line-height: 1.55; }
   .ligne { margin-bottom: 11px; word-break: break-word; }
@@ -62,6 +66,7 @@
 
 <header>
   <h1>JARVIS</h1>
+  <button type="button" id="voix" title="Lire les reponses ici">&#128264;</button>
   <span id="etat"><span id="pastille"></span><span id="mot">liaison…</span></span>
 </header>
 
@@ -169,6 +174,41 @@ SUGGESTIONS.forEach((s) => {
   zone.appendChild(b);
 });
 
+/* ---------------------------------------------------- lecture locale
+
+   Plutot que de transporter l audio depuis le PC, on laisse le telephone
+   prononcer la reponse avec sa propre voix : c est immediat et ca n occupe
+   pas le reseau. Le choix est memorise d une visite a l autre. */
+
+let lectureActive = localStorage.getItem("jarvis_voix") === "1";
+const boutonVoix = $("#voix");
+
+function majBoutonVoix() {
+  boutonVoix.classList.toggle("on", lectureActive);
+  boutonVoix.textContent = lectureActive ? "\uD83D\uDD0A" : "\uD83D\uDD07";
+  boutonVoix.title = lectureActive ? "Reponses lues ici" : "Reponses muettes ici";
+}
+
+boutonVoix.addEventListener("click", () => {
+  lectureActive = !lectureActive;
+  localStorage.setItem("jarvis_voix", lectureActive ? "1" : "0");
+  majBoutonVoix();
+  // Premiere activation : les navigateurs exigent un geste de l utilisateur
+  if (lectureActive) lire("Lecture activee.");
+});
+majBoutonVoix();
+
+function lire(texte) {
+  if (!lectureActive || !window.speechSynthesis || !texte) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(String(texte));
+    u.lang = "fr-FR";
+    u.rate = 1.02;
+    speechSynthesis.speak(u);
+  } catch (e) { /* voix indisponible */ }
+}
+
 /* ---------------------------------------------------- flux */
 
 function connecter() {
@@ -187,7 +227,7 @@ function connecter() {
     let ev;
     try { ev = JSON.parse(e.data); } catch (err) { return; }
     if (ev.t === "vous") ajouter("VOUS", ev.texte, "vous");
-    else if (ev.t === "jarvis") ajouter("JARVIS", ev.texte, "jarvis");
+    else if (ev.t === "jarvis") { ajouter("JARVIS", ev.texte, "jarvis"); lire(ev.texte); }
     else if (ev.t === "outil") ajouter("OUTIL", ev.nom + (ev.detail ? " · " + ev.detail : ""), "outil");
     else if (ev.t === "etat") {
       const libelles = { veille: "en veille", ecoute: "écoute",

@@ -37,6 +37,9 @@ PORT = 8770
 # 0.0.0.0 = visible sur le reseau local, indispensable pour qu un
 # Chromecast puisse afficher la page.
 HOTE = "127.0.0.1"
+# HTTPS : necessaire pour que le micro fonctionne sur un telephone.
+HTTPS = False
+PROTOCOLE = "http"
 _FICHIER_HTML = Path(__file__).parent / "hud.html"
 # Interface alternative MU-TH-UR (Nostromo), servie sur /mother.
 # Elle consomme exactement le meme flux : rien d'autre ne change.
@@ -313,6 +316,69 @@ class _Serveur(ThreadingHTTPServer):
         super().handle_error(request, client_address)
 
 
+def _certificat():
+    """Chemin d'un certificat auto-signe, cree au besoin.
+
+    Les navigateurs exigent une page securisee pour donner acces au micro.
+    Un certificat auto-signe suffit : il faudra accepter l'avertissement une
+    fois sur le telephone, puis la reconnaissance vocale fonctionnera.
+    """
+    dossier = Path(__file__).parent
+    cert = dossier / "hud_cert.pem"
+    if cert.exists():
+        return cert
+
+    try:
+        import datetime
+        import ipaddress
+        import socket as _s
+
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.x509.oid import NameOID
+    except Exception:
+        return None
+
+    # Toutes les adresses de la machine, pour que le certificat soit valable
+    # quelle que soit celle utilisee par le telephone.
+    adresses = {"127.0.0.1"}
+    try:
+        for info in _s.getaddrinfo(_s.gethostname(), None, _s.AF_INET):
+            adresses.add(info[4][0])
+    except Exception:
+        pass
+
+    cle = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    nom = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Jarvis HUD")])
+    autres = [x509.DNSName("localhost")]
+    for a in adresses:
+        try:
+            autres.append(x509.IPAddress(ipaddress.ip_address(a)))
+        except Exception:
+            continue
+
+    maintenant = datetime.datetime.now(datetime.timezone.utc)
+    certificat = (
+        x509.CertificateBuilder()
+        .subject_name(nom).issuer_name(nom)
+        .public_key(cle.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(maintenant - datetime.timedelta(days=1))
+        .not_valid_after(maintenant + datetime.timedelta(days=3650))
+        .add_extension(x509.SubjectAlternativeName(autres), critical=False)
+        .sign(cle, hashes.SHA256())
+    )
+
+    with open(cert, "wb") as f:
+        f.write(cle.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption()))
+        f.write(certificat.public_bytes(serialization.Encoding.PEM))
+    return cert
+
+
 def demarrer(ouvrir=True):
     """Lance le serveur dans un thread daemon et ouvre le navigateur.
 
@@ -325,11 +391,26 @@ def demarrer(ouvrir=True):
     _SERVEUR = _Serveur((HOTE, PORT), _Poignee)
     _SERVEUR.daemon_threads = True
 
+    # HTTPS si demande : sans page securisee, le micro du telephone reste muet.
+    global PROTOCOLE
+    if HTTPS:
+        cert = _certificat()
+        if cert is not None:
+            try:
+                import ssl
+                contexte = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                contexte.load_cert_chain(certfile=str(cert))
+                _SERVEUR.socket = contexte.wrap_socket(_SERVEUR.socket,
+                                                       server_side=True)
+                PROTOCOLE = "https"
+            except Exception as e:
+                print(f"  [HUD] HTTPS indisponible ({e}), on reste en clair.")
+
     thread = threading.Thread(target=_SERVEUR.serve_forever, daemon=True)
     thread.start()
 
-    print(f"HUD sur http://127.0.0.1:{PORT}/" + ("  (visible sur le reseau)" if HOTE == "0.0.0.0" else ""))
-    print(f"     MU-TH-UR sur http://127.0.0.1:{PORT}/mother")
+    print(f"HUD sur {PROTOCOLE}://127.0.0.1:{PORT}/" + ("  (visible sur le reseau)" if HOTE == "0.0.0.0" else ""))
+    print(f"     MU-TH-UR sur {PROTOCOLE}://127.0.0.1:{PORT}/mother")
     if HOTE == "0.0.0.0":
         import socket as _s
         try:
@@ -337,12 +418,12 @@ def demarrer(ouvrir=True):
             _c.connect(("192.168.1.1", 80))
             _ip = _c.getsockname()[0]
             _c.close()
-            print(f"     Telephone sur http://{_ip}:{PORT}/tel")
+            print(f"     Telephone sur {PROTOCOLE}://{_ip}:{PORT}/tel")
         except Exception:
             pass
     if ouvrir:
         try:
-            webbrowser.open(f"http://127.0.0.1:{PORT}/")
+            webbrowser.open(f"{PROTOCOLE}://127.0.0.1:{PORT}/")
         except Exception:
             pass
     return _SERVEUR

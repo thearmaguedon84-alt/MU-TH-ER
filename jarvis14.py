@@ -1010,6 +1010,7 @@ def main():
     if hud is not None:
         hud.HOTE = config.reglage("hud.hote", "127.0.0.1")
         hud.PORT = int(config.reglage("hud.port", 8770))
+        hud.HTTPS = bool(config.reglage("hud.https", False))
     _hud("demarrer")
     _hud("config", _fournisseur.nom, f"whisper {MODELE_WHISPER}")
 

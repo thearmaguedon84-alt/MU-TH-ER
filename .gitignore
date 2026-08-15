@@ -5,3 +5,4 @@ __pycache__/
 *.bak
 *.zip
 config.yaml
+hud_cert.pem
