@@ -23,7 +23,7 @@ PLATEFORMES = {
     },
     "primevideo": {
         "nom": "Prime Video",
-        "url": "https://www.primevideo.com/search/?phrase={q}",
+        "url": "https://www.primevideo.com/search?phrase={q}",
         "alias": ("prime video", "prime", "amazon prime", "amazon video"),
     },
     "disney": {
