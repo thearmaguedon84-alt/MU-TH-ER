@@ -515,8 +515,11 @@ def _cast(t):
         from tools.cast import lister_ecrans
         return lister_ecrans()
 
-    m = re.search(r"\b(?:affiche toi|affiche s? ?toi|caste?|diffuse|envoie toi|"
-                  r"mets toi|balance toi)\b.*?\bsur\s+(?:la|le|l|mon|ma)?\s*(.+)", t)
+    m = re.search(r"\b(?:affiche|affiches|affichez|cast|caste|castes|caster|"
+                  r"diffuse|diffuses|diffusez|envoie|envoies|projette|projettes|"
+                  r"balance|balances)\b"
+                  r"(?:\s+(?:toi|s? ?toi|moi|le|la|ca))?"
+                  r".{0,12}?\bsur\s+(?:la|le|l|mon|ma)?\s*(.+)", t)
     if not m:
         return None
     cible = _nettoyer_cible(m.group(1))

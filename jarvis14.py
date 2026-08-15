@@ -634,8 +634,7 @@ def capturer(flux, tampon, attente_debut=0.0):
     parole_vue = False
 
     while True:
-        bloc, _ = flux.read(BLOC)
-        bloc = bloc.flatten()
+        bloc, flux = lire_bloc(flux)
         morceaux.append(bloc)
         _hud("niveau", _niv_hud(bloc))
 
@@ -670,11 +669,7 @@ def attendre_suite(flux, tampon, duree=DUREE_SUITE):
     debut = time.time()
     blocs_voix = 0
     while time.time() - debut < duree:
-        try:
-            bloc, _ = flux.read(BLOC)
-        except Exception:
-            return False
-        bloc = bloc.flatten()
+        bloc, flux = lire_bloc(flux)
         tampon.append(bloc)
         _hud("niveau", _niv_hud(bloc))
         if niveau(bloc) > SEUIL_PAROLE_SUR:
@@ -721,11 +716,7 @@ def repondre_en_ecoutant(historique, flux, reveil, whisper):
     derniere_verif = 0.0
 
     while thread.is_alive():
-        try:
-            bloc, _ = flux.read(BLOC)
-        except Exception:
-            break
-        bloc = bloc.flatten()
+        bloc, flux = lire_bloc(flux)
         _hud("niveau", _niv_hud(bloc))
 
         # On ne surveille l'interruption QUE pendant que Jarvis parle vraiment.
@@ -948,6 +939,50 @@ def repondre_a(question, historique, flux, reveil, whisper):
     return relancer
 
 
+def _ouvrir_micro():
+    """Ouvre le flux d'entree du micro et le demarre."""
+    flux = sd.InputStream(
+        samplerate=TAUX, channels=1, dtype="float32",
+        device=MICRO, blocksize=BLOC,
+    )
+    flux.start()
+    return flux
+
+
+def lire_bloc(flux):
+    """Lit un bloc audio. Renvoie (bloc, flux) ; le flux peut avoir change.
+
+    Un peripherique qui disparait fait lever PortAudio ; sans ce filet, tout
+    l'assistant s'arretait. On tente de rouvrir, en espacant les essais pour
+    ne pas saturer la console si le micro reste absent.
+    """
+    global _DERNIER_ECHEC_MICRO
+    try:
+        bloc, _ = flux.read(BLOC)
+        _DERNIER_ECHEC_MICRO = 0.0
+        return bloc.flatten(), flux
+    except Exception as e:
+        maintenant = time.time()
+        if maintenant - _DERNIER_ECHEC_MICRO > 5:
+            print(f"  [micro] perdu ({str(e)[:70]}), tentative de reprise...")
+            _DERNIER_ECHEC_MICRO = maintenant
+        try:
+            flux.stop()
+            flux.close()
+        except Exception:
+            pass
+        time.sleep(1.0)
+        try:
+            flux = _ouvrir_micro()
+            print("  [micro] retrouve.")
+        except Exception:
+            time.sleep(2.0)
+        return np.zeros(BLOC, dtype=np.float32), flux
+
+
+_DERNIER_ECHEC_MICRO = 0.0
+
+
 def main():
     print("Chargement des modeles...")
 
@@ -1020,10 +1055,7 @@ def main():
     _refaire_systeme(faits)
     historique = []
 
-    flux = sd.InputStream(
-        samplerate=TAUX, channels=1, dtype="float32",
-        device=MICRO, blocksize=BLOC,
-    )
+    flux = _ouvrir_micro()
     flux.start()
 
     def _bascule_depuis_page(voulu):
@@ -1054,8 +1086,7 @@ def main():
         while True:
             suite = enchainer
             if not enchainer:
-                bloc, _ = flux.read(BLOC)
-                bloc = bloc.flatten()
+                bloc, flux = lire_bloc(flux)
                 tampon.append(bloc)
 
                 _hud("etat", "veille")
