@@ -37,9 +37,12 @@ PORT = 8770
 # 0.0.0.0 = visible sur le reseau local, indispensable pour qu un
 # Chromecast puisse afficher la page.
 HOTE = "127.0.0.1"
-# HTTPS : necessaire pour que le micro fonctionne sur un telephone.
+# Serveur HTTPS supplementaire, sur PORT + 1. Les navigateurs n'autorisent le
+# micro que sur une page securisee : sans lui, la dictee est impossible depuis
+# un telephone. Le serveur HTTP reste en place pour l'acces depuis le PC.
 HTTPS = False
-PROTOCOLE = "http"
+PORT_HTTPS = None          # calcule au demarrage : PORT + 1
+_SERVEUR_HTTPS = None
 _FICHIER_HTML = Path(__file__).parent / "hud.html"
 # Interface alternative MU-TH-UR (Nostromo), servie sur /mother.
 # Elle consomme exactement le meme flux : rien d'autre ne change.
@@ -391,26 +394,31 @@ def demarrer(ouvrir=True):
     _SERVEUR = _Serveur((HOTE, PORT), _Poignee)
     _SERVEUR.daemon_threads = True
 
-    # HTTPS si demande : sans page securisee, le micro du telephone reste muet.
-    global PROTOCOLE
+    # Second serveur, chiffre, pour que le micro du telephone soit autorise.
+    global _SERVEUR_HTTPS, PORT_HTTPS
     if HTTPS:
         cert = _certificat()
         if cert is not None:
             try:
                 import ssl
+                PORT_HTTPS = PORT + 1
+                _SERVEUR_HTTPS = _Serveur((HOTE, PORT_HTTPS), _Poignee)
+                _SERVEUR_HTTPS.daemon_threads = True
                 contexte = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
                 contexte.load_cert_chain(certfile=str(cert))
-                _SERVEUR.socket = contexte.wrap_socket(_SERVEUR.socket,
-                                                       server_side=True)
-                PROTOCOLE = "https"
+                _SERVEUR_HTTPS.socket = contexte.wrap_socket(
+                    _SERVEUR_HTTPS.socket, server_side=True)
+                threading.Thread(target=_SERVEUR_HTTPS.serve_forever,
+                                 daemon=True).start()
             except Exception as e:
-                print(f"  [HUD] HTTPS indisponible ({e}), on reste en clair.")
+                print(f"  [HUD] HTTPS indisponible ({e}).")
+                _SERVEUR_HTTPS, PORT_HTTPS = None, None
 
     thread = threading.Thread(target=_SERVEUR.serve_forever, daemon=True)
     thread.start()
 
-    print(f"HUD sur {PROTOCOLE}://127.0.0.1:{PORT}/" + ("  (visible sur le reseau)" if HOTE == "0.0.0.0" else ""))
-    print(f"     MU-TH-UR sur {PROTOCOLE}://127.0.0.1:{PORT}/mother")
+    print(f"HUD sur http://127.0.0.1:{PORT}/" + ("  (visible sur le reseau)" if HOTE == "0.0.0.0" else ""))
+    print(f"     MU-TH-UR sur http://127.0.0.1:{PORT}/mother")
     if HOTE == "0.0.0.0":
         import socket as _s
         try:
@@ -418,12 +426,16 @@ def demarrer(ouvrir=True):
             _c.connect(("192.168.1.1", 80))
             _ip = _c.getsockname()[0]
             _c.close()
-            print(f"     Telephone sur {PROTOCOLE}://{_ip}:{PORT}/tel")
+            if PORT_HTTPS:
+                print(f"     Telephone sur https://{_ip}:{PORT_HTTPS}/tel")
+            else:
+                print(f"     Telephone sur http://{_ip}:{PORT}/tel"
+                      "   (micro indisponible sans HTTPS)")
         except Exception:
             pass
     if ouvrir:
         try:
-            webbrowser.open(f"{PROTOCOLE}://127.0.0.1:{PORT}/")
+            webbrowser.open(f"http://127.0.0.1:{PORT}/")
         except Exception:
             pass
     return _SERVEUR
