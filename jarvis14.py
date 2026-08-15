@@ -53,6 +53,10 @@ TAUX = 16000
 BLOC = 1280
 
 SEUIL_REVEIL = 0.5
+# Allers-retours maximum entre le modele et ses outils pour une seule demande.
+# Au-dela, on considere qu'il tourne en rond.
+TOURS_OUTILS_MAX = 6
+_DERNIER_RESULTAT = {}
 # Avance de l'ecriture sur la parole, en secondes. Assez pour voir le texte
 # demarrer, assez peu pour que les deux restent lies.
 DECALAGE_FRAPPE = 0.22
@@ -282,6 +286,12 @@ RESIDUS = (
     # Second mot de reveil : sans ca, dire "Maman" pendant la fenetre
     # d ecoute est pris pour une commande (et finit en remember()).
     "maman", "mamans", "mamant", "manman", "mamane", "hey maman",
+    # Variantes entendues a l'usage, qui arrivaient jusqu au modele et le
+    # laissaient inventer une intention.
+    "jervis", "gervis", "jarvice", "jarviss",
+    # Whisper rend regulierement "Hey" par "Et" ou "Eh" :
+    "et jarvis", "eh jarvis", "hey jervis", "et jervis", "eh jervis",
+    "et service", "et avis", "hey maman", "et maman", "eh maman",
 )
 
 # Ce que Whisper invente quand il n'entend que du silence.
@@ -369,8 +379,16 @@ def nettoyer(texte):
         if tete.strip().lower().strip("'’") in RESIDUS:
             t = reste.strip()
 
-    # Cas sans ponctuation : "Jarvis ouvre YouTube"
+    # Cas sans ponctuation : "Jarvis ouvre YouTube", "Et Jarvis lance X".
+    # On teste d abord les deux premiers mots : Whisper rend souvent le mot de
+    # reveil en deux morceaux ("Et Jarvis", "Hey Jervis"), et n examiner que le
+    # premier laissait passer l appel jusqu au modele.
     mots = t.split()
+    if len(mots) >= 2:
+        duo = (mots[0] + " " + mots[1]).lower().strip(",.:;!?")
+        if duo in RESIDUS:
+            mots = mots[2:]
+            t = " ".join(mots)
     if mots and mots[0].lower().strip(",.:;!?") in RESIDUS:
         t = " ".join(mots[1:])
 
@@ -461,6 +479,9 @@ def _executer_outils(blocs):
                 resultat = "Desole, je n'ai pas reussi a faire ca."
 
         LOG.info("outil %s args=%s -> %s", nom, arguments, str(resultat)[:200])
+        # Sert de reponse de repli si le modele se met a boucler.
+        if isinstance(resultat, str) and resultat.strip():
+            _DERNIER_RESULTAT["texte"] = resultat.strip()
 
         # Cas image (capture d'ecran) : bloc image dans le tool_result.
         if isinstance(resultat, dict) and resultat.get("image"):
@@ -509,7 +530,19 @@ def repondre(historique):
     fil_accuse = None
     accuse_donne = False
 
+    # Garde-fous contre l'emballement : un modele local peut rappeler sans fin
+    # le meme outil s'il juge le resultat insuffisant.
+    tours = 0
+    signatures = []
+
     while True:
+        tours += 1
+        if tours > TOURS_OUTILS_MAX:
+            LOG.warning("boucle d'outils interrompue apres %d tours", tours - 1)
+            if fil_accuse:
+                fil_accuse.join(timeout=2)
+            return "C'est fait."
+
         if _INTERRUPTION.is_set():
             if fil_accuse:
                 fil_accuse.join(timeout=2)
@@ -527,6 +560,18 @@ def repondre(historique):
             _hud("etat", "reflexion")
             noms = [b.name for b in reponse.content
                     if getattr(b, "type", None) == "tool_use"]
+
+            # Le meme appel, a l'identique, deux fois de suite : le modele
+            # tourne en rond. On arrete et on garde le dernier resultat.
+            signature = tuple(
+                (b.name, repr(sorted((b.input or {}).items())))
+                for b in reponse.content if getattr(b, "type", None) == "tool_use")
+            if signature and signatures[-1:] == [signature]:
+                LOG.warning("appel d'outil repete a l'identique : %s", noms)
+                if fil_accuse:
+                    fil_accuse.join(timeout=2)
+                return _DERNIER_RESULTAT.get("texte") or "C'est fait."
+            signatures.append(signature)
             if (not accuse_donne and not _INTERRUPTION.is_set()
                     and any(n in registre.noms_lents() for n in noms)):
                 accuse_donne = True

@@ -220,3 +220,15 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-15 12:23:16  INFO  provider LLM : Ollama (mode local)
 2026-08-15 12:23:16  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
 2026-08-15 12:23:50  INFO  outil plex_jouer args={'titre': 'TV en bas', 'ecran': ''} -> Le serveur Plex ne repond pas.
+2026-08-15 12:27:23  INFO  provider LLM : Ollama (mode local)
+2026-08-15 12:27:23  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-15 12:28:14  INFO  outil changer_personnalite args={'mode': 'jarvis_sarcastique'} -> Mode Jarvis active.
+2026-08-15 12:28:19  INFO  outil changer_personnalite args={'mode': 'jarvis_sarcastique'} -> Mode Jarvis active.
+2026-08-15 12:28:22  INFO  outil changer_personnalite args={'mode': 'jarvis_sarcastique'} -> Mode Jarvis active.
+2026-08-15 12:28:26  INFO  outil changer_personnalite args={'mode': 'jarvis_sarcastique'} -> Mode Jarvis active.
+2026-08-15 12:28:30  INFO  outil changer_personnalite args={'mode': 'jarvis_sarcastique'} -> Mode Jarvis active.
+2026-08-15 12:28:34  INFO  outil changer_personnalite args={'mode': 'jarvis_sarcastique'} -> Mode Jarvis active.
+2026-08-15 12:28:38  INFO  outil changer_personnalite args={'mode': 'jarvis'} -> Mode Jarvis active.
+2026-08-15 12:28:43  INFO  outil changer_personnalite args={'mode': 'jarvis_sarcastique'} -> Mode Jarvis active.
+2026-08-15 12:28:46  INFO  outil changer_personnalite args={'mode': 'jarvis'} -> Mode Jarvis active.
+2026-08-15 12:28:50  INFO  outil changer_personnalite args={'mode': 'jarvis'} -> Mode Jarvis active.
