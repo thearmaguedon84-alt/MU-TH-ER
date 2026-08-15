@@ -903,10 +903,10 @@ def traiter(audio, whisper, historique, flux, reveil):
         print("  (rien compris)\n")
         return False
 
-    return repondre_a(question, historique, flux, reveil)
+    return repondre_a(question, historique, flux, reveil, whisper)
 
 
-def repondre_a(question, historique, flux, reveil):
+def repondre_a(question, historique, flux, reveil, whisper):
     """Traite une question deja transcrite : raccourcis, puis modele.
 
     Sert aussi bien a la voix qu'aux commandes envoyees depuis un telephone.
@@ -1072,7 +1072,8 @@ def main():
                 if _texte_tel:
                     print(f"  [telephone] {_texte_tel}")
                     _hud("etat", "reflexion")
-                    repondre_a(_texte_tel, historique, flux, reveil)
+                    repondre_a(_texte_tel, historique, flux, reveil,
+                               whisper)
                     _hud("etat", "veille")
                     continue
 

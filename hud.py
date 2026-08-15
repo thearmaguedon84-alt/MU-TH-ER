@@ -404,8 +404,25 @@ def demarrer(ouvrir=True):
                 PORT_HTTPS = PORT + 1
                 _SERVEUR_HTTPS = _Serveur((HOTE, PORT_HTTPS), _Poignee)
                 _SERVEUR_HTTPS.daemon_threads = True
-                contexte = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-                contexte.load_cert_chain(certfile=str(cert))
+
+                # core/llm.py injecte truststore, qui remplace ssl.SSLContext
+                # par une version pensee pour le client : elle echoue cote
+                # serveur. On la met de cote pendant la creation du contexte,
+                # puis on la remet en place pour ne rien casser ailleurs.
+                try:
+                    import truststore
+                    truststore.extract_from_ssl()
+                except Exception:
+                    truststore = None
+                try:
+                    contexte = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                    contexte.load_cert_chain(certfile=str(cert))
+                finally:
+                    if truststore is not None:
+                        try:
+                            truststore.inject_into_ssl()
+                        except Exception:
+                            pass
                 _SERVEUR_HTTPS.socket = contexte.wrap_socket(
                     _SERVEUR_HTTPS.socket, server_side=True)
                 threading.Thread(target=_SERVEUR_HTTPS.serve_forever,
