@@ -41,6 +41,8 @@ _FICHIER_HTML = Path(__file__).parent / "hud.html"
 # Interface alternative MU-TH-UR (Nostromo), servie sur /mother.
 # Elle consomme exactement le meme flux : rien d'autre ne change.
 _FICHIER_MOTHER = Path(__file__).parent / "hud_mother.html"
+# Page allegee pour telephone, servie sur /tel.
+_FICHIER_TEL = Path(__file__).parent / "hud_tel.html"
 
 # Etats possibles, envoyes tels quels a la page.
 VEILLE = "veille"
@@ -70,6 +72,19 @@ _VERROU = threading.Lock()
 _HISTORIQUE = deque(maxlen=40)
 
 _SERVEUR = None
+
+# Commandes envoyees depuis un telephone, en attente de traitement.
+# La boucle principale les consomme via commande_en_attente().
+_COMMANDES = queue.Queue(maxsize=20)
+
+
+def commande_en_attente():
+    """Prochaine commande envoyee depuis une page, ou None."""
+    try:
+        return _COMMANDES.get_nowait()
+    except queue.Empty:
+        return None
+
 
 # Fonction appelee quand une page demande un changement de mode (bouton).
 # Renseignee par l'assistant via sur_changement_mode().
@@ -169,6 +184,8 @@ class _Poignee(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/flux":
             self._flux()
+        elif self.path in ("/tel", "/telephone", "/mobile", "/phone"):
+            self._page(_FICHIER_TEL)
         elif self.path.startswith("/mode/"):
             self._mode(self.path.rsplit("/", 1)[-1])
         elif self.path in ("/mother", "/mother.html", "/muthur", "/maman"):
@@ -177,6 +194,37 @@ class _Poignee(BaseHTTPRequestHandler):
             self._page()
         else:
             self.send_error(404)
+
+    def do_POST(self):
+        """Reception d'une commande envoyee par la page mobile."""
+        if self.path != "/commande":
+            self.send_error(404)
+            return
+        try:
+            taille = int(self.headers.get("Content-Length") or 0)
+            corps = self.rfile.read(min(taille, 4000)).decode("utf-8", "replace")
+            texte = json.loads(corps).get("texte", "")
+        except Exception:
+            texte = ""
+        texte = str(texte).strip()[:300]
+
+        if not texte:
+            self.send_response(400)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
+        try:
+            _COMMANDES.put_nowait(texte)
+            reponse = b'{"ok":true}'
+        except queue.Full:
+            reponse = b'{"ok":false,"raison":"file pleine"}'
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(reponse)))
+        self.end_headers()
+        self.wfile.write(reponse)
 
     def _mode(self, voulu):
         """Bascule demandee par un bouton de l'interface."""
@@ -282,6 +330,16 @@ def demarrer(ouvrir=True):
 
     print(f"HUD sur http://127.0.0.1:{PORT}/" + ("  (visible sur le reseau)" if HOTE == "0.0.0.0" else ""))
     print(f"     MU-TH-UR sur http://127.0.0.1:{PORT}/mother")
+    if HOTE == "0.0.0.0":
+        import socket as _s
+        try:
+            _c = _s.socket(_s.AF_INET, _s.SOCK_DGRAM)
+            _c.connect(("192.168.1.1", 80))
+            _ip = _c.getsockname()[0]
+            _c.close()
+            print(f"     Telephone sur http://{_ip}:{PORT}/tel")
+        except Exception:
+            pass
     if ouvrir:
         try:
             webbrowser.open(f"http://127.0.0.1:{PORT}/")

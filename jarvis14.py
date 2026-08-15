@@ -903,6 +903,14 @@ def traiter(audio, whisper, historique, flux, reveil):
         print("  (rien compris)\n")
         return False
 
+    return repondre_a(question, historique, flux, reveil)
+
+
+def repondre_a(question, historique, flux, reveil):
+    """Traite une question deja transcrite : raccourcis, puis modele.
+
+    Sert aussi bien a la voix qu'aux commandes envoyees depuis un telephone.
+    """
     # --- raccourcis deterministes (voir core/raccourcis.py) ---
     # Le modele local se trompe souvent d'outil : toutes les commandes
     # courantes sont reconnues ici et executees sans passer par le LLM.
@@ -1051,6 +1059,21 @@ def main():
 
                 _hud("etat", "veille")
                 _hud("niveau", _niv_hud(bloc))
+
+                # Commande envoyee depuis un telephone : meme traitement
+                # que la voix, sans mot de reveil.
+                _texte_tel = None
+                if hud is not None:
+                    try:
+                        _texte_tel = hud.commande_en_attente()
+                    except Exception:
+                        _texte_tel = None
+                if _texte_tel:
+                    print(f"  [telephone] {_texte_tel}")
+                    _hud("etat", "reflexion")
+                    repondre_a(_texte_tel, historique, flux, reveil)
+                    _hud("etat", "veille")
+                    continue
 
                 maman.alimenter(bloc)
                 par_maman = maman.declenche()
