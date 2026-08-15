@@ -786,6 +786,36 @@ def _musique_sans_source(t):
     return S.spotify_jouer(recherche=cible, genre=genre)
 
 
+
+def _streaming(t):
+    """« cherche Stranger Things sur Netflix », « ouvre Prime Video ».
+
+    Ces plateformes n exposent aucune interface publique : on ne peut pas
+    lancer la lecture, seulement ouvrir la recherche du titre.
+    """
+    from tools.streaming import reconnaitre, streaming_chercher
+
+    plateforme = reconnaitre(t)
+    if plateforme is None:
+        return None
+
+    m = re.search(r"\b(?:cherche|recherche|trouve|mets|met|lance|regarde|"
+                  r"regardez|ouvre|ouvrez|joue)\b\s+(.+?)"
+                  r"\s+sur\s+(?:netflix|net flix|prime video|prime|amazon prime|"
+                  r"disney plus|disney|youtube|you tube)\b", t)
+    if m:
+        titre = _nettoyer_cible(m.group(1))
+        titre = re.sub(r"^(?:le |la |les |l )?(?:film|serie|episode)\s+", "", titre)
+        titre = _nettoyer_cible(titre)
+        if len(titre) >= 2:
+            return streaming_chercher(titre=titre, plateforme=plateforme)
+
+    # « ouvre Netflix » tout court
+    if re.search(r"\b(?:ouvre|ouvrez|lance|lancez|demarre|affiche)\b", t):
+        return streaming_chercher(titre="", plateforme=plateforme)
+    return None
+
+
 # --------------------------------------------------------------- ton MU-TH-UR
 
 # Les raccourcis renvoient des phrases toutes faites, ecrites pour Jarvis.
@@ -832,9 +862,9 @@ def _au_ton_mere(reponse):
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
 ETAPES = (_mode, _memoire, _arret_spotify, _cast, _spotify_appareil,
-          _spotify, _plex, _plex_sans_ecran, _musique_sans_source,
-          _media, _courrier, _application, _film, _heure, _meteo,
-          _minuteur, _stats, _capture)
+          _spotify, _streaming, _plex, _plex_sans_ecran,
+          _musique_sans_source, _media, _courrier, _application,
+          _film, _heure, _meteo, _minuteur, _stats, _capture)
 
 
 def essayer(question):
