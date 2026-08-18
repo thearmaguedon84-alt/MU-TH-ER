@@ -33,7 +33,7 @@ PLATEFORMES = {
     },
     "canal": {
         "nom": "myCANAL",
-        "url": "https://www.canalplus.com/recherche/?q={q}",
+        "url": "https://www.canalplus.com/recherche?q={q}",
         "alias": ("mycanal", "my canal", "canal plus", "canal+", "canalplus"),
     },
     "youtube": {

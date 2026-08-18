@@ -304,3 +304,5 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-18 20:02:03  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
 2026-08-18 20:05:32  INFO  outil plex_jouer args={'titre': 'Game of Thrones', 'ecran': 'TV en bas'} -> Game of Thrones, L'hiver vient sur Tv en bas.
 2026-08-18 20:06:47  INFO  outil spotify_jouer args={'recherche': 'Mano Negra', 'ecran': 'TV Damba'} -> Je lance Mano Negra.
+2026-08-18 22:53:39  INFO  provider LLM : Ollama (mode local)
+2026-08-18 22:53:39  INFO  provider TTS : EdgeTTS (mode local, moteur edge)

@@ -964,7 +964,13 @@ def _diffuser_service(t):
                         r"regardez|joue)\b\s+(.+?)\s+sur\s+", t)
     if m_titre:
         titre = _nettoyer_cible(m_titre.group(1))
-        titre = re.sub(r"^(?:le |la |les |l )?(?:film|serie|episode)\s+", "", titre)
+        titre = re.sub(r"^(?:le |la |les |l )?(?:film|serie|episode|cast|"
+                       r"diffusion|lecture)\s+", "", titre)
+        titre = re.sub(r"^(?:de |du |des |d )\s*", "", titre).strip()
+        # " lance le cast de my canal sur la tv " : ce qui reste n est pas un
+        # titre mais le nom du service. Chercher cela ne donnerait rien.
+        if reconnaitre(titre) is not None or len(titre) < 2:
+            titre = ""
 
     info = PLATEFORMES[plateforme]
     url = (info["url"].format(q=__import__("urllib.parse", fromlist=["quote"]).quote(titre))
