@@ -926,6 +926,54 @@ def _ecran_lecture(t):
     return None
 
 
+
+def _diffuser_service(t):
+    """« lance myCanal sur la tele » : Chrome ouvre le service et le diffuse.
+
+    Les plateformes qui refusent d etre pilotees de l exterieur acceptent en
+    revanche que leur propre page web lance la diffusion. Jarvis passe donc par
+    son navigateur, qui s authentifie comme le ferait un clic.
+    """
+    from tools.streaming import PLATEFORMES, reconnaitre
+
+    plateforme = reconnaitre(t)
+    if plateforme is None:
+        return None
+    # YouTube a son propre outil, bien meilleur : on le laisse passer
+    if plateforme == "youtube":
+        return None
+
+    # Il faut une destination : sinon c est une simple recherche
+    if not _contient(t, ECRANS):
+        return None
+
+    ecran = ""
+    m = re.search(r"\bsur\s+(?:la|le|l|mon|ma)?\s*([^,]+)$", t)
+    if m:
+        propre = re.sub(r"\b(ecran|television|tele|tv|chromecast)\b", " ", m.group(1))
+        propre = _nettoyer_cible(propre)
+        from tools.cast import _choisir
+        if propre and _choisir(propre) is not None:
+            ecran = propre
+        else:
+            ecran = _premier_ecran()
+
+    # Titre eventuel a chercher sur la plateforme
+    titre = ""
+    m_titre = re.search(r"\b(?:cherche|recherche|trouve|mets|met|lance|regarde|"
+                        r"regardez|joue)\b\s+(.+?)\s+sur\s+", t)
+    if m_titre:
+        titre = _nettoyer_cible(m_titre.group(1))
+        titre = re.sub(r"^(?:le |la |les |l )?(?:film|serie|episode)\s+", "", titre)
+
+    info = PLATEFORMES[plateforme]
+    url = (info["url"].format(q=__import__("urllib.parse", fromlist=["quote"]).quote(titre))
+           if titre else info["url"].split("/search")[0].split("/recherche")[0])
+
+    from tools.navigateur_cast import diffuser_page
+    return diffuser_page(url=url, ecran=ecran)
+
+
 # --------------------------------------------------------------- ton MU-TH-UR
 
 # Les raccourcis renvoient des phrases toutes faites, ecrites pour Jarvis.
@@ -972,10 +1020,10 @@ def _au_ton_mere(reponse):
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
 ETAPES = (_mode, _memoire, _arret_spotify, _cast, _spotify_appareil,
-          _spotify, _youtube, _streaming, _plex, _plex_sans_ecran,
-          _musique_sans_source, _ecran_lecture, _media, _courrier,
-          _application, _film, _heure, _meteo, _minuteur, _stats,
-          _capture)
+          _spotify, _youtube, _diffuser_service, _streaming, _plex,
+          _plex_sans_ecran, _musique_sans_source, _ecran_lecture,
+          _media, _courrier, _application, _film, _heure, _meteo,
+          _minuteur, _stats, _capture)
 
 
 def essayer(question):

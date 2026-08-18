@@ -6,3 +6,4 @@ __pycache__/
 *.zip
 config.yaml
 hud_cert.pem
+.chrome_jarvis/
