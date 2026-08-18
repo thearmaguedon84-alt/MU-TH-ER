@@ -67,8 +67,48 @@ def _get(chemin, params=None):
         return None
 
 
-def disponible():
-    return _get("/identity") is not None
+_DERNIER_DEMARRAGE = 0.0
+
+
+def _demarrer_serveur():
+    """Lance Plex Media Server et attend qu'il reponde.
+
+    Le serveur ne demarre pas avec Windows et s'arrete quand on ferme sa
+    fenetre : sans ca, chaque demande echouait tant qu'on ne l'avait pas
+    relance a la main.
+    """
+    global _DERNIER_DEMARRAGE
+    import os
+    import subprocess
+
+    # Ne pas s'acharner : une tentative toutes les 60 secondes au plus
+    if time.time() - _DERNIER_DEMARRAGE < 60:
+        return False
+    _DERNIER_DEMARRAGE = time.time()
+
+    exe = reglage("plex.executable",
+                  r"C:\Program Files\Plex\Plex Media Server\Plex Media Server.exe")
+    if not os.path.exists(exe):
+        return False
+    try:
+        subprocess.Popen([exe], cwd=os.path.dirname(exe))
+    except Exception:
+        return False
+
+    for _ in range(12):                 # jusqu'a ~18 s
+        time.sleep(1.5)
+        if _get("/identity") is not None:
+            return True
+    return False
+
+
+def disponible(demarrer=True):
+    """Vrai si le serveur repond, en le lancant au besoin."""
+    if _get("/identity") is not None:
+        return True
+    if not demarrer:
+        return False
+    return _demarrer_serveur()
 
 
 # ------------------------------------------------------------------ recherche
@@ -374,7 +414,7 @@ def _flux(video, hote_cast=None):
 )
 def plex_chercher(titre: str) -> str:
     if not disponible():
-        return "Le serveur Plex ne repond pas."
+        return "Le serveur Plex ne demarre pas. Lance-le a la main."
     res = _chercher(titre)
     if not res:
         return f"Rien trouve pour {titre} dans Plex."
@@ -444,7 +484,7 @@ def _jouer_local(chemins, titre):
 )
 def plex_jouer(titre: str, ecran: str = "") -> str:
     if not disponible():
-        return "Le serveur Plex ne repond pas."
+        return "Le serveur Plex ne demarre pas. Lance-le a la main."
 
     candidats = _classer(titre, _chercher(titre))
     if not candidats:
@@ -673,7 +713,7 @@ def _flux_audio(piste, hote_cast=None):
 )
 def plex_musique(recherche: str, ecran: str = "") -> str:
     if not disponible():
-        return "Le serveur Plex ne repond pas."
+        return "Le serveur Plex ne demarre pas. Lance-le a la main."
 
     candidats = _chercher_audio(recherche)
     if not candidats:
