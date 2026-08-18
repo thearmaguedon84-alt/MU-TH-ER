@@ -286,3 +286,14 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-18 19:29:35  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
 2026-08-18 19:36:18  INFO  provider LLM : Ollama (mode local)
 2026-08-18 19:36:18  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-18 19:42:39  INFO  provider LLM : Ollama (mode local)
+2026-08-18 19:42:39  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-18 19:44:45  INFO  outil spotify_jouer args={'recherche': 'Damien Aisez'} -> Je lance Saez.
+2026-08-18 19:44:59  INFO  outil ouvrir_application args={'nom': 'Saez'} -> Je ne trouve pas 'Saez'. Dis-moi son chemin complet ou ajoute-le avec la commande ajouter_app.
+2026-08-18 19:45:03  INFO  outil ouvrir_fichier args={'chemin': 'C:\\Users\\Exemple\\Documents\\Saez.txt'} -> Ouverture tentée : C:\Users\Exemple\Documents\Saez.txt
+2026-08-18 19:45:07  WARNING  appel d'outil repete a l'identique : ['ouvrir_fichier']
+2026-08-18 19:51:38  INFO  outil spotify_jouer args={'recherche': 'Nirvana'} -> Je lance Nirvana.
+2026-08-18 19:51:38  INFO  outil spotify_en_cours args={} -> Out of Time Man, de Mano Negra, sur l album King Of Bongo.
+2026-08-18 19:51:44  INFO  outil spotify_jouer args={'recherche': 'Out of Time Man, de Mano Negra', 'appareil': ''} -> Je lance Mano Negra.
+2026-08-18 19:51:55  INFO  outil ouvrir_application args={'nom': 'Mano Negra'} -> Je ne trouve pas 'Mano Negra'. Dis-moi son chemin complet ou ajoute-le avec la commande ajouter_app.
+2026-08-18 19:51:59  INFO  outil ouvrir_fichier args={'chemin': "C:\\Musique\\Mano Negra - L'Album Completo.mp3"} -> Ouverture tentée : C:\Musique\Mano Negra - L'Album Completo.mp3

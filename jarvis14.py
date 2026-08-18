@@ -55,7 +55,28 @@ BLOC = 1280
 SEUIL_REVEIL = 0.5
 # Allers-retours maximum entre le modele et ses outils pour une seule demande.
 # Au-dela, on considere qu'il tourne en rond.
-TOURS_OUTILS_MAX = 6
+TOURS_OUTILS_MAX = 3
+
+# Outils qui agissent : une fois l'action faite, il n'y a plus rien a enchainer.
+# Les outils de consultation (meteo, heure, memoire...) peuvent au contraire
+# nourrir une reponse, on les laisse passer.
+OUTILS_TERMINAUX = {
+    "spotify_jouer", "spotify_controle", "spotify_transferer", "spotify_volume",
+    "plex_jouer", "plex_musique", "plex_controle",
+    "lancer_film", "stopper_film", "launch_app", "ouvrir_application",
+    "controler_media", "regler_volume", "regler_volume_systeme",
+    "caster_jarvis", "arreter_cast", "changer_personnalite",
+    "lancer_minuteur", "allumer_lumiere", "changer_couleur", "regler_luminosite",
+    "streaming_chercher", "streaming_ouvrir", "ouvrir_fichier",
+}
+
+# Debuts de reponse qui signalent un echec : dans ce cas, laisser le modele
+# tenter autre chose a du sens.
+ECHECS = ("je ne ", "je n ai", "desole", "impossible", "aucun appareil",
+          "aucun ecran", "aucune correspondance", "erreur", "echec",
+          "introuvable", "rien trouve", "n est pas configure",
+          "ne repond pas", "ne connait pas", "ne trouve pas", "a refuse",
+          "pas connecte", "n a pas pu", "ne peux pas", "ne vois pas")
 _DERNIER_RESULTAT = {}
 # Avance de l'ecriture sur la parole, en secondes. Assez pour voir le texte
 # demarrer, assez peu pour que les deux restent lies.
@@ -482,6 +503,15 @@ def _executer_outils(blocs):
         # Sert de reponse de repli si le modele se met a boucler.
         if isinstance(resultat, str) and resultat.strip():
             _DERNIER_RESULTAT["texte"] = resultat.strip()
+            # Action menee a bien : la demande est close. Sans cela, le modele
+            # enchainait des outils sans rapport, jusqu'a inventer des chemins
+            # de fichiers a ouvrir.
+            # Le marqueur d echec peut etre au milieu : « Le serveur Plex ne
+            # repond pas » ne commence par aucun d entre eux.
+            debut = sans_accents(resultat.strip().lower())[:60]
+            if (nom in OUTILS_TERMINAUX
+                    and not any(e in debut for e in ECHECS)):
+                _DERNIER_RESULTAT["termine"] = True
 
         # Cas image (capture d'ecran) : bloc image dans le tool_result.
         if isinstance(resultat, dict) and resultat.get("image"):
@@ -534,9 +564,14 @@ def repondre(historique):
     # le meme outil s'il juge le resultat insuffisant.
     tours = 0
     signatures = []
+    _DERNIER_RESULTAT.pop("termine", None)
 
     while True:
         tours += 1
+        if _DERNIER_RESULTAT.pop("termine", False):
+            if fil_accuse:
+                fil_accuse.join(timeout=2)
+            return _DERNIER_RESULTAT.get("texte") or "C'est fait."
         if tours > TOURS_OUTILS_MAX:
             LOG.warning("boucle d'outils interrompue apres %d tours", tours - 1)
             if fil_accuse:

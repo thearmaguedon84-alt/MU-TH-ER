@@ -463,8 +463,9 @@ def _spotify(t):
         return S.spotify_en_cours()
 
     # « mets/joue/lance/cherche <quelque chose> sur Spotify »
-    m = re.search(r"\b(?:mets|met|mettez|joue|jouez|lance|lancez|balance|passe|"
-                  r"passez|recherche|cherche|ecoute|ecoutez)\b"
+    m = re.search(r"\b(?:mets|met|mettez|mettre|joue|jouez|jouer|lance|lancez|lancer|"
+                  r"balance|passe|passez|passer|recherche|cherche|chercher|"
+                  r"ecoute|ecoutez|ecouter)\b"
                   r"\s+(.+?)\s+sur\s+spotify\b", t)
     if not m:
         # « sur Spotify, mets <quelque chose> »
@@ -743,8 +744,9 @@ def _musique_sans_source(t):
     if _contient(t, ("film", "video", "serie", "episode")):
         return None
 
-    m = re.search(r"\b(?:mets|met|mettez|joue|jouez|lance|lancez|passe|passez|"
-                  r"balance|ecoute|ecoutez|met moi|mets moi)\b"
+    m = re.search(r"\b(?:mets|met|mettez|mettre|joue|jouez|jouer|lance|lancez|"
+                  r"lancer|passe|passez|balance|ecoute|ecoutez|ecouter|"
+                  r"met moi|mets moi)\b"
                   r"\s+(?:moi\s+)?(?:du|de la|des|de|le|la|les|l|un|une)?\s*(.+)", t)
     if not m:
         return None
