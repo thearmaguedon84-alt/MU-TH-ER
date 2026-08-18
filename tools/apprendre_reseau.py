@@ -27,7 +27,7 @@ import threading
 import time
 
 from core.registre import outil
-from tools.navigateur_cast import PORT_DEBUG, demarrer_chrome
+from tools.navigateur_cast import PORT_DEBUG, demarrer_chrome  # noqa: F401
 
 _RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DOSSIER = os.path.join(_RACINE, "recettes")
@@ -64,105 +64,8 @@ ENTETES_INTERDITES = {
 }
 
 
-# --------------------------------------------------------------- protocole
-
-class Cdp:
-    """Un dialogue avec Chrome : on demande, et on ecoute en parallele.
-
-    Le protocole de debogage melange sur une meme connexion les reponses aux
-    demandes et les evenements spontanes. Un fil dedie les trie au fur et a
-    mesure, ce qui evite de rater des requetes pendant qu'on attend une reponse.
-    """
-
-    def __init__(self, ws):
-        self.ws = ws
-        self.numero = 0
-        self.evenements = []
-        self.reponses = {}
-        self._envoi = threading.Lock()
-        self._collecte = threading.Lock()
-        self.actif = True
-        self.fil = threading.Thread(target=self._lire, daemon=True)
-        self.fil.start()
-
-    def _lire(self):
-        while self.actif:
-            try:
-                self.ws.settimeout(1)
-                msg = json.loads(self.ws.recv())
-            except Exception:
-                continue
-            if "id" in msg:
-                self.reponses[msg["id"]] = msg
-            elif msg.get("method"):
-                with self._collecte:
-                    # Garde-fou : une page bavarde ne doit pas remplir la memoire.
-                    if len(self.evenements) < 6000:
-                        self.evenements.append(msg)
-
-    def demander(self, methode, params=None, attente=15):
-        with self._envoi:
-            self.numero += 1
-            ident = self.numero
-            try:
-                self.ws.send(json.dumps({"id": ident, "method": methode,
-                                         "params": params or {}}))
-            except Exception:
-                return {}
-        t0 = time.time()
-        while time.time() - t0 < attente:
-            if ident in self.reponses:
-                return self.reponses.pop(ident)
-            time.sleep(0.03)
-        return {}
-
-    def vider(self):
-        with self._collecte:
-            lot, self.evenements = self.evenements, []
-        return lot
-
-    def fermer(self):
-        self.actif = False
-        try:
-            self.ws.close()
-        except Exception:
-            pass
-
-
-def _page(cible=""):
-    """Onglet a observer : celui demande, sinon le premier vrai onglet."""
-    import urllib.request
-    try:
-        pages = json.loads(urllib.request.urlopen(
-            f"http://127.0.0.1:{PORT_DEBUG}/json/list", timeout=8).read())
-    except Exception:
-        return None
-    pages = [p for p in pages if p.get("type") == "page"]
-    if not pages:
-        return None
-    if cible:
-        for p in pages:
-            if cible.lower() in (p.get("url") or "").lower():
-                return p
-    # Un onglet qui montre quelque chose vaut mieux qu'une page vide.
-    for p in pages:
-        if (p.get("url") or "about:blank") not in ("about:blank", "chrome://newtab/"):
-            return p
-    return pages[0]
-
-
-def _brancher(cible=""):
-    import websocket
-    p = _page(cible)
-    if p is None:
-        return None
-    try:
-        ws = websocket.create_connection(p["webSocketDebuggerUrl"],
-                                         timeout=25, suppress_origin=True,
-                                         max_size=12 * 1024 * 1024)
-    except Exception:
-        return None
-    return Cdp(ws)
+# Le client du protocole vit avec le navigateur : un seul exemplaire, partage.
+from tools.navigateur_cast import Cdp, _brancher, _page  # noqa: E402,F401
 
 
 # --------------------------------------------------------------- tri du bruit

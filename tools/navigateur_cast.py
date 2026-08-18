@@ -1,17 +1,21 @@
 """Diffusion depuis Chrome, pilote par le protocole de debogage.
 
-Certaines plateformes — myCANAL, Netflix, Prime Video — refusent qu'on lance
-une lecture de l'exterieur : leur recepteur exige une authentification que
-seule leur page web detient. La contourner est impossible ; en revanche on
-peut faire faire le travail a Chrome lui-meme.
+Deux facons de mettre une page sur un ecran, et elles ne se valent pas.
 
-Chrome expose un domaine `Cast` dans son protocole de debogage : on peut y
-enumerer les ecrans, en choisir un, puis declencher la diffusion. La page fait
-alors l'authentification comme si tu avais clique toi-meme.
+La premiere recopie l'onglet : simple, universelle, mais c'est une image, avec
+la perte de qualite et la latence que cela suppose. Les services proteges y
+affichent souvent un carre noir.
 
-Jarvis garde son propre profil Chrome (dossier .chrome_jarvis) : tu t'y
-connectes une fois a tes services, et il reste connecte. Ton Chrome habituel
-n'est pas touche.
+La seconde est la bonne : demander a la page d'ouvrir elle-meme sa session de
+diffusion, par son propre SDK Cast. Le recepteur maison du service se lance
+alors sur la tele — CANAL+, YouTube, ce que la page sait faire — avec ses
+droits et ses jetons. Normalement un selecteur d'ecran s'affiche et attend un
+clic ; Cast.setSinkToUse permet de designer l'ecran a l'avance, et le selecteur
+ne parait pas. Rien n'est contourne : on remplace le clic, pas l'autorisation.
+
+Jarvis garde son propre profil Chrome (.chrome_jarvis) : tu t'y connectes une
+fois a tes services, et il reste connecte. Ton Chrome habituel n'est pas
+touche.
 """
 import json
 import os
@@ -30,6 +34,8 @@ _PROFIL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 _PROCESSUS = None
 _VERROU = threading.Lock()
 
+
+# --------------------------------------------------------------- navigateur
 
 def _chrome():
     """Chemin de l'executable Chrome."""
@@ -84,67 +90,159 @@ def demarrer_chrome(url="about:blank", visible=True):
         return False
 
 
-def _connexion(cible=None):
-    """Ouvre une connexion au protocole de debogage sur un onglet."""
-    import websocket
-    pages = json.loads(
-        urllib.request.urlopen(f"http://127.0.0.1:{PORT_DEBUG}/json/list",
-                               timeout=8).read())
+# --------------------------------------------------------------- protocole
+
+class Cdp:
+    """Un dialogue avec Chrome : on demande, et on ecoute en parallele.
+
+    Le protocole melange sur une meme connexion les reponses aux demandes et
+    les evenements spontanes. Un fil dedie les trie au fur et a mesure, ce qui
+    evite de rater un evenement pendant qu'on attend une reponse.
+    """
+
+    def __init__(self, ws):
+        self.ws = ws
+        self.numero = 0
+        self.evenements = []
+        self.reponses = {}
+        self._envoi = threading.Lock()
+        self._collecte = threading.Lock()
+        self.actif = True
+        self.fil = threading.Thread(target=self._lire, daemon=True)
+        self.fil.start()
+
+    def _lire(self):
+        while self.actif:
+            try:
+                self.ws.settimeout(1)
+                msg = json.loads(self.ws.recv())
+            except Exception:
+                continue
+            if "id" in msg:
+                self.reponses[msg["id"]] = msg
+            elif msg.get("method"):
+                with self._collecte:
+                    # Garde-fou : une page bavarde ne doit pas remplir la memoire.
+                    if len(self.evenements) < 6000:
+                        self.evenements.append(msg)
+
+    def demander(self, methode, params=None, attente=15):
+        with self._envoi:
+            self.numero += 1
+            ident = self.numero
+            try:
+                self.ws.send(json.dumps({"id": ident, "method": methode,
+                                         "params": params or {}}))
+            except Exception:
+                return {}
+        t0 = time.time()
+        while time.time() - t0 < attente:
+            if ident in self.reponses:
+                return self.reponses.pop(ident)
+            time.sleep(0.03)
+        return {}
+
+    def evaluer(self, expression, contexte=None, geste=False, attente=45):
+        """Execute du JavaScript et rend la valeur, ou None."""
+        params = {"expression": expression, "returnByValue": True,
+                  "awaitPromise": True, "userGesture": geste}
+        if contexte is not None:
+            params["contextId"] = contexte
+        r = self.demander("Runtime.evaluate", params, attente=attente)
+        res = r.get("result", {})
+        if res.get("exceptionDetails"):
+            return None
+        return (res.get("result", {}) or {}).get("value")
+
+    def vider(self):
+        with self._collecte:
+            lot, self.evenements = self.evenements, []
+        return lot
+
+    def fermer(self):
+        self.actif = False
+        try:
+            self.ws.close()
+        except Exception:
+            pass
+
+
+def _page(cible=""):
+    """Onglet a piloter : celui demande, sinon le premier qui montre quelque chose."""
+    try:
+        pages = json.loads(urllib.request.urlopen(
+            f"http://127.0.0.1:{PORT_DEBUG}/json/list", timeout=8).read())
+    except Exception:
+        return None
     pages = [p for p in pages if p.get("type") == "page"]
     if not pages:
         return None
-    page = pages[0]
     if cible:
         for p in pages:
-            if cible in (p.get("url") or ""):
-                page = p
-                break
-    return websocket.create_connection(page["webSocketDebuggerUrl"],
-                                       timeout=25, suppress_origin=True)
+            if cible.lower() in (p.get("url") or "").lower():
+                return p
+    for p in pages:
+        if (p.get("url") or "about:blank") not in ("about:blank", "chrome://newtab/"):
+            return p
+    return pages[0]
 
 
-def _dialoguer(ws, methode, params=None, identifiant=1):
-    ws.send(json.dumps({"id": identifiant, "method": methode,
-                        "params": params or {}}))
+def _brancher(cible=""):
+    import websocket
+    p = _page(cible)
+    if p is None:
+        return None
+    try:
+        ws = websocket.create_connection(p["webSocketDebuggerUrl"],
+                                         timeout=25, suppress_origin=True,
+                                         max_size=12 * 1024 * 1024)
+    except Exception:
+        return None
+    return Cdp(ws)
 
 
-def ecrans(delai=20):
+def _connexion(cible=None):
+    """Ancienne interface : une simple connexion websocket."""
+    cdp = _brancher(cible or "")
+    return cdp.ws if cdp else None
+
+
+# --------------------------------------------------------------- ecrans
+
+def _sinks(cdp, delai=18):
+    """Ecrans que Chrome voit, en laissant la decouverte se completer.
+
+    Chrome les annonce un par un : s'arreter au premier lot n'en montre qu'un.
+    """
+    cdp.demander("Cast.enable")
+    t0 = time.time()
+    vus = []
+    while time.time() - t0 < delai:
+        time.sleep(1)
+        for e in cdp.vider():
+            if e.get("method") == "Cast.sinksUpdated":
+                lot = e["params"].get("sinks") or e["params"].get("sinkNames") or []
+                trouves = [(s.get("name"), s.get("id")) if isinstance(s, dict) else (s, s)
+                           for s in lot]
+                if len(trouves) > len(vus):
+                    vus = trouves
+                    # Un lot plus complet vient d'arriver : laisser une chance
+                    # aux suivants, sans repartir de zero.
+                    t0 = min(t0, time.time() - delai + 6)
+    return vus
+
+
+def ecrans(delai=18):
     """Ecrans que Chrome voit : [(nom, identifiant)]."""
     if not demarrer_chrome():
         return []
-    ws = None
-    try:
-        ws = _connexion()
-        if ws is None:
-            return []
-        _dialoguer(ws, "Cast.enable")
-        t0 = time.time()
-        vus = []
-        while time.time() - t0 < delai:
-            try:
-                ws.settimeout(3)
-                msg = json.loads(ws.recv())
-            except Exception:
-                continue
-            if msg.get("method") == "Cast.sinksUpdated":
-                lot = msg["params"].get("sinks") or msg["params"].get("sinkNames") or []
-                trouves = [(s.get("name"), s.get("id")) if isinstance(s, dict) else (s, s)
-                           for s in lot]
-                # Chrome decouvre les ecrans progressivement : le premier lot
-                # n en contient souvent qu un. On garde le plus complet et on
-                # laisse le temps aux suivants d arriver.
-                if len(trouves) > len(vus):
-                    vus = trouves
-                    t0 = min(t0, time.time() - delai + 6)
-        return vus
-    except Exception:
+    cdp = _brancher()
+    if cdp is None:
         return []
+    try:
+        return _sinks(cdp, delai)
     finally:
-        if ws:
-            try:
-                ws.close()
-            except Exception:
-                pass
+        cdp.fermer()
 
 
 def _choisir_ecran(nom, disponibles):
@@ -181,14 +279,147 @@ def navigateur_ecrans() -> str:
     return "Ecrans disponibles : " + ", ".join(n for n, _ in vus) + "."
 
 
+# --------------------------------------------------------------- diffusion native
+
+def _contexte_cast(cdp, patience=30):
+    """Contexte JavaScript qui detient le SDK Cast.
+
+    Le SDK n'est charge que lorsqu'un lecteur tourne : on laisse donc a la page
+    le temps de le mettre en place avant de conclure.
+    """
+    cdp.demander("Runtime.enable")
+    t0 = time.time()
+    while time.time() - t0 < patience:
+        time.sleep(2)
+        contextes = [e["params"]["context"] for e in cdp.evenements
+                     if e.get("method") == "Runtime.executionContextCreated"]
+        for c in contextes:
+            if cdp.evaluer("(typeof cast !== 'undefined' && !!cast.framework)",
+                           contexte=c["id"], attente=8) is True:
+                return c["id"]
+    return None
+
+
+@outil(
+    nom="caster_service",
+    description=(
+        "Diffuse un service video sur un ecran en demandant a la page d'ouvrir "
+        "elle-meme sa session : la tele lance alors l'application du service, "
+        "pas une recopie d'ecran. Marche pour myCANAL, YouTube et tout site "
+        "qui sait caster. Le lecteur doit tourner dans le navigateur de "
+        "Jarvis, et l'utilisateur y etre connecte au service."
+    ),
+    parametres={
+        "type": "object",
+        "properties": {
+            "url": {"type": "string",
+                    "description": "Page a ouvrir avant de diffuser. Vide = page actuelle."},
+            "ecran": {"type": "string", "description": "Nom de l ecran vise."},
+        },
+        "required": [],
+    },
+    lent=True,
+    phrase_attente="Je prepare la diffusion.",
+)
+def caster_service(url: str = "", ecran: str = "") -> str:
+    if not demarrer_chrome(url=url or "about:blank"):
+        return "Je n arrive pas a lancer le navigateur."
+
+    cdp = _brancher()
+    if cdp is None:
+        return "Le navigateur ne repond pas."
+
+    try:
+        if url:
+            cdp.demander("Page.navigate", {"url": url})
+            time.sleep(6)
+
+        contexte = _contexte_cast(cdp)
+        if contexte is None:
+            return ("Le lecteur n est pas pret : lance la lecture dans mon "
+                    "navigateur, ou verifie que tu y es connecte au service.")
+
+        disponibles = _sinks(cdp)
+        if not disponibles:
+            return "Le navigateur ne voit aucun ecran."
+
+        choix = _choisir_ecran(ecran, disponibles)
+        if choix is None:
+            noms = ", ".join(n for n, _ in disponibles)
+            return f"Je ne trouve pas l ecran {ecran}. Disponibles : {noms}."
+        nom_ecran = choix[0]
+
+        deja = cdp.evaluer(
+            "!!cast.framework.CastContext.getInstance().getCurrentSession()",
+            contexte=contexte, attente=10)
+        if deja is True:
+            return f"Une diffusion est deja en cours. Je ne touche a rien."
+
+        # Designer l'ecran avant la demande : sans cela, Chrome ouvre son
+        # selecteur et attend un clic.
+        cdp.demander("Cast.setSinkToUse", {"sinkName": nom_ecran})
+        time.sleep(1)
+
+        # Le geste utilisateur est simule : le SDK refuse une demande qui n'en
+        # vient pas, exactement comme il refuserait un script de page.
+        resultat = cdp.evaluer(
+            "cast.framework.CastContext.getInstance().requestSession()"
+            ".then(() => 'ok').catch(e => 'refus:' + (e.code || e))",
+            contexte=contexte, geste=True, attente=60)
+
+        if resultat != "ok":
+            motif = str(resultat or "sans reponse").replace("refus:", "")
+            if "cancel" in motif.lower():
+                return "La diffusion a ete annulee."
+            return f"Le service a refuse la diffusion : {motif[:60]}"
+
+        time.sleep(3)
+        appareil = cdp.evaluer(
+            "(() => { const s = cast.framework.CastContext.getInstance()"
+            ".getCurrentSession(); return s ? s.getCastDevice().friendlyName : null; })()",
+            contexte=contexte, attente=10)
+        return f"C est diffuse sur {appareil or nom_ecran}."
+    except Exception as e:
+        return f"Echec : {str(e)[:80]}"
+    finally:
+        cdp.fermer()
+
+
+@outil(
+    nom="arreter_caster_service",
+    description="Ferme la session de diffusion ouverte par la page.",
+    parametres={"type": "object", "properties": {}, "required": []},
+    lent=True,
+)
+def arreter_caster_service() -> str:
+    if not _repond():
+        return "Le navigateur de Jarvis ne tourne pas."
+    cdp = _brancher()
+    if cdp is None:
+        return "Le navigateur ne repond pas."
+    try:
+        contexte = _contexte_cast(cdp, patience=8)
+        if contexte is None:
+            return "Aucune diffusion en cours."
+        fait = cdp.evaluer(
+            "(() => { const c = cast.framework.CastContext.getInstance();"
+            " if (!c.getCurrentSession()) return 'rien';"
+            " c.endCurrentSession(true); return 'ok'; })()",
+            contexte=contexte, geste=True, attente=20)
+        return "Diffusion arretee." if fait == "ok" else "Aucune diffusion en cours."
+    finally:
+        cdp.fermer()
+
+
+# --------------------------------------------------------------- recopie d'onglet
+
 @outil(
     nom="diffuser_page",
     description=(
-        "Ouvre une page web dans le navigateur de Jarvis et la diffuse sur un "
-        "ecran. Sert pour les services qui refusent d'etre lances autrement, "
-        "comme myCANAL, Netflix ou Prime Video : c'est le navigateur qui "
-        "s'authentifie. La premiere fois, il faut se connecter au service dans "
-        "ce navigateur."
+        "Recopie un onglet du navigateur de Jarvis sur un ecran. Solution de "
+        "repli : l'image est retransmise telle quelle, avec une qualite "
+        "moindre, et les services proteges y affichent souvent un ecran noir. "
+        "Preferer caster_service quand la page sait diffuser elle-meme."
     ),
     parametres={
         "type": "object",
@@ -205,82 +436,48 @@ def diffuser_page(url: str, ecran: str = "") -> str:
     if not demarrer_chrome(url=url):
         return "Je n arrive pas a lancer le navigateur."
 
-    disponibles = ecrans()
-    if not disponibles:
-        return "Le navigateur ne voit aucun ecran."
-
-    choix = _choisir_ecran(ecran, disponibles)
-    if choix is None:
-        noms = ", ".join(n for n, _ in disponibles)
-        return f"Je ne trouve pas l ecran {ecran}. Disponibles : {noms}."
-
-    nom_ecran, _ident = choix
-    ws = None
+    cdp = _brancher()
+    if cdp is None:
+        return "Le navigateur ne repond pas."
     try:
-        ws = _connexion()
-        if ws is None:
-            return "Le navigateur ne repond pas."
-
-        # Ouvrir la page demandee
-        _dialoguer(ws, "Page.navigate", {"url": url}, identifiant=1)
+        cdp.demander("Page.navigate", {"url": url})
         time.sleep(4)
 
-        # Choisir l'ecran puis lancer la diffusion de l onglet
-        _dialoguer(ws, "Cast.enable", identifiant=2)
-        time.sleep(2)
-        _dialoguer(ws, "Cast.setSinkToUse", {"sinkName": nom_ecran}, identifiant=3)
-        time.sleep(1)
-        _dialoguer(ws, "Cast.startTabMirroring", {"sinkName": nom_ecran}, identifiant=4)
+        disponibles = _sinks(cdp)
+        if not disponibles:
+            return "Le navigateur ne voit aucun ecran."
+        choix = _choisir_ecran(ecran, disponibles)
+        if choix is None:
+            noms = ", ".join(n for n, _ in disponibles)
+            return f"Je ne trouve pas l ecran {ecran}. Disponibles : {noms}."
+        nom_ecran = choix[0]
 
-        erreurs = []
-        t0 = time.time()
-        while time.time() - t0 < 12:
-            try:
-                ws.settimeout(2)
-                msg = json.loads(ws.recv())
-            except Exception:
-                continue
-            if msg.get("method") == "Cast.issueUpdated":
-                erreurs.append(msg["params"].get("issueMessage", ""))
-            if msg.get("id") == 4:
-                if "error" in msg:
-                    return f"Diffusion refusee : {msg['error'].get('message', '')[:70]}"
-                break
-        if erreurs:
-            return f"Diffusion signalee en erreur : {erreurs[0][:70]}"
+        cdp.demander("Cast.setSinkToUse", {"sinkName": nom_ecran})
+        time.sleep(1)
+        reponse = cdp.demander("Cast.startTabMirroring", {"sinkName": nom_ecran},
+                               attente=25)
+        if "error" in reponse:
+            return f"Diffusion refusee : {reponse['error'].get('message','')[:70]}"
+        return f"Page diffusee sur {nom_ecran}."
     except Exception as e:
         return f"Echec : {str(e)[:80]}"
     finally:
-        if ws:
-            try:
-                ws.close()
-            except Exception:
-                pass
-
-    return f"Page diffusee sur {nom_ecran}."
+        cdp.fermer()
 
 
 @outil(
     nom="arreter_diffusion_page",
-    description="Arrete la diffusion lancee depuis le navigateur de Jarvis.",
+    description="Arrete la recopie d'onglet lancee depuis le navigateur de Jarvis.",
     parametres={"type": "object", "properties": {}, "required": []},
 )
 def arreter_diffusion_page() -> str:
     if not _repond():
         return "Le navigateur de Jarvis ne tourne pas."
-    ws = None
+    cdp = _brancher()
+    if cdp is None:
+        return "Le navigateur ne repond pas."
     try:
-        ws = _connexion()
-        if ws is None:
-            return "Le navigateur ne repond pas."
-        _dialoguer(ws, "Cast.stopCasting", {"sinkName": ""}, identifiant=1)
-        time.sleep(1)
+        cdp.demander("Cast.stopCasting", {"sinkName": ""})
         return "Diffusion arretee."
-    except Exception as e:
-        return f"Echec : {str(e)[:70]}"
     finally:
-        if ws:
-            try:
-                ws.close()
-            except Exception:
-                pass
+        cdp.fermer()

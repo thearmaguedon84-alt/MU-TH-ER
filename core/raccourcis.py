@@ -976,8 +976,14 @@ def _diffuser_service(t):
     url = (info["url"].format(q=__import__("urllib.parse", fromlist=["quote"]).quote(titre))
            if titre else info["url"].split("/search")[0].split("/recherche")[0])
 
-    from tools.navigateur_cast import diffuser_page
-    return diffuser_page(url=url, ecran=ecran)
+    # On demande d abord a la page de diffuser elle-meme : la tele lance alors
+    # l application du service. La recopie d onglet ne sert que si la page ne
+    # sait pas le faire, car elle degrade l image et se heurte aux protections.
+    from tools.navigateur_cast import caster_service, diffuser_page
+    reponse = caster_service(url=url, ecran=ecran)
+    if reponse.startswith("Le lecteur n est pas pret"):
+        return diffuser_page(url=url, ecran=ecran)
+    return reponse
 
 
 # --------------------------------------------------------------- ton MU-TH-UR
