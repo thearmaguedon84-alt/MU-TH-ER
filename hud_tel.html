@@ -54,6 +54,12 @@
   #micro { background: var(--bord); color: var(--texte); font-size: 19px; padding: 0 15px; }
   #micro.actif { background: var(--rouge); color: #fff; }
 
+  #diag { padding: 8px 14px; font-size: 11.5px; line-height: 1.6;
+    color: var(--faible); border-top: 1px solid var(--bord); }
+  #diag b { color: var(--texte); font-weight: 500; }
+  #diag .ko { color: var(--rouge); }
+  #diag .ok { color: var(--ok); }
+
   #raccourcis { display: flex; gap: 7px; overflow-x: auto; padding: 9px 14px 2px;
     scrollbar-width: none; }
   #raccourcis::-webkit-scrollbar { display: none; }
@@ -71,6 +77,8 @@
 </header>
 
 <div id="journal"></div>
+
+<div id="diag"></div>
 
 <div id="raccourcis"></div>
 
@@ -139,9 +147,25 @@ $("#envoi").addEventListener("submit", (e) => {
 
 const Reco = window.SpeechRecognition || window.webkitSpeechRecognition;
 const micro = $("#micro");
+const diag = $("#diag");
+
+/* Diagnostic : les navigateurs refusent le micro sans dire pourquoi.
+   On affiche les trois conditions qui comptent, et l erreur exacte. */
+function etatDiag(message, classe) {
+  const sur = window.isSecureContext;
+  const media = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  diag.innerHTML =
+    `contexte sécurisé <b class="${sur ? "ok" : "ko"}">${sur ? "oui" : "non"}</b> · ` +
+    `reconnaissance <b class="${Reco ? "ok" : "ko"}">${Reco ? "disponible" : "absente"}</b> · ` +
+    `micro <b class="${media ? "ok" : "ko"}">${media ? "accessible" : "bloqué"}</b>` +
+    (message ? `<br><span class="${classe || ""}">${message}</span>` : "");
+}
+etatDiag();
 
 if (!Reco) {
-  micro.style.display = "none";     // navigateur sans reconnaissance vocale
+  micro.style.display = "none";
+  etatDiag("Ce navigateur n a pas de reconnaissance vocale. " +
+           "Sur iPhone, Safari ne la propose pas : essaie Chrome.", "ko");
 } else {
   const reco = new Reco();
   reco.lang = "fr-FR";
@@ -149,14 +173,40 @@ if (!Reco) {
   reco.maxAlternatives = 1;
   let ecoute = false;
 
-  micro.addEventListener("click", () => {
+  micro.addEventListener("click", async () => {
     if (ecoute) { reco.stop(); return; }
-    try { reco.start(); } catch (e) { /* deja demarre */ }
+    // Demander l acces au micro d abord donne un message d erreur clair
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const f = await navigator.mediaDevices.getUserMedia({ audio: true });
+        f.getTracks().forEach((t) => t.stop());
+      }
+    } catch (e) {
+      etatDiag("Micro refusé : " + e.name + ". " +
+               "Vérifie l autorisation du site dans le navigateur.", "ko");
+      return;
+    }
+    try { reco.start(); } catch (e) { etatDiag("Démarrage impossible : " + e.message, "ko"); }
   });
 
-  reco.onstart = () => { ecoute = true; micro.classList.add("actif"); };
+  reco.onstart = () => { ecoute = true; micro.classList.add("actif");
+                         etatDiag("J écoute…", "ok"); };
   reco.onend = () => { ecoute = false; micro.classList.remove("actif"); };
-  reco.onerror = () => { ecoute = false; micro.classList.remove("actif"); };
+  reco.onerror = (ev) => {
+    ecoute = false;
+    micro.classList.remove("actif");
+    const causes = {
+      "not-allowed": "Permission refusée. Autorise le micro pour ce site " +
+                     "dans les réglages du navigateur.",
+      "service-not-allowed": "Le navigateur refuse la reconnaissance ici, " +
+                             "souvent à cause du certificat auto-signé.",
+      "no-speech": "Rien entendu.",
+      "audio-capture": "Aucun micro accessible.",
+      "network": "La reconnaissance a besoin d internet et ne répond pas.",
+      "aborted": "Dictée interrompue.",
+    };
+    etatDiag("Erreur : " + (causes[ev.error] || ev.error), "ko");
+  };
   reco.onresult = (ev) => {
     const phrase = ev.results[0][0].transcript;
     envoyer(phrase);

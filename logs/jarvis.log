@@ -232,3 +232,51 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-15 12:28:43  INFO  outil changer_personnalite args={'mode': 'jarvis_sarcastique'} -> Mode Jarvis active.
 2026-08-15 12:28:46  INFO  outil changer_personnalite args={'mode': 'jarvis'} -> Mode Jarvis active.
 2026-08-15 12:28:50  INFO  outil changer_personnalite args={'mode': 'jarvis'} -> Mode Jarvis active.
+2026-08-15 12:36:04  INFO  provider LLM : Ollama (mode local)
+2026-08-15 12:36:04  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-15 12:39:44  INFO  outil plex_jouer args={'titre': 'Minion and Monster', 'ecran': 'TV en bas'} -> Minions & Monsters (2026) est dans Plex mais son disque n est pas connecte.
+2026-08-15 12:41:11  INFO  outil plex_jouer args={'titre': 'Minions and Monsters', 'ecran': "TV d'en bas"} -> Minions (2015) sur Tv en bas.
+2026-08-15 12:41:15  INFO  outil plex_jouer args={'titre': 'Minions (2015)', 'ecran': 'Tv en bas'} -> Minions (2015) sur Tv en bas.
+2026-08-15 12:41:18  WARNING  appel d'outil repete a l'identique : ['plex_jouer']
+2026-08-15 15:35:25  INFO  outil plex_jouer args={'titre': 'alien leb8 em passager', 'ecran': 'chambre parentale'} -> Alien (1979) sur Chambre parents.
+2026-08-15 15:35:29  INFO  outil plex_jouer args={'titre': 'Alien (1979)', 'ecran': 'Chambre parents'} -> Alien (1979) sur Chambre parents.
+2026-08-15 15:35:32  WARNING  appel d'outil repete a l'identique : ['plex_jouer']
+2026-08-15 15:43:04  INFO  outil plex_jouer args={'titre': 'shining', 'ecran': 'chambre parent'} -> The Shining Version Integrale FRENCH sur Chambre parents.
+2026-08-15 15:43:09  INFO  outil plex_jouer args={'titre': 'The Shining Version Integrale FRENCH', 'ecran': 'Chambre parents'} -> The Shining Version Integrale FRENCH sur Chambre parents.
+2026-08-15 15:43:14  WARNING  appel d'outil repete a l'identique : ['plex_jouer']
+2026-08-15 15:46:13  INFO  outil plex_controle args={'action': 'avancer', 'ecran': ''} -> Commande impossible : Failed to execute seek 30.
+2026-08-15 15:46:53  INFO  outil plex_jouer args={'titre': 'shining', 'ecran': 'chambre parent'} -> The Shining Version Integrale FRENCH sur Chambre parents.
+2026-08-15 15:46:59  INFO  outil plex_jouer args={'titre': 'The Shining Version Integrale FRENCH', 'ecran': 'Chambre parents'} -> The Shining Version Integrale FRENCH sur Chambre parents.
+2026-08-15 15:47:01  INFO  outil spotify_jouer args={'recherche': 'The Shining Version Integrale FRENCH', 'appareil': 'Chambre parents'} -> Je ne peux pas viser Chambre parents : Spotify ne le voit pas. Demarre la diffusion depuis ton telephone, je prendrai le relais.
+2026-08-15 15:47:01  INFO  outil plex_chercher args={'titre': 'The Shining Version Integrale FRENCH'} -> J ai trouve The Shining Version Integrale FRENCH, film.
+2026-08-15 15:47:07  INFO  outil plex_chercher args={'titre': 'The Shining Version Integrale FRENCH'} -> J ai trouve The Shining Version Integrale FRENCH, film.
+2026-08-15 15:47:12  WARNING  appel d'outil repete a l'identique : ['plex_chercher']
+2026-08-15 15:48:04  INFO  outil ouvrir_application args={'nom': 'Orange Mécanique'} -> Je ne trouve pas 'Orange Mécanique'. Dis-moi son chemin complet ou ajoute-le avec la commande ajouter_app.
+2026-08-15 15:48:08  INFO  outil ouvrir_fichier args={'chemin': 'C:\\Users\\Utilisateur\\Musiques\\Orange Mécanique.mp3'} -> Ouverture tentée : C:\Users\Utilisateur\Musiques\Orange Mécanique.mp3
+2026-08-15 15:48:12  WARNING  appel d'outil repete a l'identique : ['ouvrir_fichier']
+2026-08-15 15:48:45  INFO  outil ouvrir_application args={'nom': 'Soth Park'} -> Je ne trouve pas 'Soth Park'. Dis-moi son chemin complet ou ajoute-le avec la commande ajouter_app.
+2026-08-15 15:48:49  INFO  outil ouvrir_fichier args={'chemin': 'C:\\Users\\Exemple\\Documents\\Soth Park'} -> Ouverture tentée : C:\Users\Exemple\Documents\Soth Park
+2026-08-15 15:48:53  WARNING  appel d'outil repete a l'identique : ['ouvrir_fichier']
+2026-08-15 15:49:33  INFO  outil stop_stream args={} -> En attente de la confirmation vocale de l'utilisateur.
+2026-08-15 15:51:16  INFO  outil plex_jouer args={'titre': 'Shining', 'ecran': 'chambre parents'} -> The Shining Version Integrale FRENCH sur Chambre parents.
+2026-08-15 15:51:21  INFO  outil plex_jouer args={'titre': 'The Shining Version Integrale FRENCH', 'ecran': 'Chambre parents'} -> The Shining Version Integrale FRENCH sur Chambre parents.
+2026-08-15 15:51:25  WARNING  appel d'outil repete a l'identique : ['plex_jouer']
+2026-08-15 15:52:12  INFO  outil plex_jouer args={'titre': 'dune', 'ecran': 'chambre parent'} -> Dune (1984) sur Chambre parents.
+2026-08-15 15:52:16  INFO  outil plex_jouer args={'ecran': 'Chambre parents', 'titre': 'Dune (1984)'} -> Dune (1984) sur Chambre parents.
+2026-08-15 15:52:19  WARNING  appel d'outil repete a l'identique : ['plex_jouer']
+2026-08-15 15:53:27  INFO  outil spotify_volume args={'pourcentage': 100} -> aucun appareil
+2026-08-15 15:53:31  INFO  outil spotify_appareils args={} -> Spotify ne voit aucun appareil.
+2026-08-15 15:53:35  WARNING  appel d'outil repete a l'identique : ['spotify_appareils']
+2026-08-15 15:55:03  INFO  outil plex_jouer args={'titre': 'orange mécanique'} -> Orange mécanique (1971) sur le PC.
+2026-08-15 15:55:09  INFO  outil plex_jouer args={'titre': 'Orange mécanique (1971)', 'ecran': ''} -> Orange mécanique (1971) sur le PC.
+2026-08-15 15:55:14  WARNING  appel d'outil repete a l'identique : ['plex_jouer']
+2026-08-15 15:55:51  INFO  outil switch_scene args={'nom': 'thearmaguedon'} -> OBS ne repond pas ([WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée). Verifie qu'OBS est lance et que le serveur WebSocket est active.
+2026-08-15 15:55:59  INFO  outil switch_scene args={'nom': 'passe sur la scene pause'} -> OBS ne repond pas ([WinError 10061] Aucune connexion n’a pu être établie car l’ordinateur cible l’a expressément refusée). Verifie qu'OBS est lance et que le serveur WebSocket est active.
+2026-08-15 15:56:02  WARNING  appel d'outil repete a l'identique : ['switch_scene']
+2026-08-15 15:56:11  INFO  outil ouvrir_application args={'nom': 'vlc'} -> vlc media lance.
+2026-08-15 15:56:15  INFO  outil ouvrir_application args={'nom': 'VLC'} -> vlc media lance.
+2026-08-15 15:56:18  WARNING  appel d'outil repete a l'identique : ['ouvrir_application']
+2026-08-15 16:00:42  INFO  outil ouvrir_application args={'nom': 'gmail'} -> Je ne trouve pas 'gmail'. Dis-moi son chemin complet ou ajoute-le avec la commande ajouter_app.
+2026-08-15 16:00:46  INFO  outil ouvrir_application args={'nom': 'google chrome'} -> google chrome lance.
+2026-08-15 16:00:49  INFO  outil ouvrir_application args={'nom': 'chrome'} -> google chrome lance.
+2026-08-15 16:00:52  WARNING  appel d'outil repete a l'identique : ['ouvrir_application']
