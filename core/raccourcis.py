@@ -886,6 +886,46 @@ def _youtube(t):
     return youtube_caster(recherche=cible, ecran=ecran)
 
 
+
+def _ecran_lecture(t):
+    """Pilote ce qui passe sur un ecran, quelle que soit l application.
+
+    CANAL+, YouTube, Plex et la plupart des recepteurs publient leur etat sur
+    l espace de noms standard de Google Cast : on ne peut pas demarrer leur
+    lecture, mais on peut la commander une fois lancee.
+    """
+    if not _contient(t, ECRANS):
+        return None
+
+    from tools.ecran_cast import ecran_controle, ecran_en_cours
+
+    # Quel ecran ?
+    ecran = ""
+    m = re.search(r"\bsur\s+(?:la|le|l|mon|ma)?\s*(.+)$", t)
+    if m:
+        propre = re.sub(r"\b(ecran|television|tele|tv|chromecast)\b", " ", m.group(1))
+        propre = _nettoyer_cible(propre)
+        from tools.cast import _choisir
+        if propre and _choisir(propre) is not None:
+            ecran = propre
+
+    if _contient(t, ("qu est ce qui passe", "on regarde quoi", "qu est ce qu on regarde",
+                     "c est quoi sur la", "qu y a t il sur")):
+        return ecran_en_cours(ecran=ecran)
+
+    for cles, action in (
+        (("mets en pause", "met en pause", "pause", "suspends"), "pause"),
+        (("reprends", "reprend", "relance la lecture", "continue"), "reprendre"),
+        (("avance", "saute", "passe devant"), "avancer"),
+        (("recule", "reviens en arriere", "retour arriere"), "reculer"),
+    ):
+        if _contient(t, cles):
+            m_sec = re.search(r"(\d{1,3})\s*(?:secondes?|s)\b", t)
+            sec = int(m_sec.group(1)) if m_sec else 30
+            return ecran_controle(action=action, ecran=ecran, secondes=sec)
+    return None
+
+
 # --------------------------------------------------------------- ton MU-TH-UR
 
 # Les raccourcis renvoient des phrases toutes faites, ecrites pour Jarvis.
@@ -933,8 +973,9 @@ def _au_ton_mere(reponse):
 # retombe naturellement sur _film.
 ETAPES = (_mode, _memoire, _arret_spotify, _cast, _spotify_appareil,
           _spotify, _youtube, _streaming, _plex, _plex_sans_ecran,
-          _musique_sans_source, _media, _courrier, _application,
-          _film, _heure, _meteo, _minuteur, _stats, _capture)
+          _musique_sans_source, _ecran_lecture, _media, _courrier,
+          _application, _film, _heure, _meteo, _minuteur, _stats,
+          _capture)
 
 
 def essayer(question):
