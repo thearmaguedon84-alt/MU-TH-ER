@@ -83,6 +83,17 @@ _SERVEUR = None
 # La boucle principale les consomme via commande_en_attente().
 _COMMANDES = queue.Queue(maxsize=20)
 
+# Enregistrements envoyes par un telephone, en attente de transcription.
+_AUDIOS = queue.Queue(maxsize=5)
+
+
+def audio_en_attente():
+    """Prochain enregistrement recu d'un telephone, ou None."""
+    try:
+        return _AUDIOS.get_nowait()
+    except queue.Empty:
+        return None
+
 
 def commande_en_attente():
     """Prochaine commande envoyee depuis une page, ou None."""
@@ -202,7 +213,10 @@ class _Poignee(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self):
-        """Reception d'une commande envoyee par la page mobile."""
+        """Reception d'une commande ou d'un enregistrement du telephone."""
+        if self.path == "/audio":
+            self._audio()
+            return
         if self.path != "/commande":
             self.send_error(404)
             return
@@ -231,6 +245,32 @@ class _Poignee(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(reponse)))
         self.end_headers()
         self.wfile.write(reponse)
+
+    def _audio(self):
+        """Recoit un enregistrement brut et le met en file pour Whisper."""
+        try:
+            taille = int(self.headers.get("Content-Length") or 0)
+            if taille <= 0 or taille > 8_000_000:
+                raise ValueError("taille invalide")
+            donnees = self.rfile.read(taille)
+            type_mime = self.headers.get("Content-Type", "audio/ogg")
+        except Exception:
+            self.send_response(400)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
+        try:
+            _AUDIOS.put_nowait((donnees, type_mime))
+            corps = b'{"ok":true}'
+        except queue.Full:
+            corps = b'{"ok":false}'
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(corps)))
+        self.end_headers()
+        self.wfile.write(corps)
 
     def _mode(self, voulu):
         """Bascule demandee par un bouton de l'interface."""

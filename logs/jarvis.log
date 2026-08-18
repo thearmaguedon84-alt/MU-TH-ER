@@ -280,3 +280,9 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-15 16:00:46  INFO  outil ouvrir_application args={'nom': 'google chrome'} -> google chrome lance.
 2026-08-15 16:00:49  INFO  outil ouvrir_application args={'nom': 'chrome'} -> google chrome lance.
 2026-08-15 16:00:52  WARNING  appel d'outil repete a l'identique : ['ouvrir_application']
+2026-08-18 19:22:41  INFO  provider LLM : Ollama (mode local)
+2026-08-18 19:22:41  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-18 19:29:35  INFO  provider LLM : Ollama (mode local)
+2026-08-18 19:29:35  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-18 19:36:18  INFO  provider LLM : Ollama (mode local)
+2026-08-18 19:36:18  INFO  provider TTS : EdgeTTS (mode local, moteur edge)

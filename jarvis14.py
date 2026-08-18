@@ -984,6 +984,39 @@ def repondre_a(question, historique, flux, reveil, whisper):
     return relancer
 
 
+def _transcrire_envoi(recu, whisper):
+    """Transcrit un enregistrement recu d'un telephone.
+
+    Le navigateur envoie de l'ogg/opus ou du webm ; faster-whisper sait les
+    decoder via PyAV, a condition de lui passer un fichier.
+    """
+    import os
+    import tempfile
+
+    donnees, type_mime = recu
+    suffixe = ".webm" if "webm" in (type_mime or "") else ".ogg"
+    chemin = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=suffixe, delete=False) as f:
+            f.write(donnees)
+            chemin = f.name
+        segments, _ = whisper.transcribe(
+            chemin, language="fr", beam_size=5,
+            initial_prompt=_contexte_whisper())
+        brut = " ".join(s.text for s in segments).strip()
+        print(f"  [telephone] {brut!r}")
+        return nettoyer(brut) or None
+    except Exception as e:
+        print(f"  [telephone] transcription impossible : {str(e)[:90]}")
+        return None
+    finally:
+        if chemin:
+            try:
+                os.unlink(chemin)
+            except Exception:
+                pass
+
+
 def _ouvrir_micro():
     """Ouvre le flux d'entree du micro et le demarre."""
     flux = sd.InputStream(
@@ -1137,10 +1170,22 @@ def main():
                 _hud("etat", "veille")
                 _hud("niveau", _niv_hud(bloc))
 
-                # Commande envoyee depuis un telephone : meme traitement
-                # que la voix, sans mot de reveil.
+                # Enregistrement envoye depuis un telephone : on le
+                # transcrit ici, avec le meme modele que la voix locale.
                 _texte_tel = None
                 if hud is not None:
+                    try:
+                        _recu = hud.audio_en_attente()
+                    except Exception:
+                        _recu = None
+                    if _recu:
+                        _texte_tel = _transcrire_envoi(_recu, whisper)
+                        if _texte_tel:
+                            _hud("dire_vous", _texte_tel)
+                        else:
+                            print("  [telephone] rien compris dans l enregistrement")
+
+                if _texte_tel is None and hud is not None:
                     try:
                         _texte_tel = hud.commande_en_attente()
                     except Exception:

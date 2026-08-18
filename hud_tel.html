@@ -143,75 +143,134 @@ $("#envoi").addEventListener("submit", (e) => {
   envoyer($("#texte").value);
 });
 
-/* ---------------------------------------------------- dictee */
+/* ---------------------------------------------------- dictee
+
+   Deux voies possibles :
+
+   - reconnaissance du navigateur, instantanee, quand elle existe (Chrome) ;
+   - sinon enregistrement envoye au PC, transcrit par son Whisper. Firefox
+     Android n'a pas de reconnaissance vocale mais enregistre parfaitement,
+     et le modele du PC est de toute facon plus fiable.
+*/
 
 const Reco = window.SpeechRecognition || window.webkitSpeechRecognition;
 const micro = $("#micro");
 const diag = $("#diag");
 
-/* Diagnostic : les navigateurs refusent le micro sans dire pourquoi.
-   On affiche les trois conditions qui comptent, et l erreur exacte. */
 function etatDiag(message, classe) {
   const sur = window.isSecureContext;
   const media = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  const voie = Reco ? "navigateur" : (media ? "PC" : "aucune");
   diag.innerHTML =
-    `contexte sécurisé <b class="${sur ? "ok" : "ko"}">${sur ? "oui" : "non"}</b> · ` +
-    `reconnaissance <b class="${Reco ? "ok" : "ko"}">${Reco ? "disponible" : "absente"}</b> · ` +
-    `micro <b class="${media ? "ok" : "ko"}">${media ? "accessible" : "bloqué"}</b>` +
+    `dictée par <b class="${voie === "aucune" ? "ko" : "ok"}">${voie}</b> · ` +
+    `sécurisé <b class="${sur ? "ok" : "ko"}">${sur ? "oui" : "non"}</b> · ` +
+    `micro <b class="${media ? "ok" : "ko"}">${media ? "ok" : "bloqué"}</b>` +
     (message ? `<br><span class="${classe || ""}">${message}</span>` : "");
 }
 etatDiag();
 
-if (!Reco) {
-  micro.style.display = "none";
-  etatDiag("Ce navigateur n a pas de reconnaissance vocale. " +
-           "Sur iPhone, Safari ne la propose pas : essaie Chrome.", "ko");
-} else {
+/* ------------------------------------------ voie 1 : le navigateur */
+
+let demarrerDictee = null;
+let arreterDictee = null;
+let enDictee = false;
+
+if (Reco) {
   const reco = new Reco();
   reco.lang = "fr-FR";
   reco.interimResults = false;
   reco.maxAlternatives = 1;
-  let ecoute = false;
 
-  micro.addEventListener("click", async () => {
-    if (ecoute) { reco.stop(); return; }
-    // Demander l acces au micro d abord donne un message d erreur clair
-    try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const f = await navigator.mediaDevices.getUserMedia({ audio: true });
-        f.getTracks().forEach((t) => t.stop());
-      }
-    } catch (e) {
-      etatDiag("Micro refusé : " + e.name + ". " +
-               "Vérifie l autorisation du site dans le navigateur.", "ko");
-      return;
-    }
-    try { reco.start(); } catch (e) { etatDiag("Démarrage impossible : " + e.message, "ko"); }
-  });
-
-  reco.onstart = () => { ecoute = true; micro.classList.add("actif");
-                         etatDiag("J écoute…", "ok"); };
-  reco.onend = () => { ecoute = false; micro.classList.remove("actif"); };
+  reco.onstart = () => { enDictee = true; micro.classList.add("actif");
+                         etatDiag("J'écoute…", "ok"); };
+  reco.onend = () => { enDictee = false; micro.classList.remove("actif"); };
   reco.onerror = (ev) => {
-    ecoute = false;
-    micro.classList.remove("actif");
-    const causes = {
-      "not-allowed": "Permission refusée. Autorise le micro pour ce site " +
-                     "dans les réglages du navigateur.",
-      "service-not-allowed": "Le navigateur refuse la reconnaissance ici, " +
-                             "souvent à cause du certificat auto-signé.",
-      "no-speech": "Rien entendu.",
-      "audio-capture": "Aucun micro accessible.",
-      "network": "La reconnaissance a besoin d internet et ne répond pas.",
-      "aborted": "Dictée interrompue.",
-    };
-    etatDiag("Erreur : " + (causes[ev.error] || ev.error), "ko");
+    enDictee = false; micro.classList.remove("actif");
+    etatDiag("Erreur : " + ev.error, "ko");
   };
-  reco.onresult = (ev) => {
-    const phrase = ev.results[0][0].transcript;
-    envoyer(phrase);
-  };
+  reco.onresult = (ev) => envoyer(ev.results[0][0].transcript);
+
+  demarrerDictee = () => reco.start();
+  arreterDictee = () => reco.stop();
 }
+
+/* ------------------------------------------ voie 2 : envoi au PC */
+
+let enregistreur = null;
+let morceaux = [];
+
+async function demarrerEnregistrement() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    etatDiag("Ce navigateur ne donne pas accès au micro.", "ko");
+    return;
+  }
+  let flux;
+  try {
+    flux = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    etatDiag("Micro refusé : " + e.name + ". Autorise le site dans les réglages.", "ko");
+    return;
+  }
+
+  // On laisse le navigateur choisir son format : le PC sait tout decoder.
+  try {
+    enregistreur = new MediaRecorder(flux);
+  } catch (e) {
+    etatDiag("Enregistrement impossible : " + e.message, "ko");
+    flux.getTracks().forEach((t) => t.stop());
+    return;
+  }
+
+  morceaux = [];
+  enregistreur.ondataavailable = (e) => { if (e.data.size) morceaux.push(e.data); };
+  enregistreur.onstop = async () => {
+    flux.getTracks().forEach((t) => t.stop());
+    enDictee = false;
+    micro.classList.remove("actif");
+    if (!morceaux.length) { etatDiag("Rien enregistré.", "ko"); return; }
+
+    const blob = new Blob(morceaux, { type: enregistreur.mimeType || "audio/ogg" });
+    if (blob.size < 1200) { etatDiag("Trop court.", "ko"); return; }
+
+    etatDiag("Transcription en cours…", "ok");
+    try {
+      await fetch("/audio", {
+        method: "POST",
+        headers: { "Content-Type": blob.type || "audio/ogg" },
+        body: blob,
+      });
+      etatDiag("Envoyé au PC.", "ok");
+    } catch (e) {
+      etatDiag("Envoi impossible : le PC ne répond pas.", "ko");
+    }
+  };
+
+  enregistreur.start();
+  enDictee = true;
+  micro.classList.add("actif");
+  etatDiag("Enregistrement… appuie à nouveau pour envoyer.", "ok");
+}
+
+function arreterEnregistrement() {
+  if (enregistreur && enregistreur.state !== "inactive") enregistreur.stop();
+}
+
+if (!Reco) {
+  demarrerDictee = demarrerEnregistrement;
+  arreterDictee = arreterEnregistrement;
+}
+
+/* ------------------------------------------ le bouton */
+
+micro.addEventListener("click", async () => {
+  if (enDictee) { arreterDictee && arreterDictee(); return; }
+  if (!demarrerDictee) {
+    etatDiag("Aucune dictée disponible sur ce navigateur.", "ko");
+    return;
+  }
+  try { await demarrerDictee(); }
+  catch (e) { etatDiag("Démarrage impossible : " + e.message, "ko"); }
+});
 
 /* ---------------------------------------------------- raccourcis */
 
