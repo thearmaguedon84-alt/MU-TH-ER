@@ -647,7 +647,20 @@ def _premier_ecran():
     """
     from tools.cast import _decouvrir
     appareils = _decouvrir()
-    return str(appareils[0].cast_info.friendly_name) if appareils else ""
+    if not appareils:
+        return ""
+    # « sur la tele » doit viser un televiseur, pas la premiere enceinte
+    # trouvee : l ordre de decouverte varie d une fois sur l autre.
+    def rang(c):
+        n = sans_accents(str(c.cast_info.friendly_name).lower())
+        if "tv" in n or "tele" in n:
+            return 0
+        if "salon" in n or "bas" in n:
+            return 1
+        if "projecteur" in n:
+            return 2
+        return 3
+    return str(sorted(appareils, key=rang)[0].cast_info.friendly_name)
 
 
 def _musical(t):
@@ -807,7 +820,8 @@ def _streaming(t):
     m = re.search(r"\b(?:cherche|recherche|trouve|mets|met|lance|regarde|"
                   r"regardez|ouvre|ouvrez|joue)\b\s+(.+?)"
                   r"\s+sur\s+(?:netflix|net flix|prime video|prime|amazon prime|"
-                  r"disney plus|disney|youtube|you tube)\b", t)
+                  r"disney plus|disney|youtube|you tube|mycanal|my canal|"
+                  r"canal plus|canalplus|canal)\b", t)
     if m:
         titre = _nettoyer_cible(m.group(1))
         titre = re.sub(r"^(?:le |la |les |l )?(?:film|serie|episode)\s+", "", titre)
@@ -819,6 +833,57 @@ def _streaming(t):
     if re.search(r"\b(?:ouvre|ouvrez|lance|lancez|demarre|affiche)\b", t):
         return streaming_chercher(titre="", plateforme=plateforme)
     return None
+
+
+
+def _youtube(t):
+    """« mets telle video sur YouTube sur la tele ».
+
+    YouTube est la seule grande plateforme dont le recepteur Chromecast se
+    laisse piloter : on peut donc reellement lancer une video, pas seulement
+    ouvrir une page de recherche.
+    """
+    if not re.search(r"\byou ?tube\b", t):
+        return None
+
+    from tools.youtube import youtube_caster
+
+    m = re.search(r"\b(?:mets|met|mettez|joue|jouez|lance|lancez|passe|passez|"
+                  r"regarde|regardez|montre|cherche|ecoute|ecoutez)\b"
+                  r"\s+(?:moi\s+)?(?:(?:la|le|les|l|un|une|du|de la)\s+)?(.+)", t)
+    if not m:
+        return None
+    reste = m.group(1)
+
+    # Destination eventuelle, avant de retirer le mot « youtube »
+    ecran = ""
+    # « ... sur YouTube sur la tele » : c est le DERNIER « sur » qui designe
+    # l ecran ; le premier nomme la plateforme.
+    m_ecran = None
+    for trouve in re.finditer(r"\bsur\s+(?:la|le|l|mon|ma)?\s*([^,]+)$", reste):
+        m_ecran = trouve
+    for trouve in re.finditer(r"\bsur\s+(?:la|le|l|mon|ma)?\s*(.+?)(?=\s+sur\s+|$)", reste):
+        if not re.search(r"\byou ?tube\b", trouve.group(1)):
+            m_ecran = trouve
+    if m_ecran:
+        candidat = m_ecran.group(1)
+        if not re.search(r"\byou ?tube\b", candidat):
+            propre = re.sub(r"\b(ecran|television|tele|tv|chromecast)\b", " ", candidat)
+            propre = _nettoyer_cible(propre)
+            generique = re.search(r"\b(ecran|television|tele|tv|chromecast)\b", candidat)
+            from tools.cast import _choisir
+            if propre and _choisir(propre) is not None:
+                ecran, reste = propre, reste[:m_ecran.start()]
+            elif generique:
+                ecran, reste = _premier_ecran(), reste[:m_ecran.start()]
+
+    # On retire la mention de la plateforme
+    reste = re.sub(r"\b(?:sur|dans|via|depuis)\s+you ?tube\b", " ", reste)
+    reste = re.sub(r"\byou ?tube\b", " ", reste)
+    cible = _nettoyer_cible(reste)
+    if len(cible) < 2:
+        return None
+    return youtube_caster(recherche=cible, ecran=ecran)
 
 
 # --------------------------------------------------------------- ton MU-TH-UR
@@ -867,7 +932,7 @@ def _au_ton_mere(reponse):
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
 ETAPES = (_mode, _memoire, _arret_spotify, _cast, _spotify_appareil,
-          _spotify, _streaming, _plex, _plex_sans_ecran,
+          _spotify, _youtube, _streaming, _plex, _plex_sans_ecran,
           _musique_sans_source, _media, _courrier, _application,
           _film, _heure, _meteo, _minuteur, _stats, _capture)
 

@@ -31,6 +31,11 @@ PLATEFORMES = {
         "url": "https://www.disneyplus.com/search?q={q}",
         "alias": ("disney", "disney plus", "disney+"),
     },
+    "canal": {
+        "nom": "myCANAL",
+        "url": "https://www.canalplus.com/recherche/?q={q}",
+        "alias": ("mycanal", "my canal", "canal plus", "canal+", "canalplus"),
+    },
     "youtube": {
         "nom": "YouTube",
         "url": "https://www.youtube.com/results?search_query={q}",
@@ -67,10 +72,11 @@ def reconnaitre(texte):
     },
 )
 def streaming_chercher(titre: str, plateforme: str = "netflix") -> str:
-    cle = reconnaitre(plateforme) or ("netflix" if not plateforme else None)
-    if cle is None:
-        cle = reconnaitre(plateforme) or "netflix"
-    info = PLATEFORMES.get(cle) or PLATEFORMES["netflix"]
+    # « canal » est une clef, pas un alias : sans ce test, une clef valide
+    # repassait par la reconnaissance d alias et retombait sur Netflix.
+    p = (plateforme or "").strip().lower()
+    cle = p if p in PLATEFORMES else (reconnaitre(p) or "netflix")
+    info = PLATEFORMES[cle]
 
     titre = (titre or "").strip()
     if not titre:
