@@ -986,6 +986,63 @@ def _diffuser_service(t):
     return reponse
 
 
+
+# Mots qui designent la television en direct plutot qu un fichier ou un morceau.
+DIRECT = ("chaine", "chaines", "direct", "la tele", "television", "canal",
+          "mycanal", "my canal", "tnt")
+
+
+def _chaine_tv(t):
+    """« mets Arte sur la tele du bas » : chaine myCANAL, jusqu a l ecran.
+
+    Une chaine se reconnait a son nom, pas a une recherche floue : on exige
+    donc une correspondance nette, et le contexte d une television.
+    """
+    if not re.search(r"\b(?:mets|met|mettez|mettre|lance|lancez|lancer|passe|"
+                     r"passez|bascule|regarde|regardez|zappe|balance)\b", t):
+        return None
+
+    ecran_demande = _contient(t, ECRANS)
+    if not ecran_demande and not any(d in t for d in DIRECT):
+        return None
+
+    # Ce qui suit le verbe, avant la destination.
+    m = re.search(r"\b(?:mets|met|mettez|mettre|lance|lancez|lancer|passe|"
+                  r"passez|bascule|regarde|regardez|zappe|balance)\b"
+                  r"\s+(?:moi\s+)?(?:sur\s+)?(.+)", t)
+    if not m:
+        return None
+    cible = m.group(1)
+    cible = re.split(r"\bsur\b", cible)[0]
+    cible = re.sub(r"^(?:la |le |les |l )?(?:chaine|chaines)\s+", "", cible)
+    cible = _nettoyer_cible(cible)
+    if not cible or len(cible) < 2:
+        return None
+
+    from tools.canal import chercher, canal_chaine, _note
+    trouvee = chercher(cible)
+    if trouvee is None:
+        return None
+    # Sans contexte explicite de television, on n accepte qu un nom exact :
+    # sinon un titre de film finirait sur une chaine au nom voisin.
+    exigence = 0.75 if any(d in t for d in DIRECT) else 0.93
+    if _note(cible, trouvee["nom"]) < exigence:
+        return None
+
+    ecran = ""
+    if ecran_demande:
+        m_ecran = re.search(r"\bsur\s+(?:la|le|l|mon|ma)?\s*([^,]+)$", t)
+        propre = ""
+        if m_ecran:
+            propre = re.sub(r"\b(ecran|television|tele|tv|chromecast)\b", " ",
+                            m_ecran.group(1))
+            propre = _nettoyer_cible(propre)
+        from tools.cast import _choisir
+        ecran = propre if (propre and _choisir(propre) is not None) else _premier_ecran()
+
+    return canal_chaine(chaine=trouvee["nom"], ecran=ecran)
+
+
 # --------------------------------------------------------------- ton MU-TH-UR
 
 # Les raccourcis renvoient des phrases toutes faites, ecrites pour Jarvis.
@@ -1032,10 +1089,10 @@ def _au_ton_mere(reponse):
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
 ETAPES = (_mode, _memoire, _arret_spotify, _cast, _spotify_appareil,
-          _spotify, _youtube, _diffuser_service, _streaming, _plex,
-          _plex_sans_ecran, _musique_sans_source, _ecran_lecture,
-          _media, _courrier, _application, _film, _heure, _meteo,
-          _minuteur, _stats, _capture)
+          _spotify, _youtube, _diffuser_service, _chaine_tv,
+          _streaming, _plex, _plex_sans_ecran, _musique_sans_source,
+          _ecran_lecture, _media, _courrier, _application, _film,
+          _heure, _meteo, _minuteur, _stats, _capture)
 
 
 def essayer(question):

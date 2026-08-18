@@ -9,3 +9,5 @@ hud_cert.pem
 .chrome_jarvis/
 
 recettes/
+
+.cache_canal.json
