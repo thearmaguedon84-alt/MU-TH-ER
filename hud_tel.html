@@ -160,7 +160,7 @@ const diag = $("#diag");
 function etatDiag(message, classe) {
   const sur = window.isSecureContext;
   const media = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-  const voie = Reco ? "navigateur" : (media ? "PC" : "aucune");
+  const voie = media ? "PC (Whisper)" : "aucune";
   diag.innerHTML =
     `dictée par <b class="${voie === "aucune" ? "ko" : "ok"}">${voie}</b> · ` +
     `sécurisé <b class="${sur ? "ok" : "ko"}">${sur ? "oui" : "non"}</b> · ` +
@@ -175,7 +175,7 @@ let demarrerDictee = null;
 let arreterDictee = null;
 let enDictee = false;
 
-if (Reco) {
+if (false && Reco) {          // conserve pour reference, non utilise
   const reco = new Reco();
   reco.lang = "fr-FR";
   reco.interimResults = false;
@@ -255,10 +255,12 @@ function arreterEnregistrement() {
   if (enregistreur && enregistreur.state !== "inactive") enregistreur.stop();
 }
 
-if (!Reco) {
-  demarrerDictee = demarrerEnregistrement;
-  arreterDictee = arreterEnregistrement;
-}
+/* On utilise l enregistrement PARTOUT, meme quand le navigateur propose sa
+   propre reconnaissance : Chrome la refuse sur un certificat auto-signe, et
+   le Whisper du PC transcrit de toute facon mieux. Une seule voie, donc un
+   seul comportement a maintenir. */
+demarrerDictee = demarrerEnregistrement;
+arreterDictee = arreterEnregistrement;
 
 /* ------------------------------------------ le bouton */
 

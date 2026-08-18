@@ -297,3 +297,4 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-18 19:51:44  INFO  outil spotify_jouer args={'recherche': 'Out of Time Man, de Mano Negra', 'appareil': ''} -> Je lance Mano Negra.
 2026-08-18 19:51:55  INFO  outil ouvrir_application args={'nom': 'Mano Negra'} -> Je ne trouve pas 'Mano Negra'. Dis-moi son chemin complet ou ajoute-le avec la commande ajouter_app.
 2026-08-18 19:51:59  INFO  outil ouvrir_fichier args={'chemin': "C:\\Musique\\Mano Negra - L'Album Completo.mp3"} -> Ouverture tentée : C:\Musique\Mano Negra - L'Album Completo.mp3
+2026-08-18 19:52:03  WARNING  appel d'outil repete a l'identique : ['ouvrir_fichier']
