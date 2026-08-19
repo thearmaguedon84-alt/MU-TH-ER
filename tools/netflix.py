@@ -105,6 +105,44 @@ def _contexte_cast(cdp):
     return None
 
 
+
+def _aller_au_lecteur(cdp, ident, patience=40):
+    """Amene la page sur un lecteur qui joue vraiment.
+
+    Renvoie True si une video est en cours, False sinon.
+    """
+    cdp.demander("Page.navigate", {"url": f"https://www.netflix.com/watch/{ident}"})
+    time.sleep(10)
+    franchir_portail(cdp)
+
+    # Redirige vers la fiche : c'est une serie, il faut choisir un episode.
+    ou = cdp.evaluer("location.pathname", attente=12) or ""
+    if "/title/" in ou:
+        lien = cdp.evaluer(
+            "(() => {"
+            " const a = [...document.querySelectorAll('a[href*=/watch/]')]"
+            "   .find(x => !/bande-annonce|trailer/i.test("
+            "        (x.getAttribute('aria-label') || x.textContent || '')));"
+            " return a ? a.getAttribute('href') : null;"
+            "})()".replace("'", Q), attente=20)
+        if not lien:
+            return False
+        url = lien if lien.startswith("http") else "https://www.netflix.com" + lien
+        cdp.demander("Page.navigate", {"url": url})
+        time.sleep(10)
+
+    # Attendre un flux reel : sans cela la television resterait a charger.
+    debut = time.time()
+    while time.time() - debut < patience:
+        etat = cdp.evaluer(
+            "(() => { const v = document.getElementsByTagName('video')[0];"
+            " return v ? (v.readyState >= 3 && v.currentTime > 0) : false; })()"
+            .replace("'", Q), attente=12)
+        if etat is True:
+            return True
+        time.sleep(4)
+    return False
+
 @outil(
     nom="netflix_profil",
     description=(
@@ -157,13 +195,23 @@ def netflix_caster(ecran: str, titre_id: str = "") -> str:
         return "Le navigateur ne repond pas."
 
     try:
-        url = f"https://www.netflix.com/watch/{titre_id.strip()}" if titre_id.strip() else ACCUEIL
-        etat = _preparer(cdp, url)
-        if etat == "portail toujours la":
-            nom = _profil_voulu()
-            precision = f" Je cherchais le profil {nom}." if nom else ""
-            return ("Netflix me bloque sur l ecran des profils." + precision +
-                    " Dis-moi quel profil prendre.")
+        if titre_id.strip():
+            etat = _preparer(cdp)
+            if etat == "portail toujours la":
+                nom = _profil_voulu()
+                precision = f" Je cherchais le profil {nom}." if nom else ""
+                return ("Netflix me bloque sur l ecran des profils." + precision +
+                        " Dis-moi quel profil prendre.")
+            if not _aller_au_lecteur(cdp, titre_id.strip()):
+                return ("Je n arrive pas a lancer la lecture de ce titre. "
+                        "Il n a peut-etre pas d episode disponible.")
+        else:
+            etat = _preparer(cdp)
+            if etat == "portail toujours la":
+                nom = _profil_voulu()
+                precision = f" Je cherchais le profil {nom}." if nom else ""
+                return ("Netflix me bloque sur l ecran des profils." + precision +
+                        " Dis-moi quel profil prendre.")
 
         contexte = _contexte_cast(cdp)
         if contexte is None:
