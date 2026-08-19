@@ -1060,6 +1060,53 @@ def _chaine_tv(t):
     return canal_chaine(chaine=trouvee["nom"], ecran=ecran)
 
 
+
+# Phrase envoyee par le bouton du telephone : l appui volontaire vaut accord.
+PHRASE_TELEPHONE = "extinction confirmee depuis le telephone"
+
+RE_ANNULE_ARRET = re.compile(
+    r"\b(?:annule|annuler|stoppe|arrete)\b[^.]{0,24}"
+    r"\b(?:extinction|arret|redemarrage|eteindre)\b"
+    r"|n[\u2019' ]?eteins? pas|laisse[\s-]*(?:le\s+)?(?:pc|ordi|ordinateur)?\s*allume"
+    r"|annule l arret")
+
+RE_VERROU = re.compile(
+    r"\b(?:verrouille|verrouiller|bloque)\b[^.]{0,18}"
+    r"\b(?:pc|ordi|ordinateur|session|machine)\b")
+
+
+def _extinction(t):
+    """Extinction, redemarrage et verrouillage de l ordinateur.
+
+    Place avant les arrets de lecture : « arrete l ordinateur » ne doit pas
+    finir en « arrete la musique ». On exige donc que la machine soit nommee.
+    """
+    from tools.arret_pc import (annuler_extinction, eteindre_pc,
+                                redemarrer_pc, verrouiller_pc)
+
+    if RE_ANNULE_ARRET.search(t):
+        return annuler_extinction()
+
+    if t.strip() == PHRASE_TELEPHONE:
+        return eteindre_pc()
+
+    if RE_VERROU.search(t):
+        return verrouiller_pc()
+
+    # Il faut a la fois une intention et la machine nommee : sans cela,
+    # « coupe tout » ou « arrete le film » viendraient ici par erreur.
+    machine = r"(?:pc|ordi|ordinateur|machine|tour|station)"
+    if re.search(r"\b(?:redemarre|redemarrer|reboot|relance)\b[^.]{0,18}\b"
+                 + machine + r"\b", t):
+        return redemarrer_pc()
+
+    if re.search(r"\b(?:eteins|eteindre|eteint|coupe|couper|arrete|arreter|"
+                 r"ferme|fermer)\b[^.]{0,18}\b" + machine + r"\b", t):
+        return eteindre_pc()
+
+    return None
+
+
 # --------------------------------------------------------------- ton MU-TH-UR
 
 # Les raccourcis renvoient des phrases toutes faites, ecrites pour Jarvis.
@@ -1105,7 +1152,8 @@ def _au_ton_mere(reponse):
 # L'ordre compte : une application CONNUE l'emporte (sinon "ouvre Prime Video"
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
-ETAPES = (_mode, _memoire, _arret_spotify, _cast, _spotify_appareil,
+ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
+          _spotify_appareil,
           _spotify, _youtube, _diffuser_service, _chaine_tv,
           _streaming, _plex, _plex_sans_ecran, _musique_sans_source,
           _ecran_lecture, _media, _courrier, _application, _film,
