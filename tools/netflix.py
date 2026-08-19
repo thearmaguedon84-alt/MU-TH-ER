@@ -132,12 +132,20 @@ def _aller_au_lecteur(cdp, ident, patience=40):
         time.sleep(10)
 
     # Attendre un flux reel : sans cela la television resterait a charger.
+    #
+    # Nuance apprise a l usage : quand une diffusion est deja en cours, Netflix
+    # arrete la lecture locale et la confie a la television. Exiger que la
+    # video avance sur le PC reviendrait alors a attendre pour rien.
     debut = time.time()
     while time.time() - debut < patience:
         etat = cdp.evaluer(
-            "(() => { const v = document.getElementsByTagName('video')[0];"
-            " return v ? (v.readyState >= 3 && v.currentTime > 0) : false; })()"
-            .replace("'", Q), attente=12)
+            "(() => {"
+            " const diffuse = !!(window.chrome && chrome.cast && chrome.cast.session);"
+            " const v = document.getElementsByTagName('video')[0];"
+            " if (!v) return false;"
+            " if (diffuse) return v.readyState >= 2;"
+            " return v.readyState >= 3 && v.currentTime > 0;"
+            "})()".replace("'", Q), attente=12)
         if etat is True:
             return True
         time.sleep(4)
@@ -251,7 +259,23 @@ def netflix_caster(ecran: str, titre_id: str = "") -> str:
             return f"Netflix a refuse la diffusion : {motif[:60]}"
 
         vise = str(resultat).split("ok:", 1)[1] or nom_ecran
+
+        # La session est ouverte, mais Netflix ne l a pas demandee : son
+        # emetteur l ignore et n envoie donc aucun titre, d ou une television
+        # qui charge sans fin. En rechargeant, son code se reinitialise,
+        # retrouve la session existante par son ecouteur, et transfere la
+        # lecture de lui-meme.
         if titre_id.strip():
+            cdp.demander("Page.reload")
+            time.sleep(14)
+            franchir_portail(cdp)
+            debut = time.time()
+            while time.time() - debut < 30:
+                if cdp.evaluer(
+                        "(() => { const v = document.getElementsByTagName(\'video\')[0];"
+                        " return v ? v.readyState >= 3 : false; })()", attente=10) is True:
+                    break
+                time.sleep(4)
             return f"Netflix est sur {vise}, sur le titre demande."
         return f"Netflix est sur {vise}."
     except Exception as e:
