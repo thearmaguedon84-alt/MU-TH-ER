@@ -975,6 +975,12 @@ def _diffuser_service(t):
     # Prime a sa propre chaine : recherche par adresse, lien de lecture, puis
     # recopie d ecran faute de diffusion native. Elle fait mieux que le
     # traitement generique.
+    # Netflix sait diffuser nativement, mais son portail de profils bloque
+    # tout tant qu il n est pas franchi : son module s en charge.
+    if plateforme == "netflix" and ecran:
+        from tools.netflix import netflix_caster
+        return netflix_caster(ecran=ecran)
+
     if plateforme == "primevideo" and titre:
         from tools.prime import prime_jouer
         return prime_jouer(titre=titre, ecran=ecran)
