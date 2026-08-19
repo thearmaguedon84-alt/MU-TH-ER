@@ -977,9 +977,13 @@ def _diffuser_service(t):
     # traitement generique.
     # Netflix sait diffuser nativement, mais son portail de profils bloque
     # tout tant qu il n est pas franchi : son module s en charge.
-    if plateforme == "netflix" and ecran:
-        from tools.netflix import netflix_caster
-        return netflix_caster(ecran=ecran)
+    if plateforme == "netflix":
+        if titre:
+            from tools.netflix import netflix_jouer
+            return netflix_jouer(titre=titre, ecran=ecran)
+        if ecran:
+            from tools.netflix import netflix_caster
+            return netflix_caster(ecran=ecran)
 
     if plateforme == "primevideo" and titre:
         from tools.prime import prime_jouer

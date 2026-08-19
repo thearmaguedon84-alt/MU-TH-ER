@@ -13,6 +13,8 @@ travers a presque chaque chargement, et rien ne s'affiche derriere. Toutes les
 tentatives de lecture du catalogue echouaient pour cette seule raison. On le
 franchit donc systematiquement avant d'agir, en choisissant un profil fixe.
 """
+import json
+import os
 import time
 
 from core.config import reglage
@@ -208,3 +210,169 @@ def netflix_caster(ecran: str, titre_id: str = "") -> str:
         return f"Echec : {str(e)[:80]}"
     finally:
         cdp.fermer()
+
+
+# --------------------------------------------------------------- recherche
+
+_GABARIT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "recettes", "netflix_recherche.json")
+
+
+def _note(demande, titre):
+    """Ressemblance entre le titre demande et un titre propose."""
+    from difflib import SequenceMatcher
+    d = " ".join(sans_accents((demande or "").lower()).split())
+    t = " ".join(sans_accents((titre or "").lower()).split())
+    if not d or not t:
+        return 0.0
+    if d == t:
+        return 1.0
+    if t.startswith(d):
+        # « Stranger Things » doit passer devant « Stranger Things : le making-of »
+        return 0.95 - min(0.2, (len(t) - len(d)) / 200.0)
+    if d in t:
+        return 0.8
+    return SequenceMatcher(None, d, t).ratio()
+
+
+def _resultats(reponse):
+    """Titres et identifiants contenus dans une reponse de recherche."""
+    sortie = []
+    try:
+        sections = reponse["data"]["page"]["sections"]["edges"]
+    except Exception:
+        return sortie
+    for s in sections:
+        noeud = s.get("node") or {}
+        # La galerie porte les vraies fiches ; l autre section n a que des
+        # suggestions de saisie, sans identifiant exploitable.
+        if noeud.get("__typename") != "PinotGallerySection":
+            continue
+        for e in (noeud.get("entities") or {}).get("edges") or []:
+            v = e.get("node") or {}
+            entite = v.get("unifiedEntity") or {}
+            ident = entite.get("videoId")
+            nom = v.get("displayString")
+            if ident and nom:
+                sortie.append((str(nom), str(ident), entite.get("__typename", "")))
+    return sortie
+
+
+def chercher(cdp, titre):
+    """Recherche Netflix, rejouee depuis la page : [(nom, id, genre)]."""
+    if not os.path.exists(_GABARIT):
+        return []
+    with open(_GABARIT, encoding="utf-8") as f:
+        gabarit = json.load(f)
+
+    corps = gabarit["corps"].replace("{{terme}}", (titre or "").strip())
+    script = (
+        "(async () => { try {"
+        "  const r = await fetch(URL, {method:'POST', credentials:'include',"
+        "    headers:{'Content-Type':'application/json'}, body: CORPS});"
+        "  if (!r.ok) return JSON.stringify({statut: r.status});"
+        "  return await r.text();"
+        "} catch (e) { return JSON.stringify({erreur: e.message}); } })()"
+    ).replace("'", Q).replace("URL", json.dumps(gabarit["url"])).replace(
+        "CORPS", json.dumps(corps))
+
+    brut = cdp.evaluer(script, attente=60)
+    if not brut:
+        return []
+    try:
+        return _resultats(json.loads(brut))
+    except Exception:
+        return []
+
+
+@outil(
+    nom="netflix_chercher",
+    description="Cherche un titre dans le catalogue Netflix et dit ce qui existe.",
+    parametres={
+        "type": "object",
+        "properties": {"titre": {"type": "string", "description": "Titre cherche."}},
+        "required": ["titre"],
+    },
+    lent=True,
+    phrase_attente="Je cherche sur Netflix.",
+)
+def netflix_chercher(titre: str) -> str:
+    if not demarrer_chrome():
+        return "Je n arrive pas a lancer le navigateur."
+    cdp = _brancher()
+    if cdp is None:
+        return "Le navigateur ne repond pas."
+    try:
+        if _preparer(cdp) == "portail toujours la":
+            return "Netflix me bloque sur l ecran des profils."
+        trouves = chercher(cdp, titre)
+    finally:
+        cdp.fermer()
+    if not trouves:
+        return f"Je ne trouve rien sur Netflix pour {titre}."
+    return "Sur Netflix : " + ", ".join(n for n, _, _ in trouves[:5]) + "."
+
+
+@outil(
+    nom="netflix_jouer",
+    description=(
+        "Cherche un titre sur Netflix et le lance, sur un ecran si un ecran "
+        "est demande. Pour 'mets Stranger Things sur Netflix sur la tele du "
+        "bas', 'lance tel film sur Netflix'."
+    ),
+    parametres={
+        "type": "object",
+        "properties": {
+            "titre": {"type": "string", "description": "Titre a lancer."},
+            "ecran": {"type": "string",
+                      "description": "Nom de l ecran. Vide = sur le PC."},
+        },
+        "required": ["titre"],
+    },
+    lent=True,
+    phrase_attente="Je lance sur Netflix.",
+)
+def netflix_jouer(titre: str, ecran: str = "") -> str:
+    if not demarrer_chrome():
+        return "Je n arrive pas a lancer le navigateur."
+    cdp = _brancher()
+    if cdp is None:
+        return "Le navigateur ne repond pas."
+
+    try:
+        if _preparer(cdp) == "portail toujours la":
+            return "Netflix me bloque sur l ecran des profils."
+
+        trouves = chercher(cdp, titre)
+        if not trouves:
+            return f"Je ne trouve rien sur Netflix pour {titre}."
+
+        notes = sorted(((_note(titre, n), n, i) for n, i, _ in trouves),
+                       reverse=True)
+        note, nom, ident = notes[0]
+        if note < 0.55:
+            autres = ", ".join(n for _, n, _ in notes[:3])
+            return f"Je ne suis pas sur du titre. Netflix propose : {autres}."
+    finally:
+        cdp.fermer()
+
+    if not ecran:
+        if not demarrer_chrome():
+            return "Je n arrive pas a lancer le navigateur."
+        cdp2 = _brancher()
+        if cdp2 is None:
+            return "Le navigateur ne repond pas."
+        try:
+            cdp2.demander("Page.navigate",
+                          {"url": f"https://www.netflix.com/watch/{ident}"})
+            time.sleep(3)
+            cdp2.demander("Page.bringToFront")
+        finally:
+            cdp2.fermer()
+        return f"{nom} sur le PC."
+
+    reponse = netflix_caster(ecran=ecran, titre_id=ident)
+    if reponse.startswith("Netflix est sur"):
+        return f"{nom} sur {reponse.split('Netflix est sur ', 1)[1].rstrip('.').split(',')[0]}."
+    return reponse

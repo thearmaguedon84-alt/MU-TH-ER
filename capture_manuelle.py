@@ -70,7 +70,8 @@ def main():
         trames.append({
             "methode": r.get("method", "GET"),
             "url": r.get("url"),
-            "corps": (r.get("postData") or "")[:2000],
+            # 2000 octets coupaient les requetes GraphQL avant leurs variables.
+            "corps": (r.get("postData") or "")[:200000],
             "type": p.get("type", ""),
             "statut": rep.get("status", 0),
             "mime": rep.get("mimeType", ""),
