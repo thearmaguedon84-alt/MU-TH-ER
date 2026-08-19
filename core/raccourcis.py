@@ -972,6 +972,13 @@ def _diffuser_service(t):
         if reconnaitre(titre) is not None or len(titre) < 2:
             titre = ""
 
+    # Prime a sa propre chaine : recherche par adresse, lien de lecture, puis
+    # recopie d ecran faute de diffusion native. Elle fait mieux que le
+    # traitement generique.
+    if plateforme == "primevideo" and titre:
+        from tools.prime import prime_jouer
+        return prime_jouer(titre=titre, ecran=ecran)
+
     info = PLATEFORMES[plateforme]
     url = (info["url"].format(q=__import__("urllib.parse", fromlist=["quote"]).quote(titre))
            if titre else info["url"].split("/search")[0].split("/recherche")[0])
