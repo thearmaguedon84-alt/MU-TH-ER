@@ -418,6 +418,13 @@ def _certificat():
     fois sur le telephone, puis la reconnaissance vocale fonctionnera.
     """
     dossier = Path(__file__).parent
+    # Un certificat delivre par le reseau prive vaut mieux que le notre : il
+    # est reconnu par les navigateurs, donc plus d avertissement de securite.
+    # On ne le fabrique pas ici ; s il est la, on s en sert.
+    vrai = dossier / "ts_cert.pem"
+    if vrai.exists() and (dossier / "ts_key.pem").exists():
+        return vrai
+
     cert = dossier / "hud_cert.pem"
     if cert.exists():
         # Une interface ajoutee depuis — un reseau prive, par exemple — ne

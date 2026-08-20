@@ -11,3 +11,6 @@ hud_cert.pem
 recettes/
 
 .cache_canal.json
+
+ts_cert.pem
+ts_key.pem
