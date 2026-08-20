@@ -23,6 +23,7 @@ voir le rendu sans le reste de l'assistant.
 
 import json
 import queue
+import socket
 import threading
 import time
 import webbrowser
@@ -359,6 +360,56 @@ class _Serveur(ThreadingHTTPServer):
         super().handle_error(request, client_address)
 
 
+
+def _adresses_locales():
+    """Adresses IPv4 de la machine, toutes interfaces confondues.
+
+    `getaddrinfo` sur le nom de la machine ne rend que les interfaces connues
+    du resolveur : une adresse de reseau prive, ajoutee apres coup, lui
+    echappe. On interroge donc les interfaces elles-memes, et on retombe sur
+    l ancienne methode si ce n est pas possible.
+    """
+    adresses = {"127.0.0.1"}
+    try:
+        import psutil
+        for cartes in psutil.net_if_addrs().values():
+            for c in cartes:
+                if getattr(c, "family", None) != socket.AF_INET or not c.address:
+                    continue
+                # Les adresses en 169.254 sont attribuees faute de mieux par
+                # des interfaces sans reseau, et changent a chaque demarrage :
+                # les retenir ferait refabriquer le certificat sans cesse.
+                if c.address.startswith("169.254."):
+                    continue
+                adresses.add(c.address)
+    except Exception:
+        try:
+            for info in socket.getaddrinfo(socket.gethostname(), None,
+                                           socket.AF_INET):
+                adresses.add(info[4][0])
+        except Exception:
+            pass
+    return adresses
+
+
+def _certificat_couvre(chemin, adresses):
+    """Le certificat existant vaut-il encore pour toutes ces adresses ?"""
+    try:
+        from cryptography import x509
+        c = x509.load_pem_x509_certificate(chemin.read_bytes())
+        fin = c.not_valid_after_utc
+        import datetime
+        if fin < datetime.datetime.now(datetime.timezone.utc):
+            return False
+        connues = {str(v) for v in
+                   c.extensions.get_extension_for_class(
+                       x509.SubjectAlternativeName).value.get_values_for_type(
+                           x509.IPAddress)}
+        return set(adresses) <= connues
+    except Exception:
+        # Dans le doute on refabrique : cela coute une seconde.
+        return False
+
 def _certificat():
     """Chemin d'un certificat auto-signe, cree au besoin.
 
@@ -369,7 +420,14 @@ def _certificat():
     dossier = Path(__file__).parent
     cert = dossier / "hud_cert.pem"
     if cert.exists():
-        return cert
+        # Une interface ajoutee depuis — un reseau prive, par exemple — ne
+        # figure pas dans un certificat deja ecrit : on le refait alors.
+        if _certificat_couvre(cert, _adresses_locales()):
+            return cert
+        try:
+            cert.unlink()
+        except Exception:
+            return cert
 
     try:
         import datetime
@@ -383,14 +441,7 @@ def _certificat():
     except Exception:
         return None
 
-    # Toutes les adresses de la machine, pour que le certificat soit valable
-    # quelle que soit celle utilisee par le telephone.
-    adresses = {"127.0.0.1"}
-    try:
-        for info in _s.getaddrinfo(_s.gethostname(), None, _s.AF_INET):
-            adresses.add(info[4][0])
-    except Exception:
-        pass
+    adresses = _adresses_locales()
 
     cle = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     nom = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Jarvis HUD")])

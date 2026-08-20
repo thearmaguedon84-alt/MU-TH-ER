@@ -330,3 +330,7 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-19 19:10:40  WARNING  appel d'outil repete a l'identique : ['get_system_stats']
 2026-08-19 19:13:09  INFO  outil ouvrir_application args={'nom': 'mycanal'} -> Je ne trouve pas 'mycanal'. Dis-moi son chemin complet ou ajoute-le avec la commande ajouter_app.
 2026-08-19 19:13:12  INFO  outil ouvrir_fichier args={'chemin': 'C:\\Users\\Utilisateur\\Documents\\monfichier.pdf'} -> Ouverture tentée : C:\Users\Utilisateur\Documents\monfichier.pdf
+2026-08-20 00:25:24  INFO  provider LLM : Ollama (mode local)
+2026-08-20 00:25:24  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-20 00:30:23  INFO  provider LLM : Ollama (mode local)
+2026-08-20 00:30:23  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
