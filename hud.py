@@ -361,6 +361,62 @@ class _Serveur(ThreadingHTTPServer):
 
 
 
+
+def _tailscale():
+    """Chemin de l'outil du reseau prive, ou None."""
+    for c in (r"C:\Program Files\Tailscale\tailscale.exe",
+              r"C:\Program Files (x86)\Tailscale\tailscale.exe"):
+        if Path(c).exists():
+            return c
+    return None
+
+
+def _jours_restants(chemin):
+    """Jours avant expiration d'un certificat, ou None s'il est illisible."""
+    try:
+        import datetime
+
+        from cryptography import x509
+        c = x509.load_pem_x509_certificate(Path(chemin).read_bytes())
+        reste = c.not_valid_after_utc - datetime.datetime.now(
+            datetime.timezone.utc)
+        return reste.days
+    except Exception:
+        return None
+
+
+def _renouveler_certificat_reseau(dossier):
+    """Redemande le certificat s'il approche de son terme.
+
+    Un echec n'est pas grave : l'ancien reste valable jusqu'a sa date, et le
+    certificat auto-signe prendrait le relais ensuite.
+    """
+    cert = dossier / "ts_cert.pem"
+    if not cert.exists():
+        return
+    jours = _jours_restants(cert)
+    if jours is None or jours > 15:
+        return
+
+    outil = _tailscale()
+    if outil is None:
+        return
+    try:
+        import json
+        import subprocess
+        etat = json.loads(subprocess.run(
+            [outil, "status", "--json"], capture_output=True, text=True,
+            timeout=30).stdout)
+        nom = (etat.get("Self") or {}).get("DNSName", "").rstrip(".")
+        if not nom:
+            return
+        subprocess.run([outil, "cert",
+                        "--cert-file", str(cert),
+                        "--key-file", str(dossier / "ts_key.pem"), nom],
+                       capture_output=True, timeout=120)
+    except Exception:
+        pass
+
 def _adresses_locales():
     """Adresses IPv4 de la machine, toutes interfaces confondues.
 
@@ -421,6 +477,7 @@ def _certificat():
     # Un certificat delivre par le reseau prive vaut mieux que le notre : il
     # est reconnu par les navigateurs, donc plus d avertissement de securite.
     # On ne le fabrique pas ici ; s il est la, on s en sert.
+    _renouveler_certificat_reseau(dossier)
     vrai = dossier / "ts_cert.pem"
     if vrai.exists() and (dossier / "ts_key.pem").exists():
         return vrai
@@ -514,7 +571,15 @@ def demarrer(ouvrir=True):
                     truststore = None
                 try:
                     contexte = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-                    contexte.load_cert_chain(certfile=str(cert))
+                    # Le notre porte cle et certificat dans un seul fichier ;
+                    # celui du reseau prive les separe. On fournit donc la cle
+                    # a part quand elle existe.
+                    cle = cert.parent / "ts_key.pem"
+                    if cert.name == "ts_cert.pem" and cle.exists():
+                        contexte.load_cert_chain(certfile=str(cert),
+                                                 keyfile=str(cle))
+                    else:
+                        contexte.load_cert_chain(certfile=str(cert))
                 finally:
                     if truststore is not None:
                         try:
