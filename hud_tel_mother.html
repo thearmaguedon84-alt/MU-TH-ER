@@ -110,6 +110,12 @@
   #specimen .bas { bottom: 4%; }
   #specimen canvas { position: absolute; left: 50%; top: 50%;
     transform: translate(-50%, -52%); width: 94vw; image-rendering: pixelated; }
+
+  /* Retour vers l interface Jarvis : meme place, couleur de l autre monde. */
+  #bascule { display: inline-flex; align-items: center; text-decoration: none;
+    background: transparent; color: #2ee0ff; border: 1px solid #17384c;
+    border-radius: 20px; font-size: 13px; padding: 7px 13px;
+    white-space: nowrap; font-family: "Courier New", monospace; }
 </style>
 </head>
 <body>
@@ -117,7 +123,7 @@
 <div id="rayures"></div>
 
 <div id="specimen">
-  <div class="haut">***** MU/TH/UR 9000 *****</div>
+  <div class="haut">***** MU/TH/UR 6000 *****</div>
   <canvas id="spec-toile" width="300" height="190"></canvas>
   <div class="bas">SUBJ: SPECIMEN 8   STATUS: SECURE
 RMKS: ORGANIC. ACID BLOOD.
@@ -137,6 +143,7 @@ RMKS: ORGANIC. ACID BLOOD.
 <div id="raccourcis"></div>
 
 <div style="display:flex; gap:8px; padding:4px 14px 0;">
+  <a href="/tel" id="bascule">JARVIS</a>
   <button type="button" id="arret">⏻ COUPER L ALIMENTATION</button>
 </div>
 

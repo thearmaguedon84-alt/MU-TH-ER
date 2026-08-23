@@ -92,6 +92,12 @@
     padding: 7px 13px; white-space: nowrap; transition: all .15s; }
   #arret.arme { background: var(--rouge); border-color: var(--rouge);
     color: #fff; font-weight: 500; }
+
+  /* Passage vers l autre interface : discret, mais toujours a portee. */
+  #bascule { display: inline-flex; align-items: center; text-decoration: none;
+    background: transparent; color: #35ff6a; border: 1px solid #12452a;
+    border-radius: 20px; font-size: 13px; padding: 7px 13px;
+    white-space: nowrap; font-family: "Courier New", monospace; }
 </style>
 </head>
 <body>
@@ -109,6 +115,7 @@
 <div id="raccourcis"></div>
 
 <div style="display:flex; gap:8px; padding:4px 14px 0;">
+  <a href="/tel/mother" id="bascule">MU-TH-UR</a>
   <button type="button" id="arret">⏻ Eteindre le PC</button>
 </div>
 
