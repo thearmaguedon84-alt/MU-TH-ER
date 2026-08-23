@@ -49,6 +49,7 @@ _FICHIER_HTML = Path(__file__).parent / "hud.html"
 # Elle consomme exactement le meme flux : rien d'autre ne change.
 _FICHIER_MOTHER = Path(__file__).parent / "hud_mother.html"
 # Page allegee pour telephone, servie sur /tel.
+_FICHIER_TEL_MOTHER = Path(__file__).parent / "hud_tel_mother.html"
 _FICHIER_TEL = Path(__file__).parent / "hud_tel.html"
 
 # Etats possibles, envoyes tels quels a la page.
@@ -194,10 +195,11 @@ def config(modele, stt):
 _ICONE = {}
 
 
-def _icone(taille=512):
+def _icone(taille=512, mother=False):
     """Icone de l'application, dessinee une fois puis gardee en memoire."""
-    if taille in _ICONE:
-        return _ICONE[taille]
+    clef = (taille, mother)
+    if clef in _ICONE:
+        return _ICONE[clef]
     try:
         import io
 
@@ -209,10 +211,13 @@ def _icone(taille=512):
     d = ImageDraw.Draw(image)
     c = taille / 2
     # Trois cercles concentriques, comme la pastille du HUD.
+    # MU-TH-UR se distingue au premier coup d oeil : vert phosphore contre
+    # cyan, faute de quoi les deux icones se confondent sur l ecran d accueil.
+    teinte = (53, 255, 106) if mother else (34, 211, 238)
     for rayon, couleur, epaisseur in (
-            (0.42, (34, 211, 238, 255), max(2, taille // 64)),
-            (0.30, (34, 211, 238, 130), max(2, taille // 96)),
-            (0.17, (34, 211, 238, 255), 0)):
+            (0.42, teinte + (255,), max(2, taille // 64)),
+            (0.30, teinte + (130,), max(2, taille // 96)),
+            (0.17, teinte + (255,), 0)):
         boite = [c - taille * rayon, c - taille * rayon,
                  c + taille * rayon, c + taille * rayon]
         if epaisseur:
@@ -222,8 +227,8 @@ def _icone(taille=512):
 
     tampon = io.BytesIO()
     image.save(tampon, format="PNG")
-    _ICONE[taille] = tampon.getvalue()
-    return _ICONE[taille]
+    _ICONE[clef] = tampon.getvalue()
+    return _ICONE[clef]
 
 
 _MANIFESTE = json.dumps({
@@ -242,6 +247,24 @@ _MANIFESTE = json.dumps({
          "purpose": "any maskable"},
         {"src": "/icone-512.png", "sizes": "512x512", "type": "image/png",
          "purpose": "any maskable"},
+    ],
+}, ensure_ascii=False)
+
+
+_MANIFESTE_MOTHER = json.dumps({
+    "name": "MU-TH-UR",
+    "short_name": "MU-TH-UR",
+    "start_url": "/tel/mother",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#030a06",
+    "theme_color": "#030a06",
+    "icons": [
+        {"src": "/icone-mother-192.png", "sizes": "192x192",
+         "type": "image/png", "purpose": "any maskable"},
+        {"src": "/icone-mother-512.png", "sizes": "512x512",
+         "type": "image/png", "purpose": "any maskable"},
     ],
 }, ensure_ascii=False)
 
@@ -270,6 +293,31 @@ class _Poignee(BaseHTTPRequestHandler):
             self._page(_FICHIER_MOTHER)
         elif self.path in ("/", "/hud.html", "/index.html"):
             self._page()
+        elif self.path in ("/tel/mother", "/telmother", "/mother/tel",
+                           "/maman/tel"):
+            self._page(_FICHIER_TEL_MOTHER)
+        elif self.path == "/specimen.json":
+            # Servi a part : les deux interfaces y puisent, aucune n en garde
+            # une copie.
+            try:
+                with open(Path(__file__).parent / "specimen_chemins.json",
+                          "rb") as f:
+                    self._brut(f.read(), "application/json")
+            except Exception:
+                self.send_error(404)
+        elif self.path == "/manifest-mother.webmanifest":
+            self._brut(_MANIFESTE_MOTHER.encode("utf-8"),
+                       "application/manifest+json")
+        elif self.path.startswith("/icone-mother-"):
+            try:
+                taille = int(self.path.split("-")[2].split(".")[0])
+            except Exception:
+                taille = 512
+            image = _icone(taille, mother=True)
+            if image is None:
+                self.send_error(404)
+            else:
+                self._brut(image, "image/png")
         elif self.path == "/manifest.webmanifest":
             self._brut(_MANIFESTE.encode("utf-8"), "application/manifest+json")
         elif self.path == "/sw.js":

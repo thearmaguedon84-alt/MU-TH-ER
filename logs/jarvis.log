@@ -369,3 +369,5 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-23 17:27:57  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
 2026-08-23 17:53:58  INFO  provider LLM : Ollama (mode local)
 2026-08-23 17:53:58  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-23 17:55:53  INFO  provider LLM : Ollama (mode local)
+2026-08-23 17:55:53  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
