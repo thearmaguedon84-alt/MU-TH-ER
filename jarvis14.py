@@ -208,10 +208,30 @@ def couper_parole():
             pass
 
 
+def _publier_voix(audio, frequence):
+    """Met la parole a disposition des interfaces, pour la diffusion.
+
+    Encodee en memoire : ecrire un fichier a chaque phrase serait inutile,
+    seule la derniere sert.
+    """
+    try:
+        import io
+        tampon = io.BytesIO()
+        with wave.open(tampon, "wb") as f:
+            f.setnchannels(1)
+            f.setsampwidth(2)
+            f.setframerate(int(frequence))
+            f.writeframes(audio.astype(np.int16).tobytes())
+        hud.publier_voix(tampon.getvalue())
+    except Exception:
+        pass
+
+
 def _jouer_audio(audio, frequence):
     """Joue un tableau int16 mono sur le haut-parleur, interruptible."""
     if _INTERRUPTION.is_set():
         return
+    _publier_voix(audio, frequence)
     sd.play(audio, samplerate=frequence, device=HAUT_PARLEUR)
     while not _INTERRUPTION.is_set():
         courant = sd.get_stream()

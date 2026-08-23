@@ -199,6 +199,12 @@
     transform: translate(-50%, -56%); width: min(80vw, 138vh);
     image-rendering: pixelated; }
 
+  #voix-ecran { position: fixed; right: 16px; bottom: 58px;
+    z-index: 45; cursor: pointer; font-size: 12px;
+    padding: 7px 12px; border: 1px solid #12452a;
+    color: #1d8f47; background: rgba(0,0,0,.6); }
+  #voix-ecran.actif { color: #35ff6a; border-color: #35ff6a; }
+
   #son {
     position: fixed; z-index: 150; right: 26px; bottom: 62px;
     border: 1px solid var(--vert-faible); background: rgba(0,0,0,.8);
@@ -314,6 +320,7 @@ RMKS: ORGANIC. CYCLIC STRUCTURE.
 
 </div>
 
+<div id="voix-ecran" title="Jouer la voix dans la page, pour qu elle parte avec la diffusion">VOIX SUR LE PC</div>
 <div id="son">&#9654; ACTIVER LE SON</div>
 
 <div id="scanlines"></div>
@@ -687,6 +694,8 @@ function defilerFile() {
 /* ---------------------------------------------------- evenements du flux */
 
 function appliquer(ev) {
+  // La parole arrive par le meme canal que le reste.
+  if (ev.t === "voix") { jouerVoix(ev.url); return; }
   switch (ev.t) {
     case "etat":
       S.etat = ev.v;
@@ -800,6 +809,34 @@ document.addEventListener("keydown", (e) => {
 });
 
 amorcer();
+
+/* ---------------------------------------------------- voix sur l ecran
+
+   La voix est prononcee par le PC, hors du navigateur : une diffusion
+   d onglet ne la transporte donc pas. En la jouant ici, elle part avec
+   l image. Le choix reste a l utilisateur : devant le PC, ce serait un
+   doublon inutile.
+*/
+
+let voixIci = false;
+const boutonVoix = document.getElementById("voix-ecran");
+
+if (boutonVoix) {
+  boutonVoix.addEventListener("click", () => {
+    voixIci = !voixIci;
+    boutonVoix.classList.toggle("actif", voixIci);
+    boutonVoix.textContent = voixIci ? "VOIX SUR L ECRAN" : "VOIX SUR LE PC";
+  });
+}
+
+function jouerVoix(url) {
+  if (!voixIci) return;
+  try {
+    const a = new Audio(url);
+    a.play().catch(() => {});
+  } catch (e) { /* le navigateur peut refuser sans geste prealable */ }
+}
+
 </script>
 </body>
 </html>

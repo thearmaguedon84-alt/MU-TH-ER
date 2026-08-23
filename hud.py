@@ -147,6 +147,25 @@ def niveau(valeur):
     _diffuser({"t": "niveau", "v": v})
 
 
+
+# Derniere parole prononcee, mise a disposition des interfaces. Une seule est
+# gardee : ce qui vient d'etre dit interesse, ce qui l'a ete avant, non.
+_VOIX = {"numero": 0, "donnees": None}
+
+
+def publier_voix(donnees_wav):
+    """Signale une parole aux interfaces, qui pourront la jouer.
+
+    Sert a la diffusion : la recopie d'un onglet ne capte que l'audio de la
+    page, pas celui du systeme. En faisant jouer la voix par la page, elle
+    arrive sur l'ecran distant.
+    """
+    if not donnees_wav:
+        return
+    _VOIX["numero"] += 1
+    _VOIX["donnees"] = donnees_wav
+    _diffuser({"t": "voix", "url": "/voix.wav?v=%d" % _VOIX["numero"]})
+
 def dire_vous(texte):
     """Ajoute une ligne de transcription cote utilisateur."""
     evenement = {"t": "vous", "texte": str(texte)}
@@ -296,6 +315,11 @@ class _Poignee(BaseHTTPRequestHandler):
         elif self.path in ("/tel/mother", "/telmother", "/mother/tel",
                            "/maman/tel"):
             self._page(_FICHIER_TEL_MOTHER)
+        elif self.path.startswith("/voix.wav"):
+            if _VOIX["donnees"]:
+                self._brut(_VOIX["donnees"], "audio/wav")
+            else:
+                self.send_error(404)
         elif self.path == "/specimen.json":
             # Servi a part : les deux interfaces y puisent, aucune n en garde
             # une copie.
