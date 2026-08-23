@@ -45,6 +45,56 @@ _VIDE = re.compile(
     r"consultez|site officiel|abonnez|en direct sur|toutes les infos)\b")
 
 
+# Mots trop courants pour distinguer un sujet d'un autre.
+_OUTILS_LANGUE = {
+    "le", "la", "les", "un", "une", "des", "du", "de", "et", "ou", "a", "au",
+    "aux", "en", "dans", "sur", "pour", "par", "avec", "sans", "ce", "cet",
+    "cette", "est", "sont", "quel", "quelle", "quels", "quelles", "qui", "que",
+    "quoi", "dernier", "derniere", "dernieres", "derniers", "internet", "web",
+    "cherche", "recherche", "trouve", "moi", "stp", "resultat", "resultats",
+}
+
+# Au-dela, une information d'actualite n'en est plus une.
+_JOURS_MAX = 45
+
+
+def _marquants(question):
+    """Mots qui distinguent le sujet. Les sigles courts comptent aussi.
+
+    Exiger quatre lettres ecartait « OM », « PSG », « JO » — precisement les
+    mots qui portent le sujet. On descend a deux caracteres, en retirant les
+    mots outils.
+    """
+    import unicodedata
+    q = unicodedata.normalize("NFKD", (question or "").lower())
+    q = "".join(c for c in q if not unicodedata.combining(c))
+    mots = [m for m in re.findall(r"[a-z0-9]{2,}", q) if m not in _OUTILS_LANGUE]
+    return set(mots)
+
+
+def _parle_du_sujet(titre, extrait, marquants):
+    """Le resultat reprend-il au moins un mot marquant de la question ?"""
+    if not marquants:
+        return True
+    import unicodedata
+    texte = unicodedata.normalize("NFKD", f"{titre} {extrait}".lower())
+    texte = "".join(c for c in texte if not unicodedata.combining(c))
+    presents = re.findall(r"[a-z0-9]{2,}", texte)
+    return bool(marquants & set(presents))
+
+
+def _trop_vieux(date):
+    """Une date au format AAAA-MM-JJ est-elle hors de la periode utile ?"""
+    if not date:
+        return False
+    try:
+        import datetime
+        d = datetime.date.fromisoformat(date[:10])
+        return (datetime.date.today() - d).days > _JOURS_MAX
+    except Exception:
+        return False
+
+
 def _du_cache(clef):
     e = _CACHE.get(clef)
     return e[1] if e and time.time() - e[0] < _DUREE_CACHE else None
@@ -88,9 +138,13 @@ def chercher(question, combien=6, region="fr-fr"):
         with DDGS() as d:
             # Les depeches d'abord si la question porte sur un evenement :
             # elles sont datees et vont droit au fait.
-            if _ACTUALITE.search(question.lower()):
+            actualite = bool(_ACTUALITE.search(question.lower()))
+            if actualite:
                 try:
-                    for r in d.news(question, region=region, max_results=5):
+                    # Borne de temps : les archives ne repondent pas a une
+                    # question sur ce qui vient de se passer.
+                    for r in d.news(question, region=region, max_results=6,
+                                    timelimit="w"):
                         sortie.append((r.get("title", ""),
                                        _nettoyer(r.get("body", "")),
                                        r.get("url") or r.get("href", ""),
@@ -98,16 +152,30 @@ def chercher(question, combien=6, region="fr-fr"):
                 except Exception:
                     pass
             for r in d.text(question, region=region, safesearch="moderate",
-                            max_results=combien):
+                            max_results=combien,
+                            timelimit="m" if actualite else None):
                 sortie.append((r.get("title", ""), _nettoyer(r.get("body", "")),
                                r.get("href", ""), ""))
     except Exception:
         return sortie
 
-    sortie = [s for s in sortie if s[2]]
-    for _, _, a, _ in sortie:
+    marquants = _marquants(question)
+    retenus = []
+    for titre, extrait, adresse, date in sortie:
+        if not adresse:
+            continue
+        if _trop_vieux(date):
+            continue
+        if not _parle_du_sujet(titre, extrait, marquants):
+            continue
+        retenus.append((titre, extrait, adresse, date))
+
+    # Le plus recent d'abord : l'ordre du moteur ne tient pas compte du temps.
+    retenus.sort(key=lambda s: s[3] or "", reverse=True)
+
+    for _, _, a, _ in retenus:
         _VUES.add(a)
-    return _en_cache(clef, sortie)
+    return _en_cache(clef, retenus)
 
 
 def _texte_page(adresse):
@@ -221,9 +289,10 @@ def chercher_web(question: str) -> str:
     return ("Elements trouves sur internet pour « " + question + " » :\n" +
             "\n".join(lignes[:8]) +
             "\n\nDonne la reponse en une ou deux phrases a partir de ces "
-            "elements, en francais. Ne renvoie pas l utilisateur vers des "
-            "sites : reponds. Si les elements ne suffisent pas, dis-le "
-            "simplement.")
+            "elements, en francais. Ne retiens que ce qui repond vraiment a la "
+            "question : ecarte sans le mentionner tout element hors sujet. Ne "
+            "renvoie pas vers des sites, reponds. Si rien ne repond, dis "
+            "simplement que tu n as pas trouve.")
 
 
 @outil(
