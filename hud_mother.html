@@ -535,39 +535,38 @@ function tracerProgressif(secondes) {
   c.lineCap = "round";
   c.strokeStyle = "rgba(53,255,106,.92)";
 
-  const total = 2230;
+  // Le trace avance par lignes entieres, jamais en coupant un trait au
+  // milieu : c est ainsi qu une tete d impression procede, et chaque trait
+  // acheve peut alors sonner.
+  const total = SPECIMEN.length;
   const depart = performance.now();
   const duree = secondes * 1000;
+  let tracees = 0;
   let dernierSon = 0;
-  let vusAuSon = 0;
 
   cancelAnimationFrame(animation);
 
   function etape(maintenant) {
     const avance = Math.min(1, (maintenant - depart) / duree);
-    const cible = Math.floor(total * avance);
+    const cible = Math.ceil(total * avance);
 
-    // On redessine depuis le debut a chaque image : c est peu couteux a cette
-    // taille, et cela evite les traces fantomes lors d un redimensionnement.
-    c.clearRect(0, 0, L, H);
-    let vus = 0;
-    for (const chemin of SPECIMEN) {
-      if (vus >= cible) break;
-      const jusqua = Math.min(chemin.length, cible - vus);
+    // On ne redessine que les nouvelles lignes : le trace deja pose reste en
+    // place, ce qui evite de tout repeindre a chaque image.
+    for (let k = tracees; k < cible; k++) {
+      const chemin = SPECIMEN[k];
+      if (!chemin || chemin.length < 2) continue;
       c.beginPath();
-      for (let i = 0; i < jusqua; i++) {
-        const p = chemin[i];
-        i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]);
-      }
+      chemin.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]));
       c.stroke();
-      vus += chemin.length;
     }
 
-    // Le son ponctue l avancee sans devenir un grondement continu.
-    if (cible - vusAuSon > 8 && maintenant - dernierSon > 45) {
-      if (typeof Audio_ !== "undefined" && Audio_.actif) Audio_.frappe();
-      dernierSon = maintenant;
-      vusAuSon = cible;
+    if (cible > tracees) {
+      tracees = cible;
+      // Un son par trait serait un grondement : on espace au minimum.
+      if (maintenant - dernierSon > 42) {
+        if (typeof Audio_ !== "undefined" && Audio_.actif) Audio_.frappe();
+        dernierSon = maintenant;
+      }
     }
 
     if (avance < 1) animation = requestAnimationFrame(etape);
@@ -586,7 +585,8 @@ function montrerSpecimen(secondes) {
   // Duree de trace fixe : quatre secondes suffisent pour suivre la main sans
   // s impatienter. Le temps restant sert a contempler le releve acheve — une
   // apparition qui s efface des la derniere ligne serait frustrante.
-  tracerProgressif(4);
+  // Cinq secondes : assez pour voir chaque trait se poser l un apres l autre.
+  tracerProgressif(5);
   specimen.classList.add("visible");
   clearTimeout(montrerSpecimen.fin);
   montrerSpecimen.fin = setTimeout(
@@ -609,9 +609,9 @@ function reveiller() {
   retours = null;
   attenteRepos = setTimeout(() => {
     // Quatre secondes de trace, puis cinq de contemplation.
-    montrerSpecimen(9);
+    montrerSpecimen(11);
     // Meme trace, mais on la laisse bien plus longtemps a l ecran.
-    retours = setInterval(() => montrerSpecimen(22), 5 * 60 * 1000);
+    retours = setInterval(() => montrerSpecimen(24), 5 * 60 * 1000);
   }, 30 * 1000);
 }
 
