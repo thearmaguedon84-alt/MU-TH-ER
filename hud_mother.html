@@ -217,7 +217,7 @@
 <div id="specimen">
   <div class="haut">***** MU/TH/UR 9000 *********<span class="droite"
        id="spec-date"></span></div>
-  <canvas id="spec-toile" width="220" height="168"></canvas>
+  <canvas id="spec-toile" width="240" height="180"></canvas>
   <div class="bas">SUBJ: SPECIMEN 8    STATUS: SECURE
 RMKS: ORGANIC. CYCLIC STRUCTURE.
       ACID BLOOD.
@@ -517,139 +517,170 @@ let enFrappe = false;
 const specimen = document.getElementById("specimen");
 const specToile = document.getElementById("spec-toile");
 
-function point(p0, p1, p2, p3, t) {
-  // Position sur une courbe de Bezier cubique.
-  const u = 1 - t;
-  return {
-    x: u*u*u*p0.x + 3*u*u*t*p1.x + 3*u*t*t*p2.x + t*t*t*p3.x,
-    y: u*u*u*p0.y + 3*u*u*t*p1.y + 3*u*t*t*p2.y + t*t*t*p3.y
-  };
-}
-
-function courbe(c, pts) {
-  c.beginPath();
-  pts.forEach((p, i) => i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y));
-  c.stroke();
-}
-
-// Arete du dome, puis son dessous. Les lignes intermediaires naissent entre
-// les deux : c est ce qui donne le relief.
-const DOME_HAUT = [{x:44,y:92},{x:54,y:38},{x:120,y:20},{x:204,y:52}];
-const DOME_BAS  = [{x:44,y:92},{x:74,y:86},{x:132,y:74},{x:204,y:52}];
-
-function tracerDome(c) {
-  const N = 14;
-  for (let i = 0; i <= N; i++) {
-    const k = i / N;
-    // Les lignes se resserrent vers l arriere : plus dense la ou la forme
-    // se creuse, comme sur un releve topographique.
-    const pts = [];
-    for (let j = 0; j <= 40; j++) {
-      const t = j / 40;
-      const a = point(...DOME_HAUT, t);
-      const b = point(...DOME_BAS, t);
-      pts.push({x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k});
+function lisser(pts, densite) {
+  // Catmull-Rom : fait passer une courbe douce par tous les points donnes.
+  // Decrire une silhouette par ses points est bien plus sur que de poser des
+  // tangentes de Bezier a la main — c etait le defaut du premier dessin.
+  const sortie = [];
+  const n = pts.length;
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = pts[i > 0 ? i - 1 : 0];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2 < n ? i + 2 : n - 1];
+    for (let j = 0; j < densite; j++) {
+      const t = j / densite, t2 = t * t, t3 = t2 * t;
+      sortie.push({
+        x: 0.5 * ((2*p1.x) + (-p0.x + p2.x)*t +
+                  (2*p0.x - 5*p1.x + 4*p2.x - p3.x)*t2 +
+                  (-p0.x + 3*p1.x - 3*p2.x + p3.x)*t3),
+        y: 0.5 * ((2*p1.y) + (-p0.y + p2.y)*t +
+                  (2*p0.y - 5*p1.y + 4*p2.y - p3.y)*t2 +
+                  (-p0.y + 3*p1.y - 3*p2.y + p3.y)*t3)
+      });
     }
-    c.strokeStyle = "rgba(53,255,106," + (0.9 - Math.abs(k - 0.5) * 0.5).toFixed(2) + ")";
-    courbe(c, pts);
   }
+  sortie.push(pts[n - 1]);
+  return sortie;
 }
 
-function tracerNervures(c) {
-  // Nervures transversales : elles marquent la courbure du crane.
-  c.strokeStyle = "rgba(53,255,106,.28)";
-  for (let j = 6; j <= 34; j += 5) {
-    const t = j / 40;
-    const a = point(...DOME_HAUT, t);
-    const b = point(...DOME_BAS, t);
-    c.beginPath();
-    c.moveTo(a.x, a.y);
-    c.lineTo(b.x, b.y);
-    c.stroke();
+const P = (x, y) => ({x, y});
+
+// Profil du crane, museau a gauche, pointe arriere a droite.
+const ARETE = [P(20,106), P(24,92), P(32,78), P(46,66), P(66,55), P(94,46),
+               P(128,42), P(162,45), P(192,52), P(214,63), P(230,76)];
+const DESSOUS = [P(230,76), P(208,78), P(182,80), P(154,82), P(130,85),
+                 P(112,90), P(100,97)];
+const MACHOIRE = [P(100,97), P(94,108), P(82,120), P(64,129), P(44,132),
+                  P(28,127), P(19,116), P(20,106)];
+const LEVRE = [P(23,110), P(38,118), P(58,121), P(78,116), P(92,106)];
+const ARCADE = [P(26,92), P(42,80), P(64,70), P(92,62), P(124,58)];
+
+function reechantillonner(pts, n) {
+  // Redistribue n points le long d une polyligne, a pas constant.
+  const longueurs = [0];
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i].x - pts[i-1].x, dy = pts[i].y - pts[i-1].y;
+    longueurs.push(longueurs[i-1] + Math.hypot(dx, dy));
   }
+  const total = longueurs[longueurs.length - 1] || 1;
+  const sortie = [];
+  let j = 0;
+  for (let i = 0; i < n; i++) {
+    const cible = (i / (n - 1)) * total;
+    while (j < longueurs.length - 2 && longueurs[j+1] < cible) j++;
+    const seg = longueurs[j+1] - longueurs[j] || 1;
+    const f = (cible - longueurs[j]) / seg;
+    sortie.push({x: pts[j].x + (pts[j+1].x - pts[j].x) * f,
+                 y: pts[j].y + (pts[j+1].y - pts[j].y) * f});
+  }
+  return sortie;
 }
 
-const MUSEAU = [
-  [{x:44,y:92},{x:30,y:96},{x:22,y:106},{x:26,y:116}],
-  [{x:26,y:116},{x:38,y:126},{x:60,y:126},{x:76,y:116}],
-  [{x:76,y:116},{x:86,y:108},{x:88,y:98},{x:84,y:90}]
-];
+function traces() {
+  // Chaque trace : une suite de points et une intensite.
+  const liste = [];
+  const arete = lisser(ARETE, 12);
+  const dessous = lisser(DESSOUS, 12);
 
-function tracerMachoire(c) {
-  // Contour de la machoire, repete vers l interieur pour l epaisseur.
-  for (let d = 0; d < 5; d++) {
-    c.strokeStyle = "rgba(53,255,106," + (0.85 - d * 0.13).toFixed(2) + ")";
-    c.beginPath();
-    MUSEAU.forEach((seg, i) => {
-      const dec = d * 1.8;
-      if (!i) c.moveTo(seg[0].x + dec, seg[0].y - dec * 0.6);
-      c.bezierCurveTo(seg[1].x + dec, seg[1].y - dec * 0.6,
-                      seg[2].x + dec, seg[2].y - dec * 0.6,
-                      seg[3].x + dec, seg[3].y - dec * 0.6);
+  liste.push({pts: arete, force: 1});
+
+  // Lignes de relief : interpolees entre l arete et le dessous, elles suivent
+  // le volume au lieu de le contredire.
+  // Les deux bords n ont ni la meme longueur ni le meme sens : on les
+  // reechantillonne sur un meme nombre de points avant de les apparier,
+  // sinon les lignes intermediaires partent en eventail.
+  const N = 90;
+  const hautN = reechantillonner(arete, N);
+  const basN = reechantillonner(dessous, N).reverse();
+  for (let k = 1; k <= 9; k++) {
+    const f = k / 10;
+    const ligne = hautN.map((a, i) => {
+      const b = basN[i];
+      return {x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f};
     });
-    c.stroke();
+    liste.push({pts: ligne, force: 0.85 - f * 0.35});
   }
 
-  // Dents : le long de la levre, de plus en plus petites vers l arriere.
-  c.strokeStyle = "rgba(53,255,106,.95)";
-  for (let i = 0; i < 11; i++) {
-    const t = i / 10;
-    const a = point({x:28,y:110}, {x:44,y:120}, {x:62,y:120}, {x:78,y:110}, t);
-    const taille = 5.5 - t * 2.5;
-    c.beginPath();
-    c.moveTo(a.x - 1.8, a.y - taille);
-    c.lineTo(a.x, a.y + 1);
-    c.lineTo(a.x + 1.8, a.y - taille);
-    c.stroke();
-  }
-}
+  liste.push({pts: lisser(DESSOUS, 12), force: 1});
+  liste.push({pts: lisser(ARCADE, 12), force: 0.6});
+  liste.push({pts: lisser(MACHOIRE, 12), force: 1});
+  liste.push({pts: lisser(LEVRE, 12), force: 0.9});
 
-function tracerTubes(c) {
-  // Tubes dorsaux, depuis la nuque vers le bas.
-  c.strokeStyle = "rgba(53,255,106,.6)";
+  // Dents : deux rangees qui s emboitent le long de la levre.
+  const levre = lisser(LEVRE, 20);
+  for (let i = 4; i < levre.length - 4; i += 7) {
+    const a = levre[i];
+    const haut = i < levre.length / 2 ? 6 : 4;
+    liste.push({pts: [P(a.x - 2, a.y - haut), P(a.x, a.y + 1.5),
+                      P(a.x + 2, a.y - haut)], force: 0.95});
+  }
+
+  // Tubes dorsaux.
   for (let i = 0; i < 5; i++) {
-    const d = i * 9;
-    const pts = [];
-    for (let j = 0; j <= 24; j++) {
-      const t = j / 24;
-      pts.push(point({x:104 + d, y:78 + i * 3},
-                     {x:118 + d, y:104},
-                     {x:126 + d, y:128},
-                     {x:122 + d, y:148}, t));
-    }
-    courbe(c, pts);
+    const d = i * 10;
+    liste.push({pts: lisser([P(108 + d, 88 + i*3), P(120 + d, 108),
+                             P(128 + d, 128), P(126 + d, 150)], 10),
+                force: 0.5});
   }
+
+  // Sang acide.
+  for (const x of [34, 50]) {
+    liste.push({pts: [P(x, 130), P(x + 1, 140), P(x + 2, 152)], force: 0.55});
+  }
+  return liste;
 }
 
-function tracerGouttes(c) {
-  // Sang acide : filets ponctues sous la machoire.
-  c.strokeStyle = "rgba(53,255,106,.75)";
-  c.setLineDash([2, 5]);
-  for (const x of [36, 50, 62]) {
-    c.beginPath();
-    c.moveTo(x, 126);
-    c.lineTo(x + 2, 152);
-    c.stroke();
-  }
-  c.setLineDash([]);
-}
+let animation = null;
 
-function dessinerSpecimen() {
+function tracerProgressif(secondes) {
+  // Le trace avance segment par segment, comme une tete d impression. Le son
+  // ne se declenche pas a chaque segment — ce serait un grondement continu —
+  // mais toutes les quelques avancees.
   const c = specToile.getContext("2d");
-  c.clearRect(0, 0, 220, 168);
-  // Legerement remonte et resserre : sinon la machoire mord sur le texte.
-  c.save();
-  c.translate(4, -6);
-  c.scale(0.94, 0.94);
-  c.lineWidth = 0.6;
+  c.clearRect(0, 0, 240, 180);
+  c.lineWidth = 0.7;
   c.lineJoin = "round";
   c.lineCap = "round";
-  tracerDome(c);
-  tracerNervures(c);
-  tracerMachoire(c);
-  tracerTubes(c);
-  tracerGouttes(c);
-  c.restore();
+
+  const liste = traces();
+  const total = liste.reduce((s, t) => s + t.pts.length, 0);
+  const debut = performance.now();
+  const duree = secondes * 1000;
+  let dernierSon = 0;
+  let faits = 0;
+
+  cancelAnimationFrame(animation);
+
+  function etape(maintenant) {
+    const avance = Math.min(1, (maintenant - debut) / duree);
+    const cible = Math.floor(total * avance);
+
+    let vus = 0;
+    c.clearRect(0, 0, 240, 180);
+    for (const t of liste) {
+      const reste = cible - vus;
+      if (reste <= 0) break;
+      const jusqua = Math.min(t.pts.length, reste);
+      c.strokeStyle = "rgba(53,255,106," + t.force.toFixed(2) + ")";
+      c.beginPath();
+      for (let i = 0; i < jusqua; i++) {
+        const p = t.pts[i];
+        i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y);
+      }
+      c.stroke();
+      vus += t.pts.length;
+    }
+
+    if (cible - faits > 6 && maintenant - dernierSon > 55) {
+      if (typeof Audio_ !== "undefined" && Audio_.actif) Audio_.frappe();
+      dernierSon = maintenant;
+      faits = cible;
+    }
+
+    if (avance < 1) animation = requestAnimationFrame(etape);
+  }
+  animation = requestAnimationFrame(etape);
 }
 
 function montrerSpecimen(secondes) {
@@ -658,7 +689,11 @@ function montrerSpecimen(secondes) {
   document.getElementById("spec-date").textContent =
     "LM 05-20-79\n" + deuxChiffres(d.getHours()) + ":" +
     deuxChiffres(d.getMinutes()) + ":" + deuxChiffres(d.getSeconds());
-  dessinerSpecimen();
+  // Le trace occupe les deux tiers du temps d affichage : on le voit
+  // se faire, puis on le laisse un moment a l ecran.
+  // Assez lent pour qu on voie la main, assez court pour ne pas lasser :
+  // le trace ne depasse jamais six secondes, meme sur une longue apparition.
+  tracerProgressif(Math.min(6, Math.max(2.2, secondes * 0.65)));
   specimen.classList.add("visible");
   clearTimeout(montrerSpecimen.fin);
   montrerSpecimen.fin = setTimeout(
