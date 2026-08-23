@@ -106,6 +106,50 @@ def _contexte_cast(cdp):
 
 
 
+
+
+def _liberer_ecran(nom):
+    """Ferme l'application qui occupe un ecran, s'il y en a une.
+
+    Chrome refuse d'ouvrir une session sur une destination deja occupee, et le
+    refuse sans le dire. Mieux vaut donc liberer d'abord.
+    """
+    try:
+        from tools.cast import _choisir
+        appareil = _choisir(nom)
+        if appareil is None:
+            return False
+        appareil.wait(timeout=8)
+        application = appareil.status.display_name if appareil.status else None
+        if not application or application == "Backdrop":
+            return False
+        appareil.quit_app()
+        time.sleep(5)
+        return True
+    except Exception:
+        return False
+
+def _memes_noms(a, b):
+    """Deux noms d'ecran designent-ils le meme appareil ?"""
+    from difflib import SequenceMatcher
+    x = " ".join(sans_accents((a or "").lower()).split())
+    y = " ".join(sans_accents((b or "").lower()).split())
+    if not x or not y:
+        return False
+    return x == y or x in y or y in x or SequenceMatcher(None, x, y).ratio() > 0.85
+
+
+def _transferer(cdp):
+    """Recharge la page pour que Netflix adopte la session en cours.
+
+    Une session ouverte hors de son controle est ignoree par son emetteur : il
+    n envoie donc aucun titre. Le rechargement le fait repartir, retrouver la
+    session par son ecouteur, et transferer la lecture.
+    """
+    cdp.demander("Page.reload")
+    time.sleep(14)
+    franchir_portail(cdp)
+
 def _aller_au_lecteur(cdp, ident, patience=40):
     """Amene la page sur un lecteur qui joue vraiment.
 
@@ -234,8 +278,10 @@ def netflix_caster(ecran: str, titre_id: str = "") -> str:
             return f"Je ne trouve pas l ecran {ecran}. Disponibles : {noms}."
         nom_ecran = choix[0]
 
-        deja = cdp.evaluer(
-            "!!(chrome.cast && chrome.cast.session)", contexte=contexte, attente=10)
+        # L ecran est-il deja pris ? On le demande au televiseur lui-meme :
+        # la page peut avoir oublie sa session, lui non.
+        _liberer_ecran(nom_ecran)
+
         cdp.demander("Cast.setSinkToUse", {"sinkName": nom_ecran})
         time.sleep(1)
 
@@ -256,6 +302,10 @@ def netflix_caster(ecran: str, titre_id: str = "") -> str:
             motif = str(resultat or "sans reponse")
             if "cancel" in motif.lower():
                 return "La diffusion a ete annulee."
+            if "sans reponse" in motif:
+                return ("Netflix ne repond pas a la demande de diffusion. "
+                        "Une diffusion est peut-etre deja en cours sur un "
+                        "autre appareil.")
             return f"Netflix a refuse la diffusion : {motif[:60]}"
 
         vise = str(resultat).split("ok:", 1)[1] or nom_ecran

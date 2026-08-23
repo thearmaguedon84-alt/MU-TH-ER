@@ -351,3 +351,15 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-21 23:38:06  INFO  outil ouvrir_fichier args={'chemin': 'C:\\Path\\To\\Your\\File.txt'} -> Ouverture tentée : C:\Path\To\Your\File.txt
 2026-08-22 18:54:12  INFO  provider LLM : Ollama (mode local)
 2026-08-22 18:54:12  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-23 12:21:59  INFO  provider LLM : Ollama (mode local)
+2026-08-23 12:21:59  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-23 12:29:15  INFO  outil prime_jouer args={'ecran': 'TV en bas', 'titre': 'JarvisVasNetfix'} -> Je ne suis pas sur du titre. Prime propose : Warfare, The Fix, Priscilla.
+2026-08-23 12:29:34  INFO  outil prime_chercher args={'titre': 'Warfare, The Fix, Priscilla'} -> Sur Prime : Priscilla, Moriarty the Patriot, Warfare, The Fix, La Guerre des mondes.
+2026-08-23 12:29:52  INFO  outil prime_chercher args={'titre': 'Priscilla, Moriarty the Patriot, Warfare, The Fix, La Guerre des mondes.'} -> Sur Prime : Moriarty the Patriot, Moriarty the Patriot, Révélations sur la deuxième guerre mondiale (Apostrophes), La Guerre, Donald Trump et nous, La Guerre (Apostrophes).
+2026-08-23 12:29:52  WARNING  boucle d'outils interrompue apres 3 tours
+2026-08-23 12:32:48  INFO  provider LLM : Ollama (mode local)
+2026-08-23 12:32:48  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-23 12:49:08  INFO  outil changer_personnalite args={'mode': 'neutre'} -> Mode neutre active.
+2026-08-23 12:53:36  INFO  outil plex_jouer args={'titre': 'Friends', 'ecran': 'tv_bas'} -> Fisherman's Friends (2019) sur Tv en bas.
+2026-08-23 12:54:10  INFO  outil ouvrir_application args={'nom': 'Netflix'} -> netflix lance.
+2026-08-23 12:55:27  INFO  outil streaming_chercher args={'titre': 'stranger things', 'plateforme': 'netflix'} -> stranger things cherche sur Netflix.
