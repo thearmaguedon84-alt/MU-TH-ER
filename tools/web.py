@@ -1,16 +1,22 @@
-"""Chercher sur le web, et lire une page.
+"""Chercher sur le web, et rapporter une reponse — pas une liste de sites.
 
-Le modele qui fait tourner Jarvis repond de memoire : il ignore ce qui s'est
-passe depuis son entrainement, et ne peut rien verifier. Deux outils suffisent
-a lever cette limite — chercher, puis lire.
+Premiere version trop naive : elle rendait les extraits de recherche tels
+quels. Or pour « resultat du dernier match de l'OM », ces extraits ne sont que
+des descriptions de sites — « retrouvez tous les scores sur… ». Un grand modele
+aurait enchaine de lui-meme sur la lecture d'une page ; un modele de sept
+milliards recite ce qu'on lui donne.
 
-Le resultat est volontairement court. Une reponse destinee a etre prononcee ne
-supporte pas trois pages de contexte : on rend les extraits utiles et leurs
-sources, le modele en tire une phrase.
+L'outil fait donc le travail complet :
 
-Les recherches recentes sont gardees quelques minutes : demander deux fois la
-meme chose arrive souvent dans une conversation parlee, et une recherche coute
-une seconde et demie.
+1. il interroge l'actualite quand la question porte sur un evenement, car les
+   depeches datent leurs informations et les resument ;
+2. il juge si les extraits disent quelque chose — des chiffres, des dates, un
+   score — ou s'ils se contentent de decrire un site ;
+3. s'ils ne disent rien, il ouvre lui-meme la meilleure page et en extrait les
+   passages qui repondent.
+
+Le modele n'a plus qu'a lire. C'est le bon partage : la mecanique en Python,
+la formulation au modele.
 """
 import re
 import time
@@ -23,17 +29,25 @@ _DUREE_CACHE = 300
 # Adresses rendues par une recherche : le seul terrain de lecture permis.
 _VUES = set()
 
-# Sites dont le contenu principal est ailleurs que dans la page : inutile
-# d'essayer de les lire, la recherche suffit.
+# Sites dont le contenu principal n'est pas dans la page.
 _ILLISIBLES = ("youtube.com", "twitter.com", "x.com", "instagram.com",
-               "facebook.com", "tiktok.com")
+               "facebook.com", "tiktok.com", "pinterest.")
+
+# Une question d'actualite merite les depeches plutot que les pages generales.
+_ACTUALITE = re.compile(
+    r"\b(?:resultat|resultats|score|match|gagne|gagnant|vainqueur|bat|battu|"
+    r"hier|aujourd hui|ce matin|ce soir|derniere?|recent|actualite|news|"
+    r"mort|deces|elu|election|annonce|sorti|prix|cours|meteo)\b")
+
+# Ce qui distingue un extrait qui informe d'un extrait qui presente un site.
+_VIDE = re.compile(
+    r"\b(?:retrouvez|toute l actualite|tous les resultats|suivez|decouvrez|"
+    r"consultez|site officiel|abonnez|en direct sur|toutes les infos)\b")
 
 
 def _du_cache(clef):
-    entree = _CACHE.get(clef)
-    if entree and time.time() - entree[0] < _DUREE_CACHE:
-        return entree[1]
-    return None
+    e = _CACHE.get(clef)
+    return e[1] if e and time.time() - e[0] < _DUREE_CACHE else None
 
 
 def _en_cache(clef, valeur):
@@ -43,14 +57,24 @@ def _en_cache(clef, valeur):
     return valeur
 
 
-def _nettoyer(texte, limite=320):
-    t = re.sub(r"\s+", " ", texte or "").strip()
-    return t[:limite]
+def _nettoyer(texte, limite=340):
+    return re.sub(r"\s+", " ", texte or "").strip()[:limite]
 
 
-def chercher(question, combien=5, region="fr-fr"):
-    """Resultats de recherche : [(titre, extrait, adresse)]."""
-    clef = ("r", question.lower().strip(), combien)
+def _informatif(extrait):
+    """L'extrait dit-il quelque chose, ou presente-t-il seulement un site ?"""
+    t = (extrait or "").lower()
+    if len(t) < 40:
+        return False
+    if _VIDE.search(t):
+        return False
+    # Un fait porte presque toujours un nombre : un score, une date, un prix.
+    return bool(re.search(r"\d", t))
+
+
+def chercher(question, combien=6, region="fr-fr"):
+    """Resultats de recherche : [(titre, extrait, adresse, date)]."""
+    clef = ("r", question.lower().strip())
     garde = _du_cache(clef)
     if garde is not None:
         return garde
@@ -58,30 +82,91 @@ def chercher(question, combien=5, region="fr-fr"):
         from ddgs import DDGS
     except ImportError:
         return []
+
+    sortie = []
     try:
         with DDGS() as d:
-            lot = list(d.text(question, region=region, safesearch="moderate",
-                              max_results=combien))
+            # Les depeches d'abord si la question porte sur un evenement :
+            # elles sont datees et vont droit au fait.
+            if _ACTUALITE.search(question.lower()):
+                try:
+                    for r in d.news(question, region=region, max_results=5):
+                        sortie.append((r.get("title", ""),
+                                       _nettoyer(r.get("body", "")),
+                                       r.get("url") or r.get("href", ""),
+                                       (r.get("date") or "")[:10]))
+                except Exception:
+                    pass
+            for r in d.text(question, region=region, safesearch="moderate",
+                            max_results=combien):
+                sortie.append((r.get("title", ""), _nettoyer(r.get("body", "")),
+                               r.get("href", ""), ""))
     except Exception:
-        return []
-    sortie = [(r.get("title", ""), _nettoyer(r.get("body", "")),
-               r.get("href", "")) for r in lot if r.get("href")]
-    # On retient les adresses rencontrees : seules celles-la pourront etre
-    # lues ensuite. Un modele qui invente une adresse sera arrete net.
-    for _, _, a in sortie:
+        return sortie
+
+    sortie = [s for s in sortie if s[2]]
+    for _, _, a, _ in sortie:
         _VUES.add(a)
     return _en_cache(clef, sortie)
+
+
+def _texte_page(adresse):
+    """Texte principal d'une page, ou chaine vide."""
+    garde = _du_cache(("p", adresse))
+    if garde is not None:
+        return garde
+    try:
+        import httpx
+        r = httpx.get(adresse, timeout=12, follow_redirects=True,
+                      headers={"User-Agent": "Mozilla/5.0 (compatible; Jarvis)"})
+        r.raise_for_status()
+        from lxml import html as lh
+        arbre = lh.fromstring(r.text)
+        for mauvais in arbre.xpath("//script|//style|//nav|//header|//footer|"
+                                   "//aside|//form|//noscript"):
+            mauvais.getparent().remove(mauvais)
+        morceaux = arbre.xpath("//h1//text()|//h2//text()|//p//text()|//li//text()")
+        texte = re.sub(r"\s+", " ", " ".join(m.strip() for m in morceaux)).strip()
+    except Exception:
+        return ""
+    return _en_cache(("p", adresse), texte[:12000])
+
+
+def _passages(texte, question, combien=4):
+    """Phrases de la page qui repondent le mieux a la question."""
+    mots = {m for m in re.findall(r"\w{4,}", question.lower())}
+    phrases = re.split(r"(?<=[.!?])\s+", texte)
+    notees = []
+    for p in phrases:
+        if not (25 < len(p) < 320):
+            continue
+        bas = p.lower()
+        note = sum(1 for m in mots if m in bas)
+        if re.search(r"\d+\s*[-–:]\s*\d+", p):   # un score
+            note += 3
+        elif re.search(r"\d", p):
+            note += 1
+        if note:
+            notees.append((note, p.strip()))
+    notees.sort(reverse=True)
+    vues, sortie = set(), []
+    for _, p in notees:
+        if p[:40] in vues:
+            continue
+        vues.add(p[:40])
+        sortie.append(p)
+        if len(sortie) >= combien:
+            break
+    return sortie
 
 
 @outil(
     nom="chercher_web",
     description=(
-        "Cherche une information sur internet et renvoie les extraits les plus "
-        "pertinents avec leurs sources. A utiliser des que la question porte "
-        "sur l'actualite, un prix, un resultat sportif, une date recente, ou "
-        "tout ce qui a pu changer : ne reponds jamais de memoire dans ces "
-        "cas-la. Pour 'cherche sur internet', 'qui a gagne', 'quelles "
-        "nouvelles de'."
+        "Cherche une information sur internet et rapporte ce qui repond a la "
+        "question, sources comprises. A utiliser des que la question porte sur "
+        "l'actualite, un resultat, un prix, une date recente, ou tout ce qui a "
+        "pu changer : ne reponds jamais de memoire dans ces cas-la."
     ),
     parametres={
         "type": "object",
@@ -103,23 +188,50 @@ def chercher_web(question: str) -> str:
     if not trouves:
         return f"Je n ai rien trouve sur internet pour {question}."
 
+    utiles = [t for t in trouves if _informatif(t[1])]
+
+    # Aucun extrait ne dit rien de concret : on va lire la page nous-memes
+    # plutot que de rendre une liste de sites, qui ne repond a personne.
+    lus = []
+    if len(utiles) < 2:
+        for titre, _, adresse, _ in trouves[:4]:
+            if any(s in adresse for s in _ILLISIBLES):
+                continue
+            passages = _passages(_texte_page(adresse), question)
+            if passages:
+                lus.append((titre, adresse, passages))
+            if len(lus) >= 2:
+                break
+
     lignes = []
-    for titre, extrait, adresse in trouves[:4]:
+    for titre, extrait, adresse, date in utiles[:4]:
         hote = re.sub(r"^https?://(www\.)?", "", adresse).split("/")[0]
-        lignes.append(f"- {_nettoyer(titre, 90)} ({hote}) : {extrait}")
-    return ("Resultats de recherche pour « " + question + " » :\n" +
-            "\n".join(lignes) +
-            "\n\nReponds brievement a partir de ces elements, en citant la "
-            "source si elle compte. Si les extraits ne suffisent pas, dis-le.")
+        prefixe = f"[{date}] " if date else ""
+        lignes.append(f"- {prefixe}{extrait} ({hote})")
+    for titre, adresse, passages in lus:
+        hote = re.sub(r"^https?://(www\.)?", "", adresse).split("/")[0]
+        for p in passages[:3]:
+            lignes.append(f"- {p} ({hote})")
+
+    if not lignes:
+        return (f"J ai cherche « {question} » mais les pages trouvees ne "
+                f"donnent pas la reponse. Dis-moi si tu veux que je precise "
+                f"la recherche.")
+
+    return ("Elements trouves sur internet pour « " + question + " » :\n" +
+            "\n".join(lignes[:8]) +
+            "\n\nDonne la reponse en une ou deux phrases a partir de ces "
+            "elements, en francais. Ne renvoie pas l utilisateur vers des "
+            "sites : reponds. Si les elements ne suffisent pas, dis-le "
+            "simplement.")
 
 
 @outil(
     nom="lire_page",
     description=(
         "Lit une page web et en renvoie le texte principal. A n'utiliser "
-        "qu'avec une adresse rendue par chercher_web, et seulement si les "
-        "extraits ne suffisent pas. N'invente jamais d'adresse : commence "
-        "toujours par chercher_web."
+        "qu'avec une adresse rendue par chercher_web. N'invente jamais "
+        "d'adresse."
     ),
     parametres={
         "type": "object",
@@ -137,42 +249,10 @@ def lire_page(adresse: str) -> str:
         return "Ce n est pas une adresse valable."
     if any(s in adresse for s in _ILLISIBLES):
         return "Cette page ne se lit pas ainsi ; la recherche donnera mieux."
-
-    # Garde-fou contre les adresses inventees : on ne lit que ce qu une
-    # recherche a effectivement rendu.
     if adresse not in _VUES:
         return ("Je ne lis que les pages trouvees par une recherche. "
-                "Utilise chercher_web d abord, puis reprends une des adresses "
-                "rendues.")
-
-    garde = _du_cache(("p", adresse))
-    if garde is not None:
-        return garde
-
-    try:
-        import httpx
-        r = httpx.get(adresse, timeout=15, follow_redirects=True,
-                      headers={"User-Agent": "Mozilla/5.0 (compatible; Jarvis)"})
-        r.raise_for_status()
-        brut = r.text
-    except Exception as e:
-        return f"Je n arrive pas a ouvrir cette page : {str(e)[:60]}"
-
-    try:
-        from lxml import html as lh
-        arbre = lh.fromstring(brut)
-        # Le decor n'apporte rien et noie le propos.
-        for mauvais in arbre.xpath(
-                "//script|//style|//nav|//header|//footer|//aside|//form"):
-            mauvais.getparent().remove(mauvais)
-        morceaux = [t.strip() for t in arbre.xpath("//p//text()|//h1//text()|"
-                                                   "//h2//text()|//li//text()")]
-        texte = " ".join(m for m in morceaux if m)
-    except Exception:
-        texte = re.sub(r"<[^>]+>", " ", brut)
-
-    texte = re.sub(r"\s+", " ", texte).strip()
+                "Utilise chercher_web d abord.")
+    texte = _texte_page(adresse)
     if len(texte) < 120:
         return "Cette page ne contient pas de texte lisible."
-    # Assez pour repondre, pas au point d'ensevelir le modele.
-    return _en_cache(("p", adresse), texte[:4000])
+    return texte[:4000]
