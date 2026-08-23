@@ -691,9 +691,10 @@ function montrerSpecimen(secondes) {
     deuxChiffres(d.getMinutes()) + ":" + deuxChiffres(d.getSeconds());
   // Le trace occupe les deux tiers du temps d affichage : on le voit
   // se faire, puis on le laisse un moment a l ecran.
-  // Assez lent pour qu on voie la main, assez court pour ne pas lasser :
-  // le trace ne depasse jamais six secondes, meme sur une longue apparition.
-  tracerProgressif(Math.min(6, Math.max(2.2, secondes * 0.65)));
+  // Duree de trace fixe : quatre secondes suffisent pour suivre la main sans
+  // s impatienter. Le temps restant sert a contempler le releve acheve — une
+  // apparition qui s efface des la derniere ligne serait frustrante.
+  tracerProgressif(4);
   specimen.classList.add("visible");
   clearTimeout(montrerSpecimen.fin);
   montrerSpecimen.fin = setTimeout(
@@ -715,8 +716,10 @@ function reveiller() {
   clearInterval(retours);
   retours = null;
   attenteRepos = setTimeout(() => {
-    montrerSpecimen(5);
-    retours = setInterval(() => montrerSpecimen(20), 5 * 60 * 1000);
+    // Quatre secondes de trace, puis cinq de contemplation.
+    montrerSpecimen(9);
+    // Meme trace, mais on la laisse bien plus longtemps a l ecran.
+    retours = setInterval(() => montrerSpecimen(22), 5 * 60 * 1000);
   }, 30 * 1000);
 }
 
