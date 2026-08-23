@@ -365,3 +365,7 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-23 12:55:27  INFO  outil streaming_chercher args={'titre': 'stranger things', 'plateforme': 'netflix'} -> stranger things cherche sur Netflix.
 2026-08-23 13:24:16  INFO  provider LLM : Ollama (mode local)
 2026-08-23 13:24:16  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-23 17:27:57  INFO  provider LLM : Ollama (mode local)
+2026-08-23 17:27:57  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-23 17:53:58  INFO  provider LLM : Ollama (mode local)
+2026-08-23 17:53:58  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
