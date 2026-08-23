@@ -724,6 +724,10 @@ function appliquer(ev) {
     case "etat":
       S.etat = ev.v;
       majEtat();
+      // Le changement d etat precede la transcription de plusieurs secondes :
+      // des que quelqu un parle, ici ou depuis un telephone, l interface est
+      // en service et la creature doit se retirer sans attendre la ligne.
+      if (ev.v && ev.v !== "veille") activite();
       break;
 
     case "niveau":

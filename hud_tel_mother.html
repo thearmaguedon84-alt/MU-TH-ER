@@ -446,6 +446,7 @@ function connecter() {
     else if (ev.t === "jarvis") { ajouter("JARVIS", ev.texte, "jarvis"); lire(ev.texte); }
     else if (ev.t === "outil") ajouter("OUTIL", ev.nom + (ev.detail ? " · " + ev.detail : ""), "outil");
     else if (ev.t === "etat") {
+      if (ev.v && ev.v !== "veille") activite();
       const libelles = { veille: "en veille", ecoute: "écoute",
                          reflexion: "réfléchit", parole: "parle" };
       $("#mot").textContent = libelles[ev.v] || ev.v;
