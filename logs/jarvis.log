@@ -393,3 +393,7 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 - Calendrier Olympique de Marseille, Match OM 2026/2027 (footmercato.net) : Vous voulez connaître le score et les buteurs des derniers matches d
 2026-08-23 19:01:03  INFO  outil chercher_web args={'question': 'election municipale en france'} -> Resultats de recherche pour « election municipale en france » :
 - Élections municipales en France (fr.wikipedia.org) : En France, les élections municipales permettent d'élire les membres du conseil mu
+2026-08-23 19:03:33  INFO  provider LLM : Ollama (mode local)
+2026-08-23 19:03:33  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-23 19:05:42  INFO  provider LLM : Ollama (mode local)
+2026-08-23 19:05:42  INFO  provider TTS : EdgeTTS (mode local, moteur edge)

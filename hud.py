@@ -302,6 +302,11 @@ class _Poignee(BaseHTTPRequestHandler):
         pass  # pas de bruit dans la console
 
     def do_GET(self):
+        # Le chemin porte la chaine de requete : "/tel/mother?" n est pas
+        # "/tel/mother". Un navigateur ou une application installee ajoutent
+        # volontiers un point d interrogation, et toutes les routes a
+        # comparaison exacte tombaient alors en 404.
+        self.path = self.path.split("?", 1)[0] or "/"
         if self.path == "/flux":
             self._flux()
         elif self.path in ("/tel", "/telephone", "/mobile", "/phone"):
@@ -315,7 +320,7 @@ class _Poignee(BaseHTTPRequestHandler):
         elif self.path in ("/tel/mother", "/telmother", "/mother/tel",
                            "/maman/tel"):
             self._page(_FICHIER_TEL_MOTHER)
-        elif self.path.startswith("/voix.wav"):
+        elif self.path == "/voix.wav":
             if _VOIX["donnees"]:
                 self._brut(_VOIX["donnees"], "audio/wav")
             else:
@@ -372,6 +377,7 @@ class _Poignee(BaseHTTPRequestHandler):
             pass
 
     def do_POST(self):
+        self.path = self.path.split("?", 1)[0] or "/"
         """Reception d'une commande ou d'un enregistrement du telephone."""
         if self.path == "/audio":
             self._audio()
