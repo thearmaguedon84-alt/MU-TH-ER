@@ -411,3 +411,22 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 - [2026-08-12] Retraites, pouvoir d'achat, immigration, sécurité : comparez les programmes des candidats à l
 2026-08-23 23:23:06  INFO  outil chercher_web args={'question': 'dernier resultat de l OM'} -> Elements trouves sur internet pour « dernier resultat de l OM » :
 - L’OM s’est incliné pour son dernier match de préparation estivale contre l’Atlético Madrid (1-2).Le résumé de ce dernier match amica
+2026-08-23 23:23:54  INFO  provider LLM : Ollama (mode local)
+2026-08-23 23:23:54  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-23 23:24:47  INFO  outil plex_jouer args={'ecran': 'la tele du bas', 'titre': 'TV'} -> Je ne vois pas cet ecran.
+2026-08-23 23:24:50  INFO  outil detection_presence args={'actif': True} -> Detection de presence activee.
+2026-08-23 23:24:54  WARNING  appel d'outil repete a l'identique : ['detection_presence']
+2026-08-23 23:27:48  INFO  outil chercher_web args={'question': 'resultat en baskette de limoge'} -> Je n ai rien trouve sur internet pour resultat en baskette de limoge.
+2026-08-23 23:27:51  WARNING  appel d'outil repete a l'identique : ['chercher_web']
+2026-08-23 23:28:10  INFO  outil chercher_web args={'question': 'resultat PSG'} -> Elements trouves sur internet pour « resultat PSG » :
+- [2026-08-11] Ce dimanche, le Paris Saint-Germain débute sa saison en Ligue 1 avec un déplacement du Roazhon Park contre le Stade Rennais, ... (l
+2026-08-23 23:28:41  INFO  outil chercher_web args={'question': "formule chimique de l'eau"} -> Elements trouves sur internet pour « formule chimique de l'eau » :
+- La radiolyse de l'eau est la dissociation, par décomposition chimique de l'eau (H2O) (liquide ou de vapeur d'eau) en hydrogène et h
+2026-08-23 23:29:19  INFO  outil chercher_web args={'question': 'qui etait Dante'} -> Elements trouves sur internet pour « qui etait Dante » :
+- 5 days ago - Dante said he first met Beatrice Portinari, daughter of Folco Portinari, when he was nine (she was eight), and he claimed to hav
+2026-08-23 23:30:03  INFO  outil chercher_web args={'question': "qu'a ecrit Dante"} -> Elements trouves sur internet pour « qu'a ecrit Dante » :
+- June 26, 2026 - La Divine Comédie est généralement considérée comme le premier grand texte en italien : la langue dans laquelle elle est écr
+2026-08-23 23:30:53  INFO  provider LLM : Ollama (mode local)
+2026-08-23 23:30:53  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-23 23:35:29  INFO  outil chercher_web args={'question': 'recette de tarte aux pommes'} -> Elements trouves sur internet pour « recette de tarte aux pommes » :
+- June 1, 2026 - Verser la compote sur la pâte et placer les lamelles de pommes en formant une spirale ou plusieurs cercles, au cho

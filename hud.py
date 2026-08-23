@@ -325,6 +325,10 @@ class _Poignee(BaseHTTPRequestHandler):
                 self._brut(_VOIX["donnees"], "audio/wav")
             else:
                 self.send_error(404)
+        elif self.path == "/essai-son":
+            # Page de diagnostic : verifie si un televiseur accepte de jouer
+            # un son sans geste prealable.
+            self._page(Path(__file__).parent / "essai_son.html")
         elif self.path == "/specimen.json":
             # Servi a part : les deux interfaces y puisent, aucune n en garde
             # une copie.

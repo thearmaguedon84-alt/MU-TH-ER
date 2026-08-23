@@ -659,7 +659,9 @@ def repondre(historique):
         _hud("etat", "parole")
         if texte and not _INTERRUPTION.is_set():
             dire(texte)
-        return texte
+        # Un modele qui ecrit son appel d outil au lieu de l emettre :
+    # on rattrape l intention plutot que de prononcer du JSON.
+    return _rattraper_appel_ecrit(texte)
 
 
 # ---------------------------------------------------------------- whisper
@@ -996,6 +998,86 @@ def traiter(audio, whisper, historique, flux, reveil):
 
     return repondre_a(question, historique, flux, reveil, whisper)
 
+
+
+# Blocs de code et objets JSON decrivant un appel d'outil, tels qu'un modele
+# les ecrit quand il se trompe de canal.
+_RE_BLOC_CODE = re.compile(r"```(?:json|tool_call|python)?\s*(.*?)```", re.S)
+_RE_APPEL = re.compile(
+    r"\{\s*[\"\']?(?:name|nom|tool|function)[\"\']?\s*:\s*[\"\']?([\w.]+)"
+    r"[\"\']?\s*,\s*[\"\']?(?:arguments|args|parameters|parametres)"
+    r"[\"\']?\s*:\s*(\{.*?\})\s*\}", re.S)
+
+
+def _appel_ecrit(texte):
+    """Premier appel d'outil ecrit en clair : (nom, arguments) ou None.
+
+    Le JSON produit dans ces cas-la est souvent approximatif — guillemets
+    manquants, virgules en trop. On tente une lecture stricte, puis une
+    lecture indulgente, avant de renoncer.
+    """
+    import json as _json
+
+    zones = _RE_BLOC_CODE.findall(texte or "")
+    zones.append(texte or "")
+    for zone in zones:
+        m = _RE_APPEL.search(zone)
+        if not m:
+            continue
+        nom, brut = m.group(1), m.group(2)
+        outil_obj = registre.get(nom)
+        if outil_obj is None:
+            continue
+        try:
+            args = _json.loads(brut)
+        except Exception:
+            try:
+                # Guillemets absents autour des clefs et des valeurs simples.
+                repare = re.sub(r"([{,]\s*)([A-Za-z_][\w ]*)\s*:",
+                                r'\1"\2":', brut)
+                repare = re.sub(r":\s*([A-Za-z_][\w +.-]*)\s*([,}])",
+                                r': "\1"\2', repare)
+                args = _json.loads(repare)
+            except Exception:
+                continue
+        if isinstance(args, dict):
+            return nom, args
+    return None
+
+
+def _sans_appels_ecrits(texte):
+    """Retire les blocs d'appel du texte destine a etre prononce."""
+    propre = _RE_BLOC_CODE.sub(" ", texte or "")
+    propre = _RE_APPEL.sub(" ", propre)
+    propre = re.sub(r"\s{2,}", " ", propre).strip(" \n\t·-")
+    return propre
+
+
+def _rattraper_appel_ecrit(reponse):
+    """Execute l'appel ecrit en clair, ou nettoie la reponse a defaut."""
+    if not reponse or ("{" not in reponse and "```" not in reponse):
+        return reponse
+
+    trouve = _appel_ecrit(reponse)
+    if trouve is not None:
+        nom, args = trouve
+        outil_obj = registre.get(nom)
+        try:
+            args = registre.ajuster_arguments(outil_obj, args)
+        except Exception:
+            pass
+        try:
+            resultat = outil_obj.fonction(**args)
+        except Exception:
+            resultat = None
+        if isinstance(resultat, str) and resultat.strip():
+            return resultat.strip()
+
+    propre = _sans_appels_ecrits(reponse)
+    # Il ne reste que de la ponctuation : mieux vaut l avouer que marmonner.
+    if len(propre) < 12:
+        return "Je n ai pas reussi a faire ce que tu demandes."
+    return propre
 
 def repondre_a(question, historique, flux, reveil, whisper):
     """Traite une question deja transcrite : raccourcis, puis modele.

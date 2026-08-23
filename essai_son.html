@@ -1,0 +1,24 @@
+<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<title>Essai de son</title>
+<style>body{margin:0;background:#020;color:#35ff6a;font:700 6vw/1.6 monospace;
+display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh}
+#e{font-size:3vw;opacity:.8}</style></head><body>
+<div>ESSAI DE SON</div><div id="e">demarrage...</div>
+<audio id="a" autoplay loop src="/voix.wav"></audio>
+<script>
+// Deux voies en parallele : un element audio, et une synthese immediate.
+// Si l une des deux passe, le televiseur accepte le son sans geste prealable.
+const e = document.getElementById("e");
+const a = document.getElementById("a");
+a.volume = 1;
+a.play().then(() => e.textContent = "element audio : joue")
+        .catch(err => e.textContent = "element audio refuse : " + err.name);
+try {
+  const c = new (window.AudioContext || window.webkitAudioContext)();
+  const o = c.createOscillator(), g = c.createGain();
+  o.frequency.value = 440; g.gain.value = 0.15;
+  o.connect(g); g.connect(c.destination); o.start();
+  setInterval(() => { o.frequency.value = o.frequency.value === 440 ? 660 : 440; }, 700);
+  setTimeout(() => e.textContent += " | contexte audio : " + c.state, 1200);
+} catch (err) { e.textContent += " | oscillateur refuse"; }
+</script></body></html>
