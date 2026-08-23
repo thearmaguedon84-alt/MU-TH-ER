@@ -173,6 +173,30 @@
   #amorce.parti { display: none; }
 
   /* Bandeau d'activation du son (le navigateur exige un clic prealable) */
+
+  /* ------------------------------------------------ specimen
+
+     Apparait par-dessus tout, sans jamais intercepter un clic : l interface
+     reste utilisable meme quand la creature est affichee. */
+  #specimen { position: fixed; inset: 0; z-index: 60; display: none;
+    background: #000; pointer-events: none;
+    font: 400 15px/1.5 "Courier New", monospace; color: #35ff6a;
+    text-shadow: 0 0 6px rgba(53,255,106,.55); }
+  /* Pas d animation d apparition : un navigateur gele les animations d une
+     page qui n est pas au premier plan, et l element resterait alors affiche
+     mais transparent. Une apparition franche convient de toute facon mieux a
+     un ecran cathodique. */
+  #specimen.visible { display: block; opacity: 1; }
+
+  #specimen .haut, #specimen .bas { position: absolute; left: 3.5%; right: 3.5%;
+    white-space: pre; letter-spacing: .5px; }
+  #specimen .haut { top: 5%; }
+  #specimen .bas { bottom: 6%; }
+  #specimen .droite { position: absolute; right: 0; top: 0; text-align: right; }
+  #specimen canvas { position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%); width: min(86vw, 148vh);
+    image-rendering: pixelated; }
+
   #son {
     position: fixed; z-index: 150; right: 26px; bottom: 62px;
     border: 1px solid var(--vert-faible); background: rgba(0,0,0,.8);
@@ -187,6 +211,18 @@
 
 <!-- Sequence d'amorcage, remplie par le script -->
 <div id="amorce"></div>
+
+
+<!-- Specimen : s affiche pendant les temps morts -->
+<div id="specimen">
+  <div class="haut">***** MU/TH/UR 9000 *********<span class="droite"
+       id="spec-date"></span></div>
+  <canvas id="spec-toile" width="220" height="168"></canvas>
+  <div class="bas">SUBJ: SPECIMEN 8    STATUS: SECURE
+RMKS: ORGANIC. CYCLIC STRUCTURE.
+      ACID BLOOD.
+&gt;_</div>
+</div>
 
 <div id="cadre">
 
@@ -468,6 +504,193 @@ function auTon(texte) {
    parallele, sinon le texte s'entremele et le son devient une bouillie. */
 const fileFrappe = [];
 let enFrappe = false;
+
+
+/* ---------------------------------------------------- specimen
+
+   Silhouette tracee une fois, puis repetee en reductions successives autour
+   d un foyer : ce sont ces lignes emboitees qui donnent l aspect « releve »
+   des ecrans du film. La toile est petite et agrandie sans lissage, pour que
+   les pixels restent francs.
+*/
+
+const specimen = document.getElementById("specimen");
+const specToile = document.getElementById("spec-toile");
+
+function point(p0, p1, p2, p3, t) {
+  // Position sur une courbe de Bezier cubique.
+  const u = 1 - t;
+  return {
+    x: u*u*u*p0.x + 3*u*u*t*p1.x + 3*u*t*t*p2.x + t*t*t*p3.x,
+    y: u*u*u*p0.y + 3*u*u*t*p1.y + 3*u*t*t*p2.y + t*t*t*p3.y
+  };
+}
+
+function courbe(c, pts) {
+  c.beginPath();
+  pts.forEach((p, i) => i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y));
+  c.stroke();
+}
+
+// Arete du dome, puis son dessous. Les lignes intermediaires naissent entre
+// les deux : c est ce qui donne le relief.
+const DOME_HAUT = [{x:44,y:92},{x:54,y:38},{x:120,y:20},{x:204,y:52}];
+const DOME_BAS  = [{x:44,y:92},{x:74,y:86},{x:132,y:74},{x:204,y:52}];
+
+function tracerDome(c) {
+  const N = 14;
+  for (let i = 0; i <= N; i++) {
+    const k = i / N;
+    // Les lignes se resserrent vers l arriere : plus dense la ou la forme
+    // se creuse, comme sur un releve topographique.
+    const pts = [];
+    for (let j = 0; j <= 40; j++) {
+      const t = j / 40;
+      const a = point(...DOME_HAUT, t);
+      const b = point(...DOME_BAS, t);
+      pts.push({x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k});
+    }
+    c.strokeStyle = "rgba(53,255,106," + (0.9 - Math.abs(k - 0.5) * 0.5).toFixed(2) + ")";
+    courbe(c, pts);
+  }
+}
+
+function tracerNervures(c) {
+  // Nervures transversales : elles marquent la courbure du crane.
+  c.strokeStyle = "rgba(53,255,106,.28)";
+  for (let j = 6; j <= 34; j += 5) {
+    const t = j / 40;
+    const a = point(...DOME_HAUT, t);
+    const b = point(...DOME_BAS, t);
+    c.beginPath();
+    c.moveTo(a.x, a.y);
+    c.lineTo(b.x, b.y);
+    c.stroke();
+  }
+}
+
+const MUSEAU = [
+  [{x:44,y:92},{x:30,y:96},{x:22,y:106},{x:26,y:116}],
+  [{x:26,y:116},{x:38,y:126},{x:60,y:126},{x:76,y:116}],
+  [{x:76,y:116},{x:86,y:108},{x:88,y:98},{x:84,y:90}]
+];
+
+function tracerMachoire(c) {
+  // Contour de la machoire, repete vers l interieur pour l epaisseur.
+  for (let d = 0; d < 5; d++) {
+    c.strokeStyle = "rgba(53,255,106," + (0.85 - d * 0.13).toFixed(2) + ")";
+    c.beginPath();
+    MUSEAU.forEach((seg, i) => {
+      const dec = d * 1.8;
+      if (!i) c.moveTo(seg[0].x + dec, seg[0].y - dec * 0.6);
+      c.bezierCurveTo(seg[1].x + dec, seg[1].y - dec * 0.6,
+                      seg[2].x + dec, seg[2].y - dec * 0.6,
+                      seg[3].x + dec, seg[3].y - dec * 0.6);
+    });
+    c.stroke();
+  }
+
+  // Dents : le long de la levre, de plus en plus petites vers l arriere.
+  c.strokeStyle = "rgba(53,255,106,.95)";
+  for (let i = 0; i < 11; i++) {
+    const t = i / 10;
+    const a = point({x:28,y:110}, {x:44,y:120}, {x:62,y:120}, {x:78,y:110}, t);
+    const taille = 5.5 - t * 2.5;
+    c.beginPath();
+    c.moveTo(a.x - 1.8, a.y - taille);
+    c.lineTo(a.x, a.y + 1);
+    c.lineTo(a.x + 1.8, a.y - taille);
+    c.stroke();
+  }
+}
+
+function tracerTubes(c) {
+  // Tubes dorsaux, depuis la nuque vers le bas.
+  c.strokeStyle = "rgba(53,255,106,.6)";
+  for (let i = 0; i < 5; i++) {
+    const d = i * 9;
+    const pts = [];
+    for (let j = 0; j <= 24; j++) {
+      const t = j / 24;
+      pts.push(point({x:104 + d, y:78 + i * 3},
+                     {x:118 + d, y:104},
+                     {x:126 + d, y:128},
+                     {x:122 + d, y:148}, t));
+    }
+    courbe(c, pts);
+  }
+}
+
+function tracerGouttes(c) {
+  // Sang acide : filets ponctues sous la machoire.
+  c.strokeStyle = "rgba(53,255,106,.75)";
+  c.setLineDash([2, 5]);
+  for (const x of [36, 50, 62]) {
+    c.beginPath();
+    c.moveTo(x, 126);
+    c.lineTo(x + 2, 152);
+    c.stroke();
+  }
+  c.setLineDash([]);
+}
+
+function dessinerSpecimen() {
+  const c = specToile.getContext("2d");
+  c.clearRect(0, 0, 220, 168);
+  // Legerement remonte et resserre : sinon la machoire mord sur le texte.
+  c.save();
+  c.translate(4, -6);
+  c.scale(0.94, 0.94);
+  c.lineWidth = 0.6;
+  c.lineJoin = "round";
+  c.lineCap = "round";
+  tracerDome(c);
+  tracerNervures(c);
+  tracerMachoire(c);
+  tracerTubes(c);
+  tracerGouttes(c);
+  c.restore();
+}
+
+function montrerSpecimen(secondes) {
+  const d = new Date();
+  const deuxChiffres = (n) => String(n).padStart(2, "0");
+  document.getElementById("spec-date").textContent =
+    "LM 05-20-79\n" + deuxChiffres(d.getHours()) + ":" +
+    deuxChiffres(d.getMinutes()) + ":" + deuxChiffres(d.getSeconds());
+  dessinerSpecimen();
+  specimen.classList.add("visible");
+  clearTimeout(montrerSpecimen.fin);
+  montrerSpecimen.fin = setTimeout(
+    () => specimen.classList.remove("visible"), secondes * 1000);
+}
+
+/* ---- rythme
+
+   Trente secondes de calme amenent une premiere apparition breve, puis la
+   creature revient toutes les cinq minutes, plus longuement. Le moindre signe
+   de vie remet tout a zero et la fait disparaitre. */
+
+let attenteRepos = null;
+let retours = null;
+
+function reveiller() {
+  specimen.classList.remove("visible");
+  clearTimeout(attenteRepos);
+  clearInterval(retours);
+  retours = null;
+  attenteRepos = setTimeout(() => {
+    montrerSpecimen(5);
+    retours = setInterval(() => montrerSpecimen(20), 5 * 60 * 1000);
+  }, 30 * 1000);
+}
+
+// L activite se juge aux gestes de l utilisateur. Le flux du serveur, lui,
+// bat en continu : s y accrocher masquait la creature des son apparition.
+for (const ev of ["pointerdown", "keydown", "wheel", "touchstart", "mousemove"]) {
+  window.addEventListener(ev, reveiller, { passive: true });
+}
+reveiller();
 
 function ajouter(etiquette, texte, classe, instantane, duree) {
   const l = document.createElement("div");
