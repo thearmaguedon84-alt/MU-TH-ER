@@ -177,6 +177,33 @@
   .coin.hd { top: 20px; right: 22px; border-left: none; border-bottom: none; }
   .coin.bg { bottom: 20px; left: 22px; border-right: none; border-top: none; }
   .coin.bd { bottom: 20px; right: 22px; border-left: none; border-top: none; }
+
+  /* ------------------------------------------------ saisie et bascule
+
+     Discretes : l'interface reste un tableau de bord qu'on regarde, la frappe
+     n'est qu'un secours quand la voix ne convient pas. */
+  #saisie {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 26px;
+    background: linear-gradient(0deg, rgba(4,7,10,.96), rgba(4,7,10,0));
+  }
+  #saisie .invite { color: var(--vous); opacity: .75; font-weight: 600; }
+  #saisie input {
+    flex: 1; background: transparent; border: 0; outline: 0;
+    color: var(--vous); font-family: var(--mono); font-size: 15px;
+    letter-spacing: .5px; caret-color: var(--vous);
+  }
+  #saisie input::placeholder { color: var(--texte-faible); }
+
+  #bascule {
+    position: fixed; top: 18px; right: 26px; z-index: 21;
+    color: var(--texte-faible); text-decoration: none;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 1.5px;
+    padding: 6px 12px; border: 1px solid rgba(159,182,192,.18);
+    border-radius: 3px; transition: color .2s, border-color .2s;
+  }
+  #bascule:hover { color: #35ff6a; border-color: rgba(53,255,106,.5); }
 </style>
 </head>
 <body>
@@ -208,6 +235,14 @@
   <div class="coin hd"></div>
   <div class="coin bg"></div>
   <div class="coin bd"></div>
+
+<a id="bascule" href="/mode/mother">MU-TH-UR</a>
+
+<form id="saisie" autocomplete="off">
+  <span class="invite">&gt;</span>
+  <input id="entree" type="text" placeholder="Ecris ou parle…"
+         spellcheck="false">
+</form>
 
 <script>
 "use strict";
@@ -581,6 +616,44 @@ if (location.protocol === "file:") {
 } else {
   connecter();
 }
+
+
+// ------------------------------------------------------------- saisie
+
+// Le texte emprunte la meme route que la voix : le serveur ne fait aucune
+// difference entre une phrase dite et une phrase tapee, et la reponse revient
+// par le flux comme le reste.
+
+const formSaisie = document.getElementById("saisie");
+const champ = document.getElementById("entree");
+
+if (formSaisie && champ) {
+  formSaisie.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const texte = champ.value.trim();
+    if (!texte) return;
+    champ.value = "";
+    try {
+      await fetch("/commande", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ texte }),
+      });
+    } catch (err) {
+      /* le flux signalera la perte de liaison */
+    }
+  });
+
+  // On peut taper sans viser le champ : la premiere touche y amene le curseur.
+  window.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (document.activeElement === champ) return;
+    if (e.key.length === 1 || e.key === "Backspace") champ.focus();
+  });
+
+  champ.focus();
+}
+
 </script>
 </body>
 </html>
