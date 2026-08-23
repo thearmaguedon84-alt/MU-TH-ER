@@ -1107,6 +1107,36 @@ def _extinction(t):
     return None
 
 
+
+# Mots qui designent explicitement le web : sans eux, « cherche Interstellar »
+# doit rester une recherche de film, pas une requete en ligne.
+RE_WEB = re.compile(
+    r"\b(?:sur\s+)?(?:internet|le net|le web|google|en ligne)\b"
+    r"|\brecherche web\b|\bcherche moi sur\b")
+
+
+def _web(t):
+    """« cherche la meteo de demain sur internet ».
+
+    On n intercepte que les demandes qui nomment le web. Le modele garde la
+    main pour tout le reste : c est lui qui decide si une question merite une
+    verification en ligne, et il a l outil pour le faire.
+    """
+    if not RE_WEB.search(t):
+        return None
+    m = re.search(r"\b(?:cherche|recherche|trouve|regarde|renseigne toi sur|"
+                  r"informe toi sur|va voir)\b\s+(?:moi\s+)?(.+)", t)
+    if not m:
+        return None
+    question = RE_WEB.sub(" ", m.group(1))
+    question = re.sub(r"\b(?:pour moi|s il te plait|stp)\b", " ", question)
+    question = " ".join(question.split()).strip(" ,.")
+    if len(question) < 3:
+        return None
+    from tools.web import chercher_web
+    return chercher_web(question=question)
+
+
 # --------------------------------------------------------------- ton MU-TH-UR
 
 # Les raccourcis renvoient des phrases toutes faites, ecrites pour Jarvis.
@@ -1157,7 +1187,7 @@ ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
           _spotify, _youtube, _diffuser_service, _chaine_tv,
           _streaming, _plex, _plex_sans_ecran, _musique_sans_source,
           _ecran_lecture, _media, _courrier, _application, _film,
-          _heure, _meteo, _minuteur, _stats, _capture)
+          _heure, _meteo, _minuteur, _stats, _capture, _web)
 
 
 def essayer(question):
