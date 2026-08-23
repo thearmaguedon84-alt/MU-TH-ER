@@ -377,3 +377,11 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-23 18:23:19  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
 2026-08-23 18:32:12  INFO  provider LLM : Ollama (mode local)
 2026-08-23 18:32:12  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-23 18:39:19  INFO  provider LLM : Ollama (mode local)
+2026-08-23 18:39:19  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-23 18:42:11  INFO  outil get_system_stats args={} -> GPU 53 degres, 100% d'utilisation, VRAM a 65%. CPU 4%, RAM 55%, disque C 161 Go libres.
+2026-08-23 18:42:15  WARNING  appel d'outil repete a l'identique : ['get_system_stats']
+2026-08-23 18:42:42  INFO  outil lire_page args={'adresse': 'https://www.example_football_api.com/api/last_match_om'} -> Je n arrive pas a ouvrir cette page : [Errno 11001] getaddrinfo failed
+2026-08-23 18:42:46  INFO  outil lire_page args={'adresse': 'https://example.com'} -> Example Domain This domain is for use in documentation examples without needing permission. Avoid use in operations. Learn more
+2026-08-23 18:43:49  INFO  outil lire_page args={'adresse': 'https://www.example.com/resultats-om-dernier-match'} -> Je n arrive pas a ouvrir cette page : Client error '404 Not Found' for url 'https://www.example.co
+2026-08-23 18:43:53  INFO  outil lire_page args={'adresse': 'https://www.example.co'} -> Example Domain This domain is for use in documentation examples without needing permission. Avoid use in operations. Learn more

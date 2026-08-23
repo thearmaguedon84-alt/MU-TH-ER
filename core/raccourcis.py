@@ -1124,11 +1124,12 @@ def _web(t):
     """
     if not RE_WEB.search(t):
         return None
+    # Le verbe est facultatif : « resultat sur internet du dernier match »
+    # nomme le web sans demander explicitement de chercher, et veut pourtant
+    # une recherche. On prend la phrase entiere a defaut de verbe.
     m = re.search(r"\b(?:cherche|recherche|trouve|regarde|renseigne toi sur|"
                   r"informe toi sur|va voir)\b\s+(?:moi\s+)?(.+)", t)
-    if not m:
-        return None
-    question = RE_WEB.sub(" ", m.group(1))
+    question = RE_WEB.sub(" ", m.group(1) if m else t)
     question = re.sub(r"\b(?:pour moi|s il te plait|stp)\b", " ", question)
     question = " ".join(question.split()).strip(" ,.")
     if len(question) < 3:

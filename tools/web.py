@@ -20,6 +20,9 @@ from core.registre import outil
 _CACHE = {}
 _DUREE_CACHE = 300
 
+# Adresses rendues par une recherche : le seul terrain de lecture permis.
+_VUES = set()
+
 # Sites dont le contenu principal est ailleurs que dans la page : inutile
 # d'essayer de les lire, la recherche suffit.
 _ILLISIBLES = ("youtube.com", "twitter.com", "x.com", "instagram.com",
@@ -63,6 +66,10 @@ def chercher(question, combien=5, region="fr-fr"):
         return []
     sortie = [(r.get("title", ""), _nettoyer(r.get("body", "")),
                r.get("href", "")) for r in lot if r.get("href")]
+    # On retient les adresses rencontrees : seules celles-la pourront etre
+    # lues ensuite. Un modele qui invente une adresse sera arrete net.
+    for _, _, a in sortie:
+        _VUES.add(a)
     return _en_cache(clef, sortie)
 
 
@@ -109,9 +116,10 @@ def chercher_web(question: str) -> str:
 @outil(
     nom="lire_page",
     description=(
-        "Lit une page web et en renvoie le texte principal. A utiliser quand "
-        "les extraits de recherche ne suffisent pas et qu'il faut le detail "
-        "d'un article."
+        "Lit une page web et en renvoie le texte principal. A n'utiliser "
+        "qu'avec une adresse rendue par chercher_web, et seulement si les "
+        "extraits ne suffisent pas. N'invente jamais d'adresse : commence "
+        "toujours par chercher_web."
     ),
     parametres={
         "type": "object",
@@ -129,6 +137,13 @@ def lire_page(adresse: str) -> str:
         return "Ce n est pas une adresse valable."
     if any(s in adresse for s in _ILLISIBLES):
         return "Cette page ne se lit pas ainsi ; la recherche donnera mieux."
+
+    # Garde-fou contre les adresses inventees : on ne lit que ce qu une
+    # recherche a effectivement rendu.
+    if adresse not in _VUES:
+        return ("Je ne lis que les pages trouvees par une recherche. "
+                "Utilise chercher_web d abord, puis reprends une des adresses "
+                "rendues.")
 
     garde = _du_cache(("p", adresse))
     if garde is not None:

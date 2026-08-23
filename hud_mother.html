@@ -622,7 +622,18 @@ for (const ev of ["pointerdown", "keydown", "wheel", "touchstart", "mousemove"])
 }
 reveiller();
 
+
+/* Toute ligne affichee vaut activite : une conversation se tient a la voix,
+   sans qu un doigt touche l ecran. La rafale du chargement est ignoree — c est
+   elle qui masquait le specimen des son apparition la premiere fois. */
+const _departPage = performance.now();
+function activite() {
+  if (performance.now() - _departPage < 3000) return;
+  if (typeof reveiller === "function") reveiller();
+}
+
 function ajouter(etiquette, texte, classe, instantane, duree) {
+  activite();
   const l = document.createElement("div");
   l.className = "ligne " + classe;
   l.innerHTML = `<span class="etiq">${etiquette}</span>`;

@@ -177,7 +177,18 @@ function echapper(t) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 
+
+/* Toute ligne affichee vaut activite : une conversation se tient a la voix,
+   sans qu un doigt touche l ecran. La rafale du chargement est ignoree — c est
+   elle qui masquait le specimen des son apparition la premiere fois. */
+const _departPage = performance.now();
+function activite() {
+  if (performance.now() - _departPage < 3000) return;
+  if (typeof reveiller === "function") reveiller();
+}
+
 function ajouter(qui, texte, classe) {
+  activite();
   const d = document.createElement("div");
   d.className = "ligne " + classe;
   d.innerHTML = `<span class="qui">${qui}</span>${echapper(texte)}`;
