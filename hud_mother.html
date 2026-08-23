@@ -205,6 +205,24 @@
     color: #1d8f47; background: rgba(0,0,0,.6); }
   #voix-ecran.actif { color: #35ff6a; border-color: #35ff6a; }
 
+
+  /* ------------------------------------------------ saisie
+
+     Une invite de terminal plutot qu un formulaire : pas de cadre, pas de
+     bouton, seulement le chevron et le texte qui s ecrit a la suite. */
+  #saisie { display: flex; align-items: center; gap: 10px;
+    padding: 10px 20px; border-top: 1px solid rgba(53,255,106,.22);
+    background: rgba(0,0,0,.35); }
+  #saisie .invite { color: #35ff6a; opacity: .8; font-weight: 700;
+    letter-spacing: 1px; }
+  #saisie input { flex: 1; background: transparent; border: 0; outline: 0;
+    color: #35ff6a; font: 400 15px/1.4 "Courier New", monospace;
+    letter-spacing: 1px; text-transform: uppercase;
+    text-shadow: 0 0 6px rgba(53,255,106,.5); caret-color: #35ff6a; }
+  #saisie input::placeholder { color: rgba(53,255,106,.32);
+    text-transform: uppercase; }
+  #saisie.envoi .invite { animation: clignote .25s steps(1) 2; }
+
   #son {
     position: fixed; z-index: 150; right: 26px; bottom: 62px;
     border: 1px solid var(--vert-faible); background: rgba(0,0,0,.8);
@@ -311,6 +329,12 @@ RMKS: ORGANIC. CYCLIC STRUCTURE.
   </div>
 
   <div id="journal"></div>
+
+  <form id="saisie" autocomplete="off">
+    <span class="invite">&gt;</span>
+    <input id="entree" type="text" placeholder="INTERROGATION…"
+           spellcheck="false" autocapitalize="characters">
+  </form>
 
   <footer>
     <span id="lien-reseau">LIAISON <b>—</b></span>
@@ -835,6 +859,50 @@ function jouerVoix(url) {
     const a = new Audio(url);
     a.play().catch(() => {});
   } catch (e) { /* le navigateur peut refuser sans geste prealable */ }
+}
+
+
+/* ---------------------------------------------------- saisie au clavier
+
+   Le texte emprunte la meme route que la voix : le serveur ne fait aucune
+   difference entre une phrase dite et une phrase tapee. La reponse revient
+   par le flux, comme le reste.
+*/
+
+const formSaisie = document.getElementById("saisie");
+const champ = document.getElementById("entree");
+
+if (formSaisie && champ) {
+  formSaisie.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const texte = champ.value.trim();
+    if (!texte) return;
+    champ.value = "";
+    formSaisie.classList.add("envoi");
+    setTimeout(() => formSaisie.classList.remove("envoi"), 500);
+    // Taper, c est se servir de l interface : le specimen doit se retirer.
+    if (typeof reveiller === "function") reveiller();
+    try {
+      await fetch("/commande", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ texte }),
+      });
+    } catch (err) {
+      if (typeof ajouter === "function") {
+        ajouter("MU-TH-UR", "LIAISON INTERROMPUE.", "jarvis", true);
+      }
+    }
+  });
+
+  // La frappe commence ou qu on soit : inutile de viser le champ d abord.
+  window.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (document.activeElement === champ) return;
+    if (e.key.length === 1 || e.key === "Backspace") champ.focus();
+  });
+
+  champ.focus();
 }
 
 </script>
