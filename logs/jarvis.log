@@ -385,3 +385,5 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-23 18:42:46  INFO  outil lire_page args={'adresse': 'https://example.com'} -> Example Domain This domain is for use in documentation examples without needing permission. Avoid use in operations. Learn more
 2026-08-23 18:43:49  INFO  outil lire_page args={'adresse': 'https://www.example.com/resultats-om-dernier-match'} -> Je n arrive pas a ouvrir cette page : Client error '404 Not Found' for url 'https://www.example.co
 2026-08-23 18:43:53  INFO  outil lire_page args={'adresse': 'https://www.example.co'} -> Example Domain This domain is for use in documentation examples without needing permission. Avoid use in operations. Learn more
+2026-08-23 18:49:38  INFO  provider LLM : Ollama (mode local)
+2026-08-23 18:49:38  INFO  provider TTS : EdgeTTS (mode local, moteur edge)

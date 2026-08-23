@@ -134,7 +134,11 @@ _NON_LOCAUX = {
     "capture_screen", "faire_brief",
     "lire_mails", "lire_mail", "preparer_mail", "envoyer_mail", "mettre_a_la_corbeille",
     "get_events", "create_event", "delete_event", "get_deadlines",
-    "chercher_web",
+    # Chercher est justement ce dont un petit modele a le plus besoin : il
+    # ignore l actualite et ne peut rien verifier. En revanche on lui retire
+    # lire_page : une demarche en deux temps le perdait, et il finissait par
+    # inventer des adresses pour nourrir la lecture.
+    "lire_page",
     "book_appointment", "confirmer_reservation",
     "browser_open", "browser_current_page", "browser_tabs", "browser_close_tabs",
     "browser_interact",
