@@ -336,3 +336,18 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-20 00:30:23  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
 2026-08-20 23:17:32  INFO  provider LLM : Ollama (mode local)
 2026-08-20 23:17:32  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-20 23:49:53  INFO  provider LLM : Ollama (mode local)
+2026-08-20 23:49:53  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-21 00:02:32  INFO  outil ouvrir_application args={'nom': 'vlc'} -> vlc media lance.
+2026-08-21 00:04:43  INFO  outil ouvrir_application args={'nom': 'MyKeynall'} -> Je ne trouve pas 'MyKeynall'. Dis-moi son chemin complet ou ajoute-le avec la commande ajouter_app.
+2026-08-21 00:04:47  INFO  outil ouvrir_fichier args={'chemin': 'C:\\Users\\Exemple\\Documents\\MyKeynall.txt'} -> Ouverture tentée : C:\Users\Exemple\Documents\MyKeynall.txt
+2026-08-21 00:07:47  INFO  outil spotify_controle args={'action': 'stop'} -> aucun appareil
+2026-08-21 00:07:51  INFO  outil spotify_appareils args={} -> Spotify peut jouer sur : THEARMAGUEDON.
+2026-08-21 00:07:55  WARNING  appel d'outil repete a l'identique : ['spotify_appareils']
+2026-08-21 18:48:26  INFO  provider LLM : Ollama (mode local)
+2026-08-21 18:48:26  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-21 23:37:40  INFO  outil ouvrir_fichier args={'chemin': 'C:\\Users\\ExampleUser\\Documents\\examplefile.txt'} -> Ouverture tentée : C:\Users\ExampleUser\Documents\examplefile.txt
+2026-08-21 23:38:06  INFO  outil ouvrir_application args={'nom': 'Handbrake'} -> handbrake lance.
+2026-08-21 23:38:06  INFO  outil ouvrir_fichier args={'chemin': 'C:\\Path\\To\\Your\\File.txt'} -> Ouverture tentée : C:\Path\To\Your\File.txt
+2026-08-22 18:54:12  INFO  provider LLM : Ollama (mode local)
+2026-08-22 18:54:12  INFO  provider TTS : EdgeTTS (mode local, moteur edge)

@@ -190,6 +190,66 @@ def config(modele, stt):
     _diffuser({"t": "config", "modele": modele, "stt": stt})
 
 
+
+_ICONE = {}
+
+
+def _icone(taille=512):
+    """Icone de l'application, dessinee une fois puis gardee en memoire."""
+    if taille in _ICONE:
+        return _ICONE[taille]
+    try:
+        import io
+
+        from PIL import Image, ImageDraw
+    except Exception:
+        return None
+
+    image = Image.new("RGBA", (taille, taille), (6, 18, 26, 255))
+    d = ImageDraw.Draw(image)
+    c = taille / 2
+    # Trois cercles concentriques, comme la pastille du HUD.
+    for rayon, couleur, epaisseur in (
+            (0.42, (34, 211, 238, 255), max(2, taille // 64)),
+            (0.30, (34, 211, 238, 130), max(2, taille // 96)),
+            (0.17, (34, 211, 238, 255), 0)):
+        boite = [c - taille * rayon, c - taille * rayon,
+                 c + taille * rayon, c + taille * rayon]
+        if epaisseur:
+            d.ellipse(boite, outline=couleur, width=epaisseur)
+        else:
+            d.ellipse(boite, fill=couleur)
+
+    tampon = io.BytesIO()
+    image.save(tampon, format="PNG")
+    _ICONE[taille] = tampon.getvalue()
+    return _ICONE[taille]
+
+
+_MANIFESTE = json.dumps({
+    "name": "Jarvis",
+    "short_name": "Jarvis",
+    "start_url": "/tel",
+    "scope": "/",
+    # « standalone » retire la barre d adresse : c est ce qui distingue une
+    # application d un signet.
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#06121a",
+    "theme_color": "#06121a",
+    "icons": [
+        {"src": "/icone-192.png", "sizes": "192x192", "type": "image/png",
+         "purpose": "any maskable"},
+        {"src": "/icone-512.png", "sizes": "512x512", "type": "image/png",
+         "purpose": "any maskable"},
+    ],
+}, ensure_ascii=False)
+
+
+# Sans cache : cette interface commande le PC en direct, un etat garde en
+# reserve serait un etat faux.
+_OUVRIER = "self.addEventListener('fetch', () => {});"
+
 # ---------------------------------------------------------------- serveur
 
 
@@ -210,8 +270,34 @@ class _Poignee(BaseHTTPRequestHandler):
             self._page(_FICHIER_MOTHER)
         elif self.path in ("/", "/hud.html", "/index.html"):
             self._page()
+        elif self.path == "/manifest.webmanifest":
+            self._brut(_MANIFESTE.encode("utf-8"), "application/manifest+json")
+        elif self.path == "/sw.js":
+            self._brut(_OUVRIER.encode("utf-8"), "application/javascript")
+        elif self.path.startswith("/icone-"):
+            try:
+                taille = int(self.path.split("-")[1].split(".")[0])
+            except Exception:
+                taille = 512
+            image = _icone(taille)
+            if image is None:
+                self.send_error(404)
+            else:
+                self._brut(image, "image/png")
         else:
             self.send_error(404)
+
+    def _brut(self, contenu, type_mime):
+        """Envoie un contenu tel quel."""
+        self.send_response(200)
+        self.send_header("Content-Type", type_mime)
+        self.send_header("Content-Length", str(len(contenu)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        try:
+            self.wfile.write(contenu)
+        except Exception:
+            pass
 
     def do_POST(self):
         """Reception d'une commande ou d'un enregistrement du telephone."""
