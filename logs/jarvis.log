@@ -405,3 +405,9 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 - [2025-02-27] L’OM reçoit le FC Nantes, dimanche 2 mars (20 h 45) à l’occasion de la 24e journée de Ligue 1. Ce vendredi 28 février, en conférence
 2026-08-23 19:43:41  INFO  provider LLM : Ollama (mode local)
 2026-08-23 19:43:41  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-23 23:19:46  INFO  provider LLM : Ollama (mode local)
+2026-08-23 23:19:46  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-23 23:22:19  INFO  outil chercher_web args={'question': 'qui a gagner les derniere presidentielle en france'} -> Elements trouves sur internet pour « qui a gagner les derniere presidentielle en france » :
+- [2026-08-12] Retraites, pouvoir d'achat, immigration, sécurité : comparez les programmes des candidats à l
+2026-08-23 23:23:06  INFO  outil chercher_web args={'question': 'dernier resultat de l OM'} -> Elements trouves sur internet pour « dernier resultat de l OM » :
+- L’OM s’est incliné pour son dernier match de préparation estivale contre l’Atlético Madrid (1-2).Le résumé de ce dernier match amica

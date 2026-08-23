@@ -167,7 +167,11 @@ def caster_jarvis(ecran: str = "", interface: str = "") -> str:
     if page not in ("jarvis", "mother"):
         page = ("mother" if reglage("assistant.personnalite", "") == "mere"
                 else "jarvis")
-    url = f"http://{adresse}:{port}/" + ("mother" if page == "mother" else "")
+    # Le parametre dit a la page qu elle est affichee ailleurs : elle jouera
+    # alors la voix elle-meme. Sans lui, la parole resterait sur le PC, car
+    # c est le televiseur qui charge la page et non une recopie de l ecran.
+    url = (f"http://{adresse}:{port}/" + ("mother" if page == "mother" else "")
+           + "?voix=1")
 
     try:
         from pychromecast.controllers.dashcast import DashCastController

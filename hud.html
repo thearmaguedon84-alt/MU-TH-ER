@@ -497,6 +497,7 @@ function majHorloge() {
 // ------------------------------------------------------------- evenements
 
 function appliquer(ev) {
+  if (ev.t === "voix") { jouerVoix(ev.url); return; }
   switch (ev.t) {
     case "etat":
       S.etat = ev.v;
@@ -652,6 +653,24 @@ if (formSaisie && champ) {
   });
 
   champ.focus();
+}
+
+
+
+// ------------------------------------------------------------- voix
+
+// La parole est prononcee par le PC, hors du navigateur. Quand l'interface est
+// envoyee sur un ecran, c'est ce televiseur qui charge la page : il devient
+// alors le seul haut-parleur, et doit jouer la voix lui-meme.
+
+const voixIci = new URLSearchParams(location.search).get("voix") === "1";
+
+function jouerVoix(url) {
+  if (!voixIci) return;
+  try {
+    const a = new Audio(url);
+    a.play().catch(() => {});
+  } catch (e) { /* certains navigateurs exigent un geste prealable */ }
 }
 
 </script>

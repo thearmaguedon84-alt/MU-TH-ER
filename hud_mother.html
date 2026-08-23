@@ -846,8 +846,14 @@ amorcer();
    doublon inutile.
 */
 
-let voixIci = false;
+// Une page ouverte par un televiseur porte ce parametre : elle est alors le
+// seul haut-parleur disponible, et joue la voix sans qu on ait rien a presser.
+let voixIci = new URLSearchParams(location.search).get("voix") === "1";
 const boutonVoix = document.getElementById("voix-ecran");
+if (voixIci && boutonVoix) {
+  boutonVoix.classList.add("actif");
+  boutonVoix.textContent = "VOIX SUR L ECRAN";
+}
 
 if (boutonVoix) {
   boutonVoix.addEventListener("click", () => {
