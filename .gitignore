@@ -26,3 +26,5 @@ jarvis-installation-*.zip
 gold.*.log
 network.*.log
 *.log
+voix/
+mic_test_*.wav

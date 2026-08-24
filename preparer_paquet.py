@@ -69,17 +69,34 @@ def contenu_suspect(chemin):
         texte = p.read_text(encoding="utf-8", errors="replace")
     except Exception:
         return None
+    # Ce qui ressemble a un exemple n'en est pas un : les fichiers de
+    # documentation en sont pleins, et un controle qui crie au loup finit
+    # par etre ignore.
+    exemples = re.compile(
+        r"ton[.\-_]?adresse|votre|exemple|example|sample|xxx+|"
+        r"a\.remplir|remplir|placeholder|<[^>]+>", re.I)
+
     empreintes = (
-        (re.compile(r"sk-ant-[A-Za-z0-9_-]{20,}"), "cle Anthropic"),
-        (re.compile(r"\bAIza[A-Za-z0-9_-]{30,}"), "cle Google"),
-        (re.compile(r"\b[A-Za-z0-9._%+-]+@gmail\.com\b"), "adresse Gmail"),
-        (re.compile(r"\b(?:[a-z]{4}\s){3}[a-z]{4}\b"), "mot de passe d'application"),
-        (re.compile(r"\b100\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"), "adresse du reseau prive"),
-        (re.compile(r"\b[a-z0-9-]+\.ts\.net\b"), "nom du reseau prive"),
+        (re.compile(r"sk-ant-[A-Za-z0-9_-]{20,}"), "cle Anthropic", False),
+        (re.compile(r"\bAIza[A-Za-z0-9_-]{30,}"), "cle Google", False),
+        (re.compile(r"\b[A-Za-z0-9._%+-]+@gmail\.com\b"), "adresse Gmail", True),
+        # Un mot de passe d'application Google : quatre groupes de quatre
+        # lettres, mais uniquement la ou un reglage le reclame. Sans ce
+        # contexte, n'importe quelle phrase francaise declenchait l'alerte.
+        (re.compile(r"(?:mot_de_passe|password|mdp)[^\n]{0,20}"
+                    r"[\"\']([a-z]{4}\s?){4}[\"\']", re.I),
+         "mot de passe d'application", False),
+        (re.compile(r"\b100\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"),
+         "adresse du reseau prive", False),
+        (re.compile(r"\b[a-z0-9-]{6,}\.ts\.net\b"), "nom du reseau prive", False),
     )
-    for motif, quoi in empreintes:
-        m = motif.search(texte)
-        if m:
+    for motif, quoi, tolere_exemple in empreintes:
+        for m in motif.finditer(texte):
+            debut = texte.rfind(chr(10), 0, m.start()) + 1
+            fin = texte.find(chr(10), m.end())
+            ligne = texte[debut:fin if fin > 0 else None]
+            if tolere_exemple and exemples.search(ligne):
+                continue
             return f"{quoi} ligne {texte[:m.start()].count(chr(10)) + 1}"
     return None
 
