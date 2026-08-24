@@ -20,7 +20,7 @@ terminal de bord d'*Alien*.
 
 1. Décompresse l'archive où tu veux — un dossier sans espaces ni accents dans
    le chemin évite bien des ennuis.
-2. Double-clique **`installer.py`**, ou depuis une invite de commande :
+2. Double-clique **`INSTALLER.bat`**. Si tu preferes la ligne de commande :
 
 ```
 python installer.py
