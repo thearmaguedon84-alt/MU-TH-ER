@@ -239,8 +239,13 @@ def _crepitement(duree, frequence, cadence=15.0):
     return sortie
 
 
-def _voix_avec_frappe(audio, frequence, avance=None):
-    """Voix et crepitement dans un seul flux, pour un ecran distant."""
+def _voix_avec_frappe(audio, frequence, texte=None, avance=None):
+    """Voix et crepitement dans un seul flux, pour un ecran distant.
+
+    La cadence se deduit du texte : l ecran ecrit exactement len(texte)
+    caracteres pendant la duree de la phrase. Une cadence fixe donnait plus
+    d impacts que de lettres sur les phrases courtes.
+    """
     if avance is None:
         avance = DECALAGE_FRAPPE
     voix = audio.astype(np.float32) / 32768.0
@@ -253,7 +258,14 @@ def _voix_avec_frappe(audio, frequence, avance=None):
 
     # Le crepitement court sur toute la duree, avance comprise : a l'ecran,
     # l'ecriture commence avant que la voix ne parte.
-    bruit = _crepitement(total / float(frequence), frequence)
+    # Un impact par caractere ecrit, ni plus ni moins. Les bornes evitent
+    # l absurde : une phrase d un mot sur dix secondes, ou l inverse.
+    duree_totale = total / float(frequence)
+    if texte and duree_totale > 0:
+        cadence = max(3.0, min(30.0, len(str(texte)) / duree_totale))
+    else:
+        cadence = 15.0
+    bruit = _crepitement(duree_totale, frequence, cadence)
     melange += bruit[:total] * 0.16
 
     crete = float(np.max(np.abs(melange))) or 1.0
@@ -261,7 +273,7 @@ def _voix_avec_frappe(audio, frequence, avance=None):
         melange /= crete / 0.99
     return (melange * 32767).astype(np.int16)
 
-def _publier_voix(audio, frequence):
+def _publier_voix(audio, frequence, texte=None):
     """Met la parole a disposition des interfaces, pour la diffusion.
 
     Encodee en memoire : ecrire un fichier a chaque phrase serait inutile,
@@ -273,7 +285,7 @@ def _publier_voix(audio, frequence):
         # haut-parleurs du PC recoivent la voix seule, la page s'occupant
         # deja du bruit de frappe.
         try:
-            melange = _voix_avec_frappe(audio, frequence)
+            melange = _voix_avec_frappe(audio, frequence, texte)
         except Exception:
             melange = audio.astype(np.int16)
 
@@ -288,11 +300,11 @@ def _publier_voix(audio, frequence):
         pass
 
 
-def _jouer_audio(audio, frequence):
+def _jouer_audio(audio, frequence, texte=None):
     """Joue un tableau int16 mono sur le haut-parleur, interruptible."""
     if _INTERRUPTION.is_set():
         return
-    _publier_voix(audio, frequence)
+    _publier_voix(audio, frequence, texte)
     sd.play(audio, samplerate=frequence, device=HAUT_PARLEUR)
     while not _INTERRUPTION.is_set():
         courant = sd.get_stream()
@@ -328,7 +340,7 @@ def dire(texte, interruptible=True):
         _PARLE.set()      # a partir d'ici Jarvis parle : on peut l'interrompre
     try:
         if resultat is not None:
-            _jouer_audio(*resultat)
+            _jouer_audio(*resultat, texte=texte)
         else:
             _dire_sapi(texte)
     finally:

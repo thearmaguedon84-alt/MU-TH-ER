@@ -457,3 +457,9 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-24 18:08:53  WARNING  boucle d'outils interrompue apres 3 tours
 2026-08-24 18:12:53  INFO  outil plex_chercher args={'titre': 'Le Seigneur des Anneaux'} -> J ai trouve : Le Seigneur des Anneaux : La Guerre des Rohirrim (2024), film ; Le Seigneur des anneaux : La Communauté de l'anneau (2001), film ; Le Seigneur des anneaux : Le Retour du roi (2003), film
 2026-08-24 18:12:53  WARNING  boucle d'outils interrompue apres 3 tours
+2026-08-24 18:16:28  INFO  provider LLM : Ollama (mode local)
+2026-08-24 18:16:28  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-24 18:16:49  INFO  outil plex_jouer args={'ecran': 'TV en bas', 'titre': 'le film en cours'} -> Je n ai pas trouve le film en cours dans Plex.
+2026-08-24 18:16:58  INFO  outil plex_controle args={'action': 'pause'} -> Commande impossible : Failed to execute pause.
+2026-08-24 18:17:04  INFO  outil spotify_controle args={'action': 'pause'} -> aucun appareil
+2026-08-24 18:17:04  WARNING  boucle d'outils interrompue apres 3 tours
