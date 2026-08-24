@@ -90,14 +90,8 @@ def _decouvrir(forcer=False, delai=8):
         return _APPAREILS
 
 
-def _choisir(nom):
-    """Retrouve un appareil par son nom, meme approximatif."""
-    appareils = _decouvrir()
-    if not appareils:
-        return None
-    if not nom:
-        return appareils[0]
-
+def _parmi(appareils, nom):
+    """Meilleur appareil d une liste pour un nom donne, ou None."""
     from difflib import SequenceMatcher
     cible = sans_accents(str(nom).lower()).strip()
     meilleur, note_max = None, 0.0
@@ -109,6 +103,29 @@ def _choisir(nom):
         if note > note_max:
             meilleur, note_max = c, note
     return meilleur if note_max >= 0.55 else None
+
+
+def _choisir(nom):
+    """Retrouve un appareil par son nom, meme approximatif.
+
+    La decouverte est bornee dans le temps : un televiseur occupe ou lent a
+    repondre peut manquer a l appel, et l on repondait alors qu il n existe
+    pas. On refait donc une decouverte complete avant d abandonner — quelques
+    secondes valent mieux qu un refus injustifie.
+    """
+    appareils = _decouvrir()
+    if not nom:
+        return appareils[0] if appareils else None
+
+    trouve = _parmi(appareils, nom) if appareils else None
+    if trouve is not None:
+        return trouve
+
+    complets = _decouvrir(forcer=True)
+    if not complets or len(complets) == len(appareils or []):
+        # Rien de neuf : inutile d insister.
+        return _parmi(complets, nom) if complets else None
+    return _parmi(complets, nom)
 
 
 # ------------------------------------------------------------------ outils

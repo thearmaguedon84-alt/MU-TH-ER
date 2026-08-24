@@ -463,3 +463,6 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-24 18:16:58  INFO  outil plex_controle args={'action': 'pause'} -> Commande impossible : Failed to execute pause.
 2026-08-24 18:17:04  INFO  outil spotify_controle args={'action': 'pause'} -> aucun appareil
 2026-08-24 18:17:04  WARNING  boucle d'outils interrompue apres 3 tours
+2026-08-24 18:25:20  INFO  provider LLM : Ollama (mode local)
+2026-08-24 18:25:20  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-24 18:28:38  INFO  outil plex_jouer args={'ecran': 'TV en bas', 'titre': 'casse-toi'} -> Vasectomia (2021) est dans Plex mais son disque n est pas connecte.
