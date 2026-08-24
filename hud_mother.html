@@ -199,10 +199,12 @@
     transform: translate(-50%, -56%); width: min(80vw, 138vh);
     image-rendering: pixelated; }
 
-  #voix-ecran { position: fixed; right: 16px; bottom: 58px;
-    z-index: 45; cursor: pointer; font-size: 12px;
-    padding: 7px 12px; border: 1px solid #12452a;
-    color: #1d8f47; background: rgba(0,0,0,.6); }
+  /* Au-dessus du bouton de son, pas par-dessus : ils se recouvraient, et on
+     cliquait l un en croyant cliquer l autre. */
+  #voix-ecran { position: fixed; right: 26px; bottom: 108px;
+    z-index: 150; cursor: pointer; font-size: 10.5px; letter-spacing: 2px;
+    padding: 8px 14px; border: 1px solid #12452a;
+    color: #1d8f47; background: rgba(0,0,0,.8); }
   #voix-ecran.actif { color: #35ff6a; border-color: #35ff6a; }
 
 
@@ -504,6 +506,19 @@ const Audio_ = {
     osc.start(t); osc.stop(t + 0.18);
   },
 };
+
+// Le premier geste, ou qu il porte, suffit a autoriser le son : chercher le
+// bon bouton n a aucun interet, et un clic ailleurs laissait l interface
+// muette sans qu on comprenne pourquoi.
+["pointerdown", "keydown"].forEach((ev) => {
+  window.addEventListener(ev, function amorce() {
+    Audio_.demarrer();
+    if (Audio_.ctx && Audio_.ctx.state === "suspended") Audio_.ctx.resume();
+    const b = $("#son");
+    if (b) b.classList.add("parti");
+    window.removeEventListener(ev, amorce);
+  }, { once: true });
+});
 
 $("#son").addEventListener("click", () => {
   Audio_.demarrer();

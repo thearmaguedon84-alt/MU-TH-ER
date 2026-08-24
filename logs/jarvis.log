@@ -430,3 +430,17 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-23 23:30:53  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
 2026-08-23 23:35:29  INFO  outil chercher_web args={'question': 'recette de tarte aux pommes'} -> Elements trouves sur internet pour « recette de tarte aux pommes » :
 - June 1, 2026 - Verser la compote sur la pâte et placer les lamelles de pommes en formant une spirale ou plusieurs cercles, au cho
+2026-08-23 23:43:00  INFO  outil chercher_web args={'question': 'temps de cuisson pour un oeuf molet'} -> Elements trouves sur internet pour « temps de cuisson pour un oeuf molet » :
+- January 15, 2025 - Pour qu’un œuf mollet soit réussi, il est généralement cuit entre 4 et 6 minutes. Le but : que le jaun
+2026-08-23 23:43:42  INFO  outil chercher_web args={'question': 'comment faire un oeuf poché'} -> Elements trouves sur internet pour « comment faire un oeuf poché » :
+- Découvrez la technique pour réussir un œuf poché en visionnant cette vidéo. L'œuf poché est l'une des nombreuses façons de cuire 
+2026-08-23 23:54:16  INFO  outil chercher_web args={'question': 'Qui était Daniel Balavoine?'} -> Elements trouves sur internet pour « Qui était Daniel Balavoine? » :
+- 1 month ago - Qu'est-ce qui fait craquer les filles... (1982) Biography at Radio France Internationale (in English) 1 2 3 4 Simmo
+2026-08-24 00:00:00  INFO  outil ouvrir_application args={'nom': 'Arte'} -> Arte lancé (trouvé : restarter.exe).
+2026-08-24 00:01:53  INFO  outil chercher_web args={'question': 'On est pas à Parid mais à Lapalud, retoens cette information'} -> Elements trouves sur internet pour « On est pas à Parid mais à Lapalud, retoens cette information » :
+- November 4, 2024 - Lapalud (French pronunciation: [lapaly]; Occitan: La Palús) is a commune in t
+2026-08-24 00:04:52  INFO  outil chercher_web args={'question': 'temps pour demain a lapalide'} -> Elements trouves sur internet pour « temps pour demain a lapalide » :
+- La température maximale demain à Lapalisse sera de 34.8°. (neometeo.com)
+- July 3, 2026 - La température demain soir retombera à
+2026-08-24 00:05:23  INFO  outil chercher_web args={'question': 'temps pour demain a lapalud'} -> Elements trouves sur internet pour « temps pour demain a lapalud » :
+- Météo Lapalud · Aujourd´hui 23 Août. Ensoleillé. 30° / 17° · Demain 24 Août. Orage, ciel variable. 90% 32 mm · Mardi 25 Août. Ora
