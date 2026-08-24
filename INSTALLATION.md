@@ -20,10 +20,18 @@ terminal de bord d'*Alien*.
 
 1. Décompresse l'archive où tu veux — un dossier sans espaces ni accents dans
    le chemin évite bien des ennuis.
-2. Double-clique **`INSTALLER.bat`**. Si tu preferes la ligne de commande :
+2. Choisis ton assistant :
+
+   - **`INSTALLER_FENETRE.bat`** — une fenetre avec des cases a cocher et des
+     champs. Le plus simple.
+   - **`INSTALLER.bat`** — le meme assistant en fenetre console, questions
+     posees une par une.
+
+   Les deux font exactement la meme chose. Si tu preferes la ligne de commande :
 
 ```
-python installer.py
+python installer.py           # console
+python installer_fenetre.py   # fenetre
 ```
 
 3. Réponds aux questions. **Tout est facultatif sauf les deux premières

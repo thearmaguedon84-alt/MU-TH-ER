@@ -37,7 +37,8 @@ MOTIFS_INTERDITS = (
 )
 
 # Ajoutes a l'archive bien qu'absents du depot.
-EN_PLUS = ("installer.py", "INSTALLER.bat", "INSTALLATION.md")
+EN_PLUS = ("installer.py", "installer_fenetre.py", "INSTALLER.bat",
+           "INSTALLER_FENETRE.bat", "INSTALLATION.md")
 
 
 def suivis():
