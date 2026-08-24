@@ -444,3 +444,16 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 - July 3, 2026 - La température demain soir retombera à
 2026-08-24 00:05:23  INFO  outil chercher_web args={'question': 'temps pour demain a lapalud'} -> Elements trouves sur internet pour « temps pour demain a lapalud » :
 - Météo Lapalud · Aujourd´hui 23 Août. Ensoleillé. 30° / 17° · Demain 24 Août. Orage, ciel variable. 90% 32 mm · Mardi 25 Août. Ora
+2026-08-24 18:06:20  INFO  provider LLM : Ollama (mode local)
+2026-08-24 18:06:20  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-24 18:08:06  INFO  outil plex_chercher args={'titre': 'Avengers'} -> J ai trouve : Avengers (2012), film ; Avengers : Endgame (2019), film ; Avengers : Infinity War (2018), film ; Avengers : L'Ère d'Ultron (2015), film ; Avengers: Age of Ultron (2015), film.
+2026-08-24 18:08:28  INFO  outil prime_chercher args={'titre': 'Avengers'} -> Sur Prime : Avengers: Age of Ultron, Avengers Pack 4 films, Avengers Grimm, Marvel Studios' The Avengers, Marvel Studios' Avengers: Endgame.
+2026-08-24 18:08:28  WARNING  boucle d'outils interrompue apres 3 tours
+2026-08-24 18:08:37  INFO  outil chercher_web args={'question': 'quelle heure est-il'} -> Elements trouves sur internet pour « quelle heure est-il » :
+- Quelle heure est-il (titre original : Che ora è) est un film italien réalisé par Ettore Scola, sorti en 1989. (fr.wikipedia.org)
+- 3 week
+2026-08-24 18:08:53  INFO  outil chercher_web args={'question': 'heure actuelle'} -> Elements trouves sur internet pour « heure actuelle » :
+- 16 hours ago · Heure exacte actuelle, fuseaux horaires, différence d'heure, heure de lever et de coucher du soleil, infos pratiques pour Paris
+2026-08-24 18:08:53  WARNING  boucle d'outils interrompue apres 3 tours
+2026-08-24 18:12:53  INFO  outil plex_chercher args={'titre': 'Le Seigneur des Anneaux'} -> J ai trouve : Le Seigneur des Anneaux : La Guerre des Rohirrim (2024), film ; Le Seigneur des anneaux : La Communauté de l'anneau (2001), film ; Le Seigneur des anneaux : Le Retour du roi (2003), film
+2026-08-24 18:12:53  WARNING  boucle d'outils interrompue apres 3 tours

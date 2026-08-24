@@ -208,6 +208,59 @@ def couper_parole():
             pass
 
 
+
+def _crepitement(duree, frequence, cadence=15.0):
+    """Bruit de tete d'impression : des impacts brefs, jamais identiques.
+
+    Chaque impact melange un choc bruite et un petit timbre metallique, comme
+    le fait la page. La hauteur et l'ecart varient legerement : une cadence
+    parfaitement reguliere sonne comme une machine, pas comme une frappe.
+    """
+    n = max(1, int(duree * frequence))
+    sortie = np.zeros(n, dtype=np.float32)
+    if duree <= 0:
+        return sortie
+
+    hasard = np.random.default_rng(12345)
+    instant = 0.0
+    while instant < duree:
+        depart = int(instant * frequence)
+        longueur = int(0.032 * frequence)
+        fin = min(n, depart + longueur)
+        if fin > depart:
+            m = fin - depart
+            enveloppe = np.exp(-np.linspace(0, 7, m)).astype(np.float32)
+            choc = hasard.standard_normal(m).astype(np.float32) * 0.55
+            temps = np.arange(m, dtype=np.float32) / frequence
+            timbre = np.sin(2 * np.pi * (620 + hasard.random() * 260) * temps)
+            sortie[depart:fin] += enveloppe * (choc + 0.45 * timbre)
+        # Ecart irregulier : une frappe humaine n'a pas de metronome.
+        instant += (1.0 / cadence) * (0.72 + hasard.random() * 0.7)
+    return sortie
+
+
+def _voix_avec_frappe(audio, frequence, avance=None):
+    """Voix et crepitement dans un seul flux, pour un ecran distant."""
+    if avance is None:
+        avance = DECALAGE_FRAPPE
+    voix = audio.astype(np.float32) / 32768.0
+    duree = len(voix) / float(frequence or 1)
+
+    tete = int(max(0.0, avance) * frequence)
+    total = tete + len(voix)
+    melange = np.zeros(total, dtype=np.float32)
+    melange[tete:] = voix
+
+    # Le crepitement court sur toute la duree, avance comprise : a l'ecran,
+    # l'ecriture commence avant que la voix ne parte.
+    bruit = _crepitement(total / float(frequence), frequence)
+    melange += bruit[:total] * 0.16
+
+    crete = float(np.max(np.abs(melange))) or 1.0
+    if crete > 0.99:
+        melange /= crete / 0.99
+    return (melange * 32767).astype(np.int16)
+
 def _publier_voix(audio, frequence):
     """Met la parole a disposition des interfaces, pour la diffusion.
 
@@ -216,12 +269,20 @@ def _publier_voix(audio, frequence):
     """
     try:
         import io
+        # Le crepitement n'est ajoute que pour l'ecran distant : les
+        # haut-parleurs du PC recoivent la voix seule, la page s'occupant
+        # deja du bruit de frappe.
+        try:
+            melange = _voix_avec_frappe(audio, frequence)
+        except Exception:
+            melange = audio.astype(np.int16)
+
         tampon = io.BytesIO()
         with wave.open(tampon, "wb") as f:
             f.setnchannels(1)
             f.setsampwidth(2)
             f.setframerate(int(frequence))
-            f.writeframes(audio.astype(np.int16).tobytes())
+            f.writeframes(melange.tobytes())
         hud.publier_voix(tampon.getvalue())
     except Exception:
         pass
