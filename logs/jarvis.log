@@ -481,3 +481,13 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-24 18:36:33  INFO  outil prime_chercher args={'titre': 'Steven Seagal'} -> Sur Prime : Terrain miné, The perfect weapon, Mission Alcatraz, Vol D'enfer, Hors De Portee.
 2026-08-24 18:36:34  INFO  outil chercher_web args={'question': 'Steven Seagal'} -> Elements trouves sur internet pour « Steven Seagal » :
 - Steven Seagal [ˈstivən sɪˈɡɑːl], né le 10 avril 1952 à Lansing (Michigan), est un acteur, producteur de cinéma, scénariste, chanteur et musicie
+2026-08-24 18:45:53  INFO  provider LLM : Ollama (mode local)
+2026-08-24 18:45:53  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-24 18:46:16  INFO  outil plex_jouer args={'ecran': 'TV en bas', 'titre': 'TV en bas'} -> Je n ai pas trouve TV en bas dans Plex.
+2026-08-24 18:46:25  INFO  outil plex_chercher args={'titre': 'Le Seigneur des Anneaux'} -> J ai trouve : Le Seigneur des Anneaux : La Guerre des Rohirrim (2024), film ; Le Seigneur des anneaux : La Communauté de l'anneau (2001), film ; Le Seigneur des anneaux : Le Retour du roi (2003), film
+2026-08-24 18:46:25  WARNING  boucle d'outils interrompue apres 3 tours
+2026-08-24 18:49:01  INFO  provider LLM : Ollama (mode local)
+2026-08-24 18:49:01  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-24 18:49:40  INFO  outil plex_jouer args={'titre': 'TV en bas', 'ecran': 'TV en bas'} -> Je n ai pas trouve TV en bas dans Plex.
+2026-08-24 18:49:47  INFO  outil plex_chercher args={'titre': 'La La Land'} -> J ai trouve : In the Land of Saints & Sinners (2023), film ; Le Petit dinosaure et la vallée des merveilles (1988), film ; Peter Pan 2 : Retour au pays imaginaire (2002), film ; Return to Never Land (
+2026-08-24 18:49:47  WARNING  boucle d'outils interrompue apres 3 tours

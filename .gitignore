@@ -14,3 +14,12 @@ recettes/
 
 ts_cert.pem
 ts_key.pem
+
+# Donnees personnelles : index, jetons, journaux — jamais distribues.
+.cache_plex.json
+logs/
+google_token.json
+google_credentials.json
+*.session
+paquet/
+jarvis-installation-*.zip
