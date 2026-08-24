@@ -466,3 +466,5 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-24 18:25:20  INFO  provider LLM : Ollama (mode local)
 2026-08-24 18:25:20  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
 2026-08-24 18:28:38  INFO  outil plex_jouer args={'ecran': 'TV en bas', 'titre': 'casse-toi'} -> Vasectomia (2021) est dans Plex mais son disque n est pas connecte.
+2026-08-24 18:29:26  INFO  outil plex_chercher args={'titre': 'Le Seigneur des Anneaux'} -> J ai trouve : Le Seigneur des Anneaux : La Guerre des Rohirrim (2024), film ; Le Seigneur des anneaux : La Communauté de l'anneau (2001), film ; Le Seigneur des anneaux : Le Retour du roi (2003), film
+2026-08-24 18:29:26  WARNING  boucle d'outils interrompue apres 3 tours

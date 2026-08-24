@@ -1465,5 +1465,65 @@ def main():
         flux.close()
 
 
+
+# Verrou d'instance unique. Un port ferme sert de temoin : contrairement a un
+# fichier, il se libere tout seul si le processus meurt brutalement.
+_VERROU_PORT = 8769
+_VERROU = None
+
+
+def _reserver_instance():
+    """Reserve la place de Jarvis. Renvoie False si une autre tourne deja."""
+    global _VERROU
+    import socket as _s
+    _VERROU = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
+    try:
+        # Sans reutilisation d'adresse : on veut justement echouer si occupe.
+        _VERROU.bind(("127.0.0.1", _VERROU_PORT))
+        _VERROU.listen(1)
+        return True
+    except OSError:
+        _VERROU = None
+        return False
+
+
+def _qui_tourne_deja():
+    """Ages des instances en cours, pour un message utile."""
+    try:
+        import psutil
+        import time as _t
+        vus = []
+        for proc in psutil.process_iter(["pid", "cmdline", "create_time"]):
+            try:
+                if "jarvis14.py" in " ".join(proc.info["cmdline"] or []):
+                    if proc.info["pid"] == os.getpid():
+                        continue
+                    vus.append((proc.info["pid"],
+                                (_t.time() - proc.info["create_time"]) / 60))
+            except Exception:
+                continue
+        return vus
+    except Exception:
+        return []
+
 if __name__ == "__main__":
+    if not _reserver_instance():
+        autres = _qui_tourne_deja()
+        print()
+        print("  Jarvis tourne deja.")
+        for pid, age in autres:
+            print(f"     instance en cours : pid {pid}, depuis {age:.0f} min")
+        print()
+        print("  Deux instances se disputent les ports et le reseau : la")
+        print("  seconde repond a la place de la premiere, et l'on croit a")
+        print("  des pannes qui n'existent pas.")
+        print()
+        print("  Ferme l'autre avec le raccourci « Arreter Jarvis », puis")
+        print("  relance celui-ci.")
+        print()
+        try:
+            input("  Entree pour fermer... ")
+        except Exception:
+            pass
+        raise SystemExit(1)
     main()
