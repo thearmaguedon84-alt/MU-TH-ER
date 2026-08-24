@@ -209,12 +209,18 @@ def couper_parole():
 
 
 
-def _crepitement(duree, frequence, cadence=15.0):
-    """Bruit de tete d'impression : des impacts brefs, jamais identiques.
+def _crepitement(duree, frequence, cadence=22.0):
+    """Bruit d'ecriture de MU-TH-UR, accorde sur la scene du film.
 
-    Chaque impact melange un choc bruite et un petit timbre metallique, comme
-    le fait la page. La hauteur et l'ecart varient legerement : une cadence
-    parfaitement reguliere sonne comme une machine, pas comme une frappe.
+    Le son a ete mesure plutot que devine : environ 24 impacts par seconde,
+    energie centree vers 3000 Hz, plutot bruite que tonal, et des ecarts tres
+    irreguliers. Ma premiere version tournait a 13 impacts autour de 680 Hz,
+    moitie tonale — trop lente et trop sourde, d'ou l'impression de machine a
+    ecrire plutot que d'impression.
+
+    Le bruit blanc se centre naturellement bien plus haut : on le filtre pour
+    l'amener ou le film le place. Un corps tonal grave, discret, donne
+    l'impact.
     """
     n = max(1, int(duree * frequence))
     sortie = np.zeros(n, dtype=np.float32)
@@ -222,21 +228,32 @@ def _crepitement(duree, frequence, cadence=15.0):
         return sortie
 
     hasard = np.random.default_rng(12345)
+    longueur = int(0.020 * frequence)
+    alpha = 0.45          # passe-bas : ramene le bruit vers 3000 Hz
+
+    # L'ecart moyen du tirage vaut 1,2 fois le pas nominal : on compense pour
+    # qu'une cadence demandee corresponde vraiment au nombre d'impacts.
+    pas_moyen = 1.2
+
     instant = 0.0
     while instant < duree:
         depart = int(instant * frequence)
-        longueur = int(0.032 * frequence)
         fin = min(n, depart + longueur)
         if fin > depart:
-            m = fin - depart
-            enveloppe = np.exp(-np.linspace(0, 7, m)).astype(np.float32)
-            choc = hasard.standard_normal(m).astype(np.float32) * 0.55
-            temps = np.arange(m, dtype=np.float32) / frequence
-            timbre = np.sin(2 * np.pi * (620 + hasard.random() * 260) * temps)
-            sortie[depart:fin] += enveloppe * (choc + 0.45 * timbre)
-        # Ecart irregulier : une frappe humaine n'a pas de metronome.
-        instant += (1.0 / cadence) * (0.72 + hasard.random() * 0.7)
-    return sortie
+            k = fin - depart
+            env = np.exp(-np.linspace(0, 8, k)).astype(np.float32)
+            brut = hasard.standard_normal(k).astype(np.float32)
+            # Passe-bas a un pole, ecrit sans boucle Python.
+            poids = alpha ** np.arange(k, dtype=np.float32)
+            b = np.convolve(brut, poids * (1 - alpha))[:k]
+            b /= (np.max(np.abs(b)) or 1.0)
+            t = np.arange(k, dtype=np.float32) / frequence
+            corps = 1.6 * np.sin(2 * np.pi * (560 + hasard.random() * 180) * t)
+            sortie[depart:fin] += env * (b + corps)
+        instant += (1.0 / (cadence * pas_moyen)) * (0.45 + hasard.random() * 1.5)
+
+    crete = float(np.max(np.abs(sortie))) or 1.0
+    return sortie / crete
 
 
 def _voix_avec_frappe(audio, frequence, texte=None, avance=None):
@@ -266,7 +283,7 @@ def _voix_avec_frappe(audio, frequence, texte=None, avance=None):
     else:
         cadence = 15.0
     bruit = _crepitement(duree_totale, frequence, cadence)
-    melange += bruit[:total] * 0.16
+    melange += bruit[:total] * 0.20
 
     crete = float(np.max(np.abs(melange))) or 1.0
     if crete > 0.99:

@@ -468,3 +468,16 @@ TypeError: lancer_film() got an unexpected keyword argument 'titre'
 2026-08-24 18:28:38  INFO  outil plex_jouer args={'ecran': 'TV en bas', 'titre': 'casse-toi'} -> Vasectomia (2021) est dans Plex mais son disque n est pas connecte.
 2026-08-24 18:29:26  INFO  outil plex_chercher args={'titre': 'Le Seigneur des Anneaux'} -> J ai trouve : Le Seigneur des Anneaux : La Guerre des Rohirrim (2024), film ; Le Seigneur des anneaux : La Communauté de l'anneau (2001), film ; Le Seigneur des anneaux : Le Retour du roi (2003), film
 2026-08-24 18:29:26  WARNING  boucle d'outils interrompue apres 3 tours
+2026-08-24 18:31:23  INFO  provider LLM : Ollama (mode local)
+2026-08-24 18:31:23  INFO  provider TTS : EdgeTTS (mode local, moteur edge)
+2026-08-24 18:34:06  WARNING  ollama: 1er essai en echec (HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=120)), retry plus directif
+2026-08-24 18:34:10  INFO  outil get_system_stats args={} -> GPU 70 degres, 97% d'utilisation, VRAM a 62%. CPU 5%, RAM 48%, disque C 175 Go libres.
+2026-08-24 18:34:14  WARNING  appel d'outil repete a l'identique : ['get_system_stats']
+2026-08-24 18:35:47  INFO  outil chercher_web args={'question': 'Qui est Steven DeAgal'} -> Elements trouves sur internet pour « Qui est Steven DeAgal » :
+- Steven Seagal s'est démarqué des autres acteurs de films d'action par l'utilisation systématique de techniques d' aïkido qui lui sont p
+2026-08-24 18:36:14  INFO  outil streaming_chercher args={'plateforme': 'netflix', 'titre': 'Steven Seagal'} -> Steven Seagal cherche sur Netflix.
+2026-08-24 18:36:14  INFO  outil plex_jouer args={'titre': 'Marked for Death'} -> Je ne trouve pas de fichier lisible pour Marked for Death.
+2026-08-24 18:36:16  INFO  outil youtube_caster args={'recherche': 'Steven Seagal'} -> Steven Seagal's Best Fight Scenes!-"Must Watch" sur le PC.
+2026-08-24 18:36:33  INFO  outil prime_chercher args={'titre': 'Steven Seagal'} -> Sur Prime : Terrain miné, The perfect weapon, Mission Alcatraz, Vol D'enfer, Hors De Portee.
+2026-08-24 18:36:34  INFO  outil chercher_web args={'question': 'Steven Seagal'} -> Elements trouves sur internet pour « Steven Seagal » :
+- Steven Seagal [ˈstivən sɪˈɡɑːl], né le 10 avril 1952 à Lansing (Michigan), est un acteur, producteur de cinéma, scénariste, chanteur et musicie
