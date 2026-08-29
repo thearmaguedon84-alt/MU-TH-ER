@@ -90,6 +90,10 @@ def contenu_suspect(chemin):
         (re.compile(r"\b100\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"),
          "adresse du reseau prive", False),
         (re.compile(r"\b[a-z0-9-]{6,}\.ts\.net\b"), "nom du reseau prive", False),
+        # Un chemin utilisateur trahit le nom du compte Windows. Les exemples
+        # de documentation sont tolerés, les vrais chemins non.
+        (re.compile(r"C:[\\/]Users[\\/](?!Public|ton-|votre|<)[A-Za-z]{3,}", re.I),
+         "chemin personnel", True),
     )
     for motif, quoi, tolere_exemple in empreintes:
         for m in motif.finditer(texte):

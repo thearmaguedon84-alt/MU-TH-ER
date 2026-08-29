@@ -29,3 +29,6 @@ network.*.log
 voix/
 mic_test_*.wav
 mic_test_out.txt
+
+# Genere par l installateur, contient des chemins propres a la machine.
+lancer_jarvis.bat
