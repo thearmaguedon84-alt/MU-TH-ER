@@ -204,6 +204,16 @@
     border-radius: 3px; transition: color .2s, border-color .2s;
   }
   #bascule:hover { color: #35ff6a; border-color: rgba(53,255,106,.5); }
+
+  /* Image fabriquee : elle s affiche par-dessus, et s efface au clic ou
+     au bout d une minute. On ne lui donne pas la priorite sur le specimen. */
+  #image-faite { position: fixed; inset: 0; z-index: 55; display: none;
+    background: rgba(0,0,0,.92); cursor: pointer; }
+  #image-faite.visible { display: flex; align-items: center;
+    justify-content: center; flex-direction: column; gap: 14px; }
+  #image-faite img { max-width: 88vw; max-height: 76vh; border: 1px solid #12452a; }
+  #image-faite .legende { font: 400 13px/1.5 "Courier New", monospace;
+    color: #35ff6a; max-width: 80vw; text-align: center; }
 </style>
 </head>
 <body>
@@ -243,6 +253,11 @@
   <input id="entree" type="text" placeholder="Ecris ou parle…"
          spellcheck="false">
 </form>
+
+<div id="image-faite" title="Cliquer pour fermer">
+  <img alt="">
+  <div class="legende"></div>
+</div>
 
 <script>
 "use strict";
@@ -497,6 +512,7 @@ function majHorloge() {
 // ------------------------------------------------------------- evenements
 
 function appliquer(ev) {
+  if (ev.t === "image") { montrerImage(ev.url, ev.texte); return; }
   if (ev.t === "voix") { jouerVoix(ev.url); return; }
   switch (ev.t) {
     case "etat":
@@ -671,6 +687,26 @@ function jouerVoix(url) {
     const a = new Audio(url);
     a.play().catch(() => {});
   } catch (e) { /* certains navigateurs exigent un geste prealable */ }
+}
+
+
+/* ---------------------------------------------------- image fabriquee */
+
+const zoneImage = document.getElementById("image-faite");
+let effacementImage = null;
+
+function montrerImage(url, texte) {
+  if (!zoneImage) return;
+  zoneImage.querySelector("img").src = url;
+  zoneImage.querySelector(".legende").textContent = (texte || "").toUpperCase();
+  zoneImage.classList.add("visible");
+  if (typeof reveiller === "function") reveiller();
+  clearTimeout(effacementImage);
+  effacementImage = setTimeout(() => zoneImage.classList.remove("visible"), 60000);
+}
+
+if (zoneImage) {
+  zoneImage.addEventListener("click", () => zoneImage.classList.remove("visible"));
 }
 
 </script>
