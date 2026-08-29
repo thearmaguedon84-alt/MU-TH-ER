@@ -1,0 +1,27 @@
+563:     case "jarvis":
+564:       ajouterLigne(`<span class="qui">${(THEMES[THEME_ACTIF]||THEMES.jarvis).nomJarvis}</span>${echap(ev.texte)}`, "jarvis");
+565:       break;
+566:     case "outil":
+567:       ajouterLigne(
+568:         `? <b>${echap(ev.nom)}</b>${ev.detail ? " ? " + echap(ev.detail) : ""}`,
+569:         "outil");
+570:       break;
+571:     case "theme":
+572:       appliquerTheme(ev.v);
+573:       break;
+574:   }
+575: }
+576: 
+577: // ------------------------------------------------------------- connexion SSE
+578: 
+579: function connecter() {
+580:   let source;
+581:   try {
+582:     source = new EventSource("/flux");
+583:   } catch (e) {
+584:     S.enligne = false; majReleve();
+585:     return;
+586:   }
+587:   source.onopen = () => { S.enligne = true; majReleve(); };
+588:   source.onmessage = (e) => {
+589:     try { appliquer(JSON.parse(e.data)); } catch (err) {}

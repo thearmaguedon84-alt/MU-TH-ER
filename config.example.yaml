@@ -1,0 +1,165 @@
+# Configuration de Jarvis — copie ce fichier en config.yaml et mets tes valeurs.
+# config.yaml n'est PAS versionne (voir .gitignore) : tes secrets restent chez toi.
+
+mode: cloud                    # cloud = Claude + ElevenLabs ; local = Ollama + Piper (100% offline)
+
+ollama:                        # mode local : modele de langage local (http://localhost:11434)
+  hote: "http://localhost:11434"
+  modele: "qwen3.5:4b"         # famille qwen3.5 (teste, bon en function calling + vision).
+                               # ~6-8 Go VRAM: 4b ; plus de VRAM: 9b/27b ; peu: 2b.
+                               # Voir ollama.com/library ; "python scripts/doctor.py" conseille selon ta VRAM.
+                               # Ollama recent requis (le tool-calling qwen3.5 buggait sur d'anciennes versions).
+  think: false                 # false = pas de "raisonnement" natif : indispensable pour la latence et les
+                               # appels d'outils (sinon tres lent / rendus en texte). Laisse false.
+
+voix_locale: piper             # mode local : "piper" (recommande FR) ou "kokoro"
+
+piper:                         # mode local : voix francaise Piper (voir docs/local.md)
+  modele: ""                   # chemin d'un .onnx ; vide = 1er trouve dans voix/
+
+kokoro:                        # TTS local alternatif (voix FR unique ; uv add kokoro-onnx)
+  modele: ""                   # chemin de kokoro-v1.0.onnx
+  voix: ""                     # chemin de voices-v1.0.bin
+  voix_nom: "ff_siwis"         # voix francaise de Kokoro
+
+anthropic:
+  cle: "sk-ant-..."            # https://console.anthropic.com/ , section API keys
+  modele: "claude-haiku-4-5"
+
+elevenlabs:                    # facultatif ; sans cle, Jarvis garde la voix Windows
+  cle: ""                      # https://elevenlabs.io , profil -> API key (commence par sk_)
+  voix: ""                     # ID d'une voix (onglet Voices) ; vide = 1re du compte
+  modele: "eleven_flash_v2_5"
+  langue: "fr"                 # force la langue (flash/turbo v2.5) : bonne prononciation des accents
+
+hue:                           # Philips Hue, API locale
+  pont: "192.168.1.XXX"        # adresse du pont sur ton reseau
+  cle: "ta-cle-hue"            # cle generee via le bouton du pont
+
+mail:                          # Gmail via IMAP/SMTP (facultatif)
+  adresse: "ton.adresse@gmail.com"
+  mot_de_passe_app: ""         # mot de passe d'application Google (2FA requise)
+
+audio:
+  micro: 1                     # index du micro (voir sounddevice.query_devices())
+  haut_parleur: null           # null = sortie par defaut de Windows
+
+whisper:
+  modele: "medium"
+
+interruption:                  # couper Jarvis quand tu dis "attends/stop/arrete" par-dessus
+  facteur: 1.8                 # tu dois parler ~1.8x plus fort que l'echo de Jarvis (baisse si ca ne coupe pas)
+  seuil: 0.025                 # niveau minimum absolu de ta voix (baisse si micro peu sensible)
+  blocs: 5                     # blocs de 80 ms de parole continue avant de verifier (5 = 0,4 s)
+  debug: false                 # true = affiche niv/base/seuil + ce qu'il entend (pour calibrer)
+
+assistant:
+  duree_suite: 10              # secondes d'ecoute apres une reponse
+  piece_nuit: "chambre"        # piece allumee au demarrage s'il fait nuit ("" pour desactiver)
+  personnalite: "jarvis_sarcastique"   # jarvis_sarcastique | neutre | concis
+                               # (modifiable a la voix : "passe en mode neutre")
+
+obs:                           # OBS Studio 28+ -> Outils -> Parametres du serveur WebSocket
+  host: "localhost"
+  port: 4455
+  mot_de_passe: ""             # le mot de passe du serveur WebSocket OBS
+
+apps:                          # applications/jeux lancables par la voix ("lance Borderlands")
+  spotify: "spotify:"
+  # borderlands: "C:\\Program Files\\...\\Borderlands.exe"
+  # un_jeu_steam: "steam://rungameid/1234560"
+  # obs: "C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe"
+
+utilisateur:                   # tes infos pour les reservations (JAMAIS de mot de passe ici)
+  nom: ""                      # ton nom complet
+  telephone: ""                # ton numero de rappel
+  email: ""                    # ton email
+
+reservation:                   # reservation web (Playwright ; voir docs/reservation.md)
+  navigateur_visible: true     # true = fenetre visible (recommande, tu vois ce qu'il fait)
+  navigateur_canal: "chrome"   # "chrome" = ton Chrome systeme (stable) ; "" = Chromium de Playwright
+  profil: ".profil_reservation"   # dossier du profil navigateur persistant (reste connecte)
+  max_etapes: 22               # nb max d'actions avant d'abandonner proprement
+  # modele: "claude-haiku-4-5" # modele pour la boucle vision (defaut = anthropic.modele)
+  sites:                       # raccourcis : "reserve chez X sur thefork"
+    thefork: "https://www.thefork.fr/"
+    doctolib: "https://www.doctolib.fr/"
+
+twilio:                        # appels telephoniques (voir docs/appels.md)
+  account_sid: ""              # console.twilio.com (Account SID, commence par AC...)
+  auth_token: ""               # console.twilio.com (Auth Token)
+  numero: ""                   # ton numero Twilio au format +33... (from)
+  # --- V2 (conversation temps reel) : serveur public que Twilio doit joindre ---
+  public_url: ""               # wss://... si tu exposes le serveur toi-meme (sinon ngrok)
+  ngrok_authtoken: ""          # jeton ngrok (dashboard.ngrok.com) pour un tunnel automatique
+
+appels:
+  actif: true
+  simulation: false            # true = mode TEST : "fait comme si" l'appel etait passe (aucun vrai appel)
+  duree_max_message: 30        # V1 : secondes max d'enregistrement de la reponse
+  cout_par_minute: 0.11        # estimation EUR/min (ajuste selon les tarifs Twilio)
+  dossier: "logs/calls"        # transcriptions + compteur (gitignore)
+  # prefixes_interdits: ["089","3","118","10"]   # numeros surtaxes bloques (defaut fourni)
+  # --- V2 (conversation temps reel) ---
+  port_stream: 8770            # port local du serveur Media Streams
+  seuil_voix: 400             # seuil RMS de detection de parole (baisse si peu sensible)
+  silence_fin_ms: 700         # silence (ms) marquant la fin d'une phrase de l'interlocuteur
+  duree_max_appel: 180        # duree max d'un appel V2 (secondes)
+
+agenda:                        # Google Agenda, API officielle OAuth2 (voir docs/agenda.md)
+  credentials: "google_credentials.json"  # identifiants OAuth telecharges (Google Cloud Console)
+  token: "google_token.json"     # cree tout seul au 1er lancement (non versionne)
+  calendrier_principal: "primary"  # agenda ou creer/supprimer les evenements
+  calendriers: []                # noms (ou ids) des agendas a LIRE ; vide = tous.
+                                 # Pour lister les tiens : uv run python -m tools.agenda
+
+loopstr:                        # echeances de partenariats via flux iCal (voir docs/agenda.md)
+  url: ""                       # URL du flux iCal Loopstr (donnees perso, non exposees via MCP)
+
+navigateur:                    # assistance sur TON Chrome (voir docs/navigateur.md)
+  cdp_port: 9222               # port de debug (raccourci "Chrome + Jarvis")
+  domaines_proteges:           # sites ou Jarvis LIT mais n'AGIT jamais (fais-le toi-meme)
+    - "impots.gouv.fr"
+    - "ameli.fr"
+    - "labanquepostale.fr"
+    - "boursorama.com"
+    - "credit-agricole.fr"
+    - "paypal.com"
+    # ajoute tes banques / sites sante / administration
+
+mcp:                           # serveur MCP (expose les outils domotique/PC ; voir docs/mcp.md)
+  transport: "stdio"           # "stdio" (clients desktop) ou "http" (client distant)
+  host: "127.0.0.1"            # (transport http)
+  port: 8765                   # (transport http)
+
+instagram:                     # analyse Instagram vs la veille (API Graph ; voir docs/instagram.md)
+  version_api: "v21.0"
+  dossier: "logs/instagram"    # instantanes quotidiens (local, non versionne)
+  comptes:                     # un ou plusieurs comptes ; chacun son token + son id
+    - nom: "principal"         # nom parlant (tu peux dire "le insta principal")
+      user_id: ""              # ID du compte Instagram Business
+      access_token: ""         # token de CE compte
+    - nom: "secondaire"
+      user_id: ""
+      access_token: ""
+
+discord:                       # bot Discord (resume des mentions + messages du jour)
+  token: ""                    # token du bot (portail dev Discord ; active "Message Content Intent")
+  user_id: ""                  # TON identifiant Discord (mode dev -> clic droit sur ton nom -> Copier l'ID)
+
+presence:                      # detection de presence (ping de l'iPhone sur le wifi)
+  actif: true
+  ip: ""                       # IP FIXE de ton iPhone sur le reseau (vide = desactive)
+  intervalle: 60               # secondes entre deux pings
+  seuil_absence: 600           # secondes d'absence avant "mode off" (600 = 10 min)
+  mode_absence: "off"          # mode active quand tu pars
+  mode_retour: "retour"        # mode active a ton retour ("" pour desactiver)
+
+# modes: ambiances lumineuses. Presets integres : off, retour, film, stream.
+# Redefinis-les ou ajoute les tiens ici (voir scenes.example.yaml pour des exemples) :
+# modes:
+#   film:
+#     - {piece: "toutes", eteindre: true}
+#     - {piece: "salon", couleur: "orange", luminosite: 15}
+#   gaming:
+#     - {piece: "salon", couleur: "bleu", luminosite: 60}

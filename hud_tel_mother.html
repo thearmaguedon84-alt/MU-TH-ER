@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#06121a">
+<title>MU-TH-UR</title>
+
+<!-- De quoi etre installee comme une application, et non gardee comme un
+     signet : le manifeste porte le nom, l icone et l affichage autonome. -->
+<link rel="manifest" href="/manifest-mother.webmanifest">
+<link rel="apple-touch-icon" href="/icone-mother-192.png">
+<link rel="icon" type="image/png" href="/icone-mother-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MU-TH-UR">
+<script>
+  // Les navigateurs n offrent une vraie installation qu aux pages dotees d un
+  // ouvrier de service. Le notre ne fait rien d autre qu exister.
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    });
+  }
+</script>
+<style>
+  :root {
+    --fond:      #030a06;
+    --carte:     #061a0e;
+    --bord:      #12452a;
+    --texte:     #35ff6a;
+    --faible:    #1d8f47;
+    --accent:    #6bff9b;
+    --vous:      #bfffd4;
+    --ok:        #35ff6a;
+    --rouge:     #ff5b46;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--fond); color: var(--texte);
+    font-family: "Courier New", Courier, monospace;
+    text-shadow: 0 0 5px rgba(53,255,106,.35); letter-spacing: .3px; }
+  body { display: flex; flex-direction: column; }
+
+  header { padding: 14px 16px calc(12px); border-bottom: 1px solid var(--bord);
+    display: flex; align-items: center; gap: 10px; }
+  header h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: 3px; }
+  #etat { margin-left: auto; font-size: 11px; letter-spacing: 1.5px;
+    color: var(--faible); display: flex; align-items: center; gap: 6px; }
+  #pastille { width: 8px; height: 8px; border-radius: 50%; background: var(--faible); }
+  #pastille.on { background: var(--ok); }
+
+  #voix { background: none; border: 1px solid var(--bord); color: var(--faible);
+    font-size: 15px; padding: 5px 10px; border-radius: 9px; }
+  #voix.on { color: var(--accent); border-color: var(--accent); }
+
+  #journal { flex: 1; overflow-y: auto; padding: 14px 16px; font-size: 15px;
+    line-height: 1.55; }
+  .ligne { margin-bottom: 11px; word-break: break-word; }
+  .ligne .qui { display: block; font-size: 10.5px; letter-spacing: 1.6px;
+    color: var(--faible); margin-bottom: 2px; }
+  .ligne.vous { color: var(--vous); }
+  .ligne.outil { color: var(--faible); font-size: 13px; }
+
+  form { display: flex; gap: 9px; padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--bord); background: var(--carte); }
+  input { flex: 1; min-width: 0; padding: 13px 14px; font-size: 16px;
+    border-radius: 11px; border: 1px solid var(--bord); background: var(--fond);
+    color: var(--texte); }
+  input:focus { outline: none; border-color: var(--accent); }
+  button { border: none; border-radius: 11px; font-size: 15px; font-weight: 600;
+    padding: 0 17px; background: var(--accent); color: #06121a; }
+  button:active { opacity: .7; }
+  #micro { background: var(--bord); color: var(--texte); font-size: 19px; padding: 0 15px; }
+  #micro.actif { background: var(--rouge); color: #fff; }
+
+  #diag { padding: 8px 14px; font-size: 11.5px; line-height: 1.6;
+    color: var(--faible); border-top: 1px solid var(--bord); }
+  #diag b { color: var(--texte); font-weight: 500; }
+  #diag .ko { color: var(--rouge); }
+  #diag .ok { color: var(--ok); }
+
+  #raccourcis { display: flex; gap: 7px; overflow-x: auto; padding: 9px 14px 2px;
+    scrollbar-width: none; }
+  #raccourcis::-webkit-scrollbar { display: none; }
+  #raccourcis button { background: var(--carte); color: var(--faible);
+    border: 1px solid var(--bord); font-size: 12.5px; font-weight: 400;
+    padding: 7px 12px; white-space: nowrap; border-radius: 20px; }
+
+  /* L extinction ne se rattrape pas : le bouton se tient a l ecart des
+     autres, et demande un second appui avant d agir. */
+  #arret { background: transparent; color: var(--faible);
+    border: 1px solid var(--bord); border-radius: 20px; font-size: 13px;
+    padding: 7px 13px; white-space: nowrap; transition: all .15s; }
+  #arret.arme { background: var(--rouge); border-color: var(--rouge);
+    color: #fff; font-weight: 500; }
+
+  /* Balayage : de fines rayures sombres, comme sur un tube. */
+  #rayures { position: fixed; inset: 0; z-index: 40; pointer-events: none;
+    background: repeating-linear-gradient(180deg,
+      rgba(0,0,0,0) 0 2px, rgba(0,0,0,.28) 2px 3px); }
+
+  /* Specimen : couvre l ecran pendant les temps morts, sans bloquer un geste. */
+  #specimen { position: fixed; inset: 0; z-index: 50; display: none;
+    background: #000; pointer-events: none; }
+  #specimen.visible { display: block; opacity: 1; }
+  #specimen .haut, #specimen .bas { position: absolute; left: 4%; right: 4%;
+    white-space: pre; font: 400 11px/1.5 "Courier New", monospace;
+    color: #35ff6a; }
+  #specimen .haut { top: 3%; }
+  #specimen .bas { bottom: 4%; }
+  #specimen canvas { position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -52%); width: 94vw; image-rendering: pixelated; }
+
+  /* Retour vers l interface Jarvis : meme place, couleur de l autre monde. */
+  #bascule { display: inline-flex; align-items: center; text-decoration: none;
+    background: transparent; color: #2ee0ff; border: 1px solid #17384c;
+    border-radius: 20px; font-size: 13px; padding: 7px 13px;
+    white-space: nowrap; font-family: "Courier New", monospace; }
+</style>
+</head>
+<body>
+
+<div id="rayures"></div>
+
+<div id="specimen">
+  <div class="haut">***** MU/TH/UR 6000 *****</div>
+  <canvas id="spec-toile" width="300" height="190"></canvas>
+  <div class="bas">SUBJ: SPECIMEN 8   STATUS: SECURE
+RMKS: ORGANIC. ACID BLOOD.
+&gt;_</div>
+</div>
+
+<header>
+  <h1>MU/TH/UR 6000</h1>
+  <button type="button" id="voix" title="Lire les reponses ici">&#128264;</button>
+  <span id="etat"><span id="pastille"></span><span id="mot">liaison…</span></span>
+</header>
+
+<div id="journal"></div>
+
+<div id="diag"></div>
+
+<div id="raccourcis"></div>
+
+<div style="display:flex; gap:8px; padding:4px 14px 0;">
+  <a href="/tel" id="bascule">JARVIS</a>
+  <button type="button" id="arret">⏻ COUPER L ALIMENTATION</button>
+</div>
+
+<form id="envoi">
+  <input id="texte" placeholder="INTERROGATION…" autocomplete="off"
+         autocapitalize="sentences" enterkeyhint="send">
+  <button type="button" id="micro" aria-label="Dicter">&#127908;</button>
+  <button type="submit">TRANSMETTRE</button>
+</form>
+
+<script>
+"use strict";
+
+/* Commande de Jarvis depuis un telephone.
+
+   La dictee est faite par le navigateur (reconnaissance vocale du systeme) :
+   on n envoie que du texte, jamais d audio. Le PC repond ensuite a voix haute
+   comme si la phrase avait ete prononcee devant lui. */
+
+const $ = (s) => document.querySelector(s);
+const journal = $("#journal");
+
+const SUGGESTIONS = [
+  "quelle heure est-il", "mets Nirvana sur Spotify", "stopez Spotify",
+  "mets Black Sabbath dans zik", "coupe la télé", "quel temps fait-il",
+  "lis mes mails", "affiche-toi sur la télé", "mode maman", "mode jarvis", "annule l'extinction",
+];
+
+function echapper(t) {
+  return String(t).replace(/[&<>"]/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+
+/* Toute ligne affichee vaut activite : une conversation se tient a la voix,
+   sans qu un doigt touche l ecran. La rafale du chargement est ignoree — c est
+   elle qui masquait le specimen des son apparition la premiere fois. */
+const _departPage = performance.now();
+function activite() {
+  if (performance.now() - _departPage < 3000) return;
+  if (typeof reveiller === "function") reveiller();
+}
+
+function ajouter(qui, texte, classe) {
+  activite();
+  const d = document.createElement("div");
+  d.className = "ligne " + classe;
+  d.innerHTML = `<span class="qui">${qui}</span>${echapper(texte)}`;
+  journal.appendChild(d);
+  journal.scrollTop = journal.scrollHeight;
+  while (journal.children.length > 120) journal.removeChild(journal.firstChild);
+}
+
+/* ---------------------------------------------------- envoi */
+
+async function envoyer(texte) {
+  texte = (texte || "").trim();
+  if (!texte) return;
+  $("#texte").value = "";
+  try {
+    await fetch("/commande", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texte }),
+    });
+  } catch (e) {
+    ajouter("ERREUR", "Le PC ne repond pas.", "outil");
+  }
+}
+
+$("#envoi").addEventListener("submit", (e) => {
+  e.preventDefault();
+  envoyer($("#texte").value);
+});
+
+/* ---------------------------------------------------- dictee
+
+   Deux voies possibles :
+
+   - reconnaissance du navigateur, instantanee, quand elle existe (Chrome) ;
+   - sinon enregistrement envoye au PC, transcrit par son Whisper. Firefox
+     Android n'a pas de reconnaissance vocale mais enregistre parfaitement,
+     et le modele du PC est de toute facon plus fiable.
+*/
+
+const Reco = window.SpeechRecognition || window.webkitSpeechRecognition;
+const micro = $("#micro");
+const diag = $("#diag");
+
+function etatDiag(message, classe) {
+  const sur = window.isSecureContext;
+  const media = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  const voie = media ? "PC (Whisper)" : "aucune";
+  diag.innerHTML =
+    `dictée par <b class="${voie === "aucune" ? "ko" : "ok"}">${voie}</b> · ` +
+    `sécurisé <b class="${sur ? "ok" : "ko"}">${sur ? "oui" : "non"}</b> · ` +
+    `micro <b class="${media ? "ok" : "ko"}">${media ? "ok" : "bloqué"}</b>` +
+    (message ? `<br><span class="${classe || ""}">${message}</span>` : "");
+}
+etatDiag();
+
+/* ------------------------------------------ voie 1 : le navigateur */
+
+let demarrerDictee = null;
+let arreterDictee = null;
+let enDictee = false;
+
+if (false && Reco) {          // conserve pour reference, non utilise
+  const reco = new Reco();
+  reco.lang = "fr-FR";
+  reco.interimResults = false;
+  reco.maxAlternatives = 1;
+
+  reco.onstart = () => { enDictee = true; micro.classList.add("actif");
+                         etatDiag("J'écoute…", "ok"); };
+  reco.onend = () => { enDictee = false; micro.classList.remove("actif"); };
+  reco.onerror = (ev) => {
+    enDictee = false; micro.classList.remove("actif");
+    etatDiag("Erreur : " + ev.error, "ko");
+  };
+  reco.onresult = (ev) => envoyer(ev.results[0][0].transcript);
+
+  demarrerDictee = () => reco.start();
+  arreterDictee = () => reco.stop();
+}
+
+/* ------------------------------------------ voie 2 : envoi au PC */
+
+let enregistreur = null;
+let morceaux = [];
+
+async function demarrerEnregistrement() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    etatDiag("Ce navigateur ne donne pas accès au micro.", "ko");
+    return;
+  }
+  let flux;
+  try {
+    flux = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    etatDiag("Micro refusé : " + e.name + ". Autorise le site dans les réglages.", "ko");
+    return;
+  }
+
+  // On laisse le navigateur choisir son format : le PC sait tout decoder.
+  try {
+    enregistreur = new MediaRecorder(flux);
+  } catch (e) {
+    etatDiag("Enregistrement impossible : " + e.message, "ko");
+    flux.getTracks().forEach((t) => t.stop());
+    return;
+  }
+
+  morceaux = [];
+  enregistreur.ondataavailable = (e) => { if (e.data.size) morceaux.push(e.data); };
+  enregistreur.onstop = async () => {
+    flux.getTracks().forEach((t) => t.stop());
+    enDictee = false;
+    micro.classList.remove("actif");
+    if (!morceaux.length) { etatDiag("Rien enregistré.", "ko"); return; }
+
+    const blob = new Blob(morceaux, { type: enregistreur.mimeType || "audio/ogg" });
+    if (blob.size < 1200) { etatDiag("Trop court.", "ko"); return; }
+
+    etatDiag("Transcription en cours…", "ok");
+    try {
+      await fetch("/audio", {
+        method: "POST",
+        headers: { "Content-Type": blob.type || "audio/ogg" },
+        body: blob,
+      });
+      etatDiag("Envoyé au PC.", "ok");
+    } catch (e) {
+      etatDiag("Envoi impossible : le PC ne répond pas.", "ko");
+    }
+  };
+
+  enregistreur.start();
+  enDictee = true;
+  micro.classList.add("actif");
+  etatDiag("Enregistrement… appuie à nouveau pour envoyer.", "ok");
+}
+
+function arreterEnregistrement() {
+  if (enregistreur && enregistreur.state !== "inactive") enregistreur.stop();
+}
+
+/* On utilise l enregistrement PARTOUT, meme quand le navigateur propose sa
+   propre reconnaissance : Chrome la refuse sur un certificat auto-signe, et
+   le Whisper du PC transcrit de toute facon mieux. Une seule voie, donc un
+   seul comportement a maintenir. */
+demarrerDictee = demarrerEnregistrement;
+arreterDictee = arreterEnregistrement;
+
+/* ------------------------------------------ le bouton */
+
+micro.addEventListener("click", async () => {
+  if (enDictee) { arreterDictee && arreterDictee(); return; }
+  if (!demarrerDictee) {
+    etatDiag("Aucune dictée disponible sur ce navigateur.", "ko");
+    return;
+  }
+  try { await demarrerDictee(); }
+  catch (e) { etatDiag("Démarrage impossible : " + e.message, "ko"); }
+});
+
+
+/* ---------------------------------------------------- extinction
+
+   Un appui arme le bouton, un second declenche. L armement retombe seul au
+   bout de cinq secondes : une poche ou un doigt qui derape ne suffiront pas.
+   Le PC laisse ensuite un delai pendant lequel « annule » fait marche arriere.
+*/
+
+const arret = $("#arret");
+let arme = null;
+
+arret.addEventListener("click", () => {
+  if (arme) {
+    clearTimeout(arme);
+    arme = null;
+    arret.classList.remove("arme");
+    arret.textContent = "\u23fb COUPER L ALIMENTATION";
+    envoyer("extinction confirmee depuis le telephone");
+    return;
+  }
+  arret.classList.add("arme");
+  arret.textContent = "CONFIRMER LA COUPURE";
+  arme = setTimeout(() => {
+    arme = null;
+    arret.classList.remove("arme");
+    arret.textContent = "\u23fb COUPER L ALIMENTATION";
+  }, 5000);
+});
+
+/* ---------------------------------------------------- raccourcis */
+
+const zone = $("#raccourcis");
+SUGGESTIONS.forEach((s) => {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = s;
+  b.addEventListener("click", () => envoyer(s));
+  zone.appendChild(b);
+});
+
+/* ---------------------------------------------------- lecture locale
+
+   Plutot que de transporter l audio depuis le PC, on laisse le telephone
+   prononcer la reponse avec sa propre voix : c est immediat et ca n occupe
+   pas le reseau. Le choix est memorise d une visite a l autre. */
+
+let lectureActive = localStorage.getItem("jarvis_voix") === "1";
+const boutonVoix = $("#voix");
+
+function majBoutonVoix() {
+  boutonVoix.classList.toggle("on", lectureActive);
+  boutonVoix.textContent = lectureActive ? "\uD83D\uDD0A" : "\uD83D\uDD07";
+  boutonVoix.title = lectureActive ? "Reponses lues ici" : "Reponses muettes ici";
+}
+
+boutonVoix.addEventListener("click", () => {
+  lectureActive = !lectureActive;
+  localStorage.setItem("jarvis_voix", lectureActive ? "1" : "0");
+  majBoutonVoix();
+  // Premiere activation : les navigateurs exigent un geste de l utilisateur
+  if (lectureActive) lire("Lecture activee.");
+});
+majBoutonVoix();
+
+function lire(texte) {
+  if (!lectureActive || !window.speechSynthesis || !texte) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(String(texte));
+    u.lang = "fr-FR";
+    u.rate = 1.02;
+    speechSynthesis.speak(u);
+  } catch (e) { /* voix indisponible */ }
+}
+
+/* ---------------------------------------------------- flux */
+
+function connecter() {
+  let source;
+  try { source = new EventSource("/flux"); } catch (e) { return; }
+
+  source.onopen = () => {
+    $("#pastille").classList.add("on");
+    $("#mot").textContent = "connecté";
+  };
+  source.onerror = () => {
+    $("#pastille").classList.remove("on");
+    $("#mot").textContent = "hors ligne";
+  };
+  source.onmessage = (e) => {
+    let ev;
+    try { ev = JSON.parse(e.data); } catch (err) { return; }
+    if (ev.t === "vous") ajouter("VOUS", ev.texte, "vous");
+    else if (ev.t === "jarvis") { ajouter("JARVIS", ev.texte, "jarvis"); lire(ev.texte); }
+    else if (ev.t === "outil") ajouter("OUTIL", ev.nom + (ev.detail ? " · " + ev.detail : ""), "outil");
+    else if (ev.t === "etat") {
+      if (ev.v && ev.v !== "veille") activite();
+      const libelles = { veille: "en veille", ecoute: "écoute",
+                         reflexion: "réfléchit", parole: "parle" };
+      $("#mot").textContent = libelles[ev.v] || ev.v;
+    }
+  };
+}
+
+connecter();
+
+/* ---------------------------------------------------- specimen
+
+   Le releve est servi a part plutot que recopie ici : une seule source pour
+   les deux interfaces. S il n arrive pas, l apparition ne se declenche
+   simplement jamais, sans rien casser.
+*/
+
+let SPECIMEN = null;
+fetch("/specimen.json")
+  .then((r) => r.json())
+  .then((d) => { SPECIMEN = d; })
+  .catch(() => {});
+
+const specimen = document.getElementById("specimen");
+const specToile = document.getElementById("spec-toile");
+let animation = null;
+
+function tracerProgressif(secondes) {
+  if (!SPECIMEN) return;
+  const c = specToile.getContext("2d");
+  c.clearRect(0, 0, specToile.width, specToile.height);
+  c.lineWidth = 0.9;
+  c.lineJoin = "round";
+  c.lineCap = "round";
+  c.strokeStyle = "rgba(53,255,106,.92)";
+
+  const total = SPECIMEN.length;
+  const depart = performance.now();
+  const duree = secondes * 1000;
+  let tracees = 0;
+
+  cancelAnimationFrame(animation);
+  function etape(maintenant) {
+    const avance = Math.min(1, (maintenant - depart) / duree);
+    const cible = Math.ceil(total * avance);
+    for (let k = tracees; k < cible; k++) {
+      const ch = SPECIMEN[k];
+      if (!ch || ch.length < 2) continue;
+      c.beginPath();
+      ch.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]));
+      c.stroke();
+    }
+    tracees = cible;
+    if (avance < 1) animation = requestAnimationFrame(etape);
+  }
+  animation = requestAnimationFrame(etape);
+}
+
+function montrerSpecimen(secondes) {
+  if (!SPECIMEN) return;
+  specimen.classList.add("visible");
+  tracerProgressif(5);
+  clearTimeout(montrerSpecimen.fin);
+  montrerSpecimen.fin = setTimeout(
+    () => specimen.classList.remove("visible"), secondes * 1000);
+}
+
+let attenteRepos = null;
+let retours = null;
+
+function reveiller() {
+  specimen.classList.remove("visible");
+  clearTimeout(attenteRepos);
+  clearInterval(retours);
+  retours = null;
+  attenteRepos = setTimeout(() => {
+    montrerSpecimen(11);
+    retours = setInterval(() => montrerSpecimen(24), 5 * 60 * 1000);
+  }, 30 * 1000);
+}
+
+for (const ev of ["pointerdown", "keydown", "touchstart", "wheel"]) {
+  window.addEventListener(ev, reveiller, { passive: true });
+}
+reveiller();
+
+
+</script>
+</body>
+</html>
