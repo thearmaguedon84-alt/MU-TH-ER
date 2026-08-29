@@ -1216,6 +1216,56 @@ def _image(t):
     return generer_image(description=sujet, format=format_voulu, ecran=ecran)
 
 
+
+RE_MODIF_IMAGE = re.compile(
+    r"\b(?:modifie|modifier|transforme|transformer|retouche|retoucher|"
+    r"refais|refaire|reprends|reprendre|change|changer)\b[^.]{0,30}?"
+    r"\b(?:image|photo|dessin|illustration|visuel)\b")
+
+
+def _modifier_image(t):
+    """« transforme ma derniere photo en dessin anime ».
+
+    On separe ce qui designe l image de ce qu elle doit devenir : le mot
+    « en » marque presque toujours la frontiere entre les deux.
+    """
+    if not RE_MODIF_IMAGE.search(t):
+        return None
+
+    m = re.search(r"\b(?:modifie|modifier|transforme|transformer|retouche|"
+                  r"retoucher|refais|refaire|reprends|reprendre|change|"
+                  r"changer)\b\s*(?:moi\s+)?(.+)", t)
+    if not m:
+        return None
+    reste = m.group(1)
+
+    coupe = re.split(r"\ben\s+", reste, 1)
+    # Les adverbes d intensite servent a la force, pas a designer l image.
+    quelle = re.sub(r"\b(?:legerement|leger|un peu|completement|fortement|"
+                    r"beaucoup|vraiment)\b", " ", coupe[0])
+    quelle = " ".join(quelle.split()).strip(" ,.")
+    voulu = coupe[1].strip(" ,.") if len(coupe) > 1 else ""
+
+    force = ""
+    if re.search(r"\blegerement\b|\bun peu\b|\bleger\b", t):
+        force = "legere"
+    elif re.search(r"\bcompletement\b|\bfortement\b|\bbeaucoup\b", t):
+        force = "forte"
+
+    ecran = ""
+    if _contient(t, ECRANS):
+        ecran = _premier_ecran()
+        voulu = re.sub(r"\bsur\s+(?:la|le|l|mon|ma)?\s*[^,]+$", "", voulu)
+
+    voulu = " ".join(voulu.split()).strip(" ,.")
+    if len(voulu) < 3:
+        return None
+
+    from tools.modifier_image import modifier_image
+    return modifier_image(description=voulu, image=quelle, force=force,
+                          ecran=ecran)
+
+
 # --------------------------------------------------------------- ton MU-TH-UR
 
 # Les raccourcis renvoient des phrases toutes faites, ecrites pour Jarvis.
@@ -1267,7 +1317,7 @@ ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
           _streaming, _plex, _plex_sans_ecran, _musique_sans_source,
           _ecran_lecture, _media, _courrier, _application, _film,
           _heure, _meteo, _minuteur, _stats, _capture, _web,
-          _image)
+          _modifier_image, _image)
 
 
 def essayer(question):
