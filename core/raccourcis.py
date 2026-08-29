@@ -1140,9 +1140,18 @@ def _web(t):
 
 
 RE_IMAGE = re.compile(
-    r"\b(?:fais|fabrique|genere|generer|cree|creer|dessine|dessiner|montre)\b"
-    r"[^.]{0,20}?\b(?:image|dessin|illustration|photo|visuel|rendu)\b"
-    r"|\bimage de\b|\bdessine[- ]moi\b")
+    r"\b(?:fais|fait|fabrique|genere|generer|cree|creer|dessine|dessiner|"
+    r"montre|produis|sors)\b[^.]{0,26}?"
+    r"\b(?:images?|dessins?|illustrations?|photos?|visuels?|rendus?)\b"
+    r"|\b(?:une?\s+|l\s*)?(?:image|illustration|dessin|visuel)\s+(?:de|d|du|des|avec)\b"
+    r"|\bdessine[- ]moi\b|\ben image\b"
+    r"|\bmontre[- ]moi\s+a\s+quoi\s+ressemble\b")
+
+# Questions sur la capacite elle-meme : le modele repondait de memoire, sans
+# regarder ses outils, et niait savoir faire ce qu il sait faire.
+RE_SAIT_IMAGE = re.compile(
+    r"\b(?:tu sais|sais tu|tu peux|peux tu|est ce que tu (?:sais|peux))\b"
+    r"[^.?]{0,34}\b(?:images?|dessins?|illustrations?)\b")
 
 
 def _image(t):
@@ -1151,6 +1160,12 @@ def _image(t):
     La traduction vers l anglais se fait dans l outil : passer par le modele
     ici couterait un aller-retour de plus pour le meme resultat.
     """
+    if RE_SAIT_IMAGE.search(t):
+        return ("Oui. Je fabrique des images en local, sans rien envoyer "
+                "dehors. Dis-moi ce que tu veux voir : « fais-moi une image "
+                "d un alien a la plage ». Je peux aussi l envoyer sur une "
+                "television.")
+
     if not RE_IMAGE.search(t):
         return None
 
