@@ -1138,6 +1138,56 @@ def _web(t):
     return chercher_web(question=question)
 
 
+
+RE_IMAGE = re.compile(
+    r"\b(?:fais|fabrique|genere|generer|cree|creer|dessine|dessiner|montre)\b"
+    r"[^.]{0,20}?\b(?:image|dessin|illustration|photo|visuel|rendu)\b"
+    r"|\bimage de\b|\bdessine[- ]moi\b")
+
+
+def _image(t):
+    """« fais-moi une image d un alien en maillot de bain ».
+
+    La traduction vers l anglais se fait dans l outil : passer par le modele
+    ici couterait un aller-retour de plus pour le meme resultat.
+    """
+    if not RE_IMAGE.search(t):
+        return None
+
+    sujet = re.split(r"\b(?:image|dessin|illustration|photo|visuel|rendu)\b", t, 1)
+    sujet = sujet[-1] if len(sujet) > 1 else t
+    sujet = re.sub(r"^\s*(?:de|d|du|des|avec|representant|montrant|qui)\b\s*",
+                   "", sujet.strip())
+
+    ecran = ""
+    if _contient(t, ECRANS):
+        m = re.search(r"\bsur\s+(?:la|le|l|mon|ma)?\s*([^,]+)$", sujet)
+        if m:
+            propre = re.sub(r"\b(ecran|television|tele|tv|chromecast)\b", " ",
+                            m.group(1))
+            propre = _nettoyer_cible(propre)
+            from tools.cast import _choisir
+            if propre and _choisir(propre) is not None:
+                ecran = propre
+                sujet = sujet[:m.start()]
+        if not ecran:
+            ecran = _premier_ecran()
+            sujet = re.sub(r"\bsur\s+(?:la|le|l|mon|ma)?\s*[^,]+$", "", sujet)
+
+    format_voulu = ""
+    if re.search(r"\bportrait\b|\bvertical\b", sujet):
+        format_voulu = "portrait"
+    elif re.search(r"\bpaysage\b|\bhorizontal\b", sujet):
+        format_voulu = "paysage"
+
+    sujet = " ".join(sujet.split()).strip(" ,.")
+    if len(sujet) < 3:
+        return None
+
+    from tools.image import generer_image
+    return generer_image(description=sujet, format=format_voulu, ecran=ecran)
+
+
 # --------------------------------------------------------------- ton MU-TH-UR
 
 # Les raccourcis renvoient des phrases toutes faites, ecrites pour Jarvis.
@@ -1188,7 +1238,8 @@ ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
           _spotify, _youtube, _diffuser_service, _chaine_tv,
           _streaming, _plex, _plex_sans_ecran, _musique_sans_source,
           _ecran_lecture, _media, _courrier, _application, _film,
-          _heure, _meteo, _minuteur, _stats, _capture, _web)
+          _heure, _meteo, _minuteur, _stats, _capture, _web,
+          _image)
 
 
 def essayer(question):

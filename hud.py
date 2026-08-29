@@ -22,6 +22,7 @@ voir le rendu sans le reste de l'assistant.
 """
 
 import json
+import os
 import queue
 import socket
 import threading
@@ -151,6 +152,11 @@ def niveau(valeur):
 # Derniere parole prononcee, mise a disposition des interfaces. Une seule est
 # gardee : ce qui vient d'etre dit interesse, ce qui l'a ete avant, non.
 _VOIX = {"numero": 0, "donnees": None}
+
+
+def publier_image(url, description=""):
+    """Signale une image fraiche aux interfaces, qui l afficheront."""
+    _diffuser({"t": "image", "url": url, "texte": str(description)[:120]})
 
 
 def publier_voix(donnees_wav):
@@ -329,6 +335,14 @@ class _Poignee(BaseHTTPRequestHandler):
             # Page de diagnostic : verifie si un televiseur accepte de jouer
             # un son sans geste prealable.
             self._page(Path(__file__).parent / "essai_son.html")
+        elif self.path.startswith("/image/"):
+            # Les images fabriquees, servies a l interface et aux televiseurs.
+            nom = os.path.basename(self.path)
+            fichier = Path(__file__).parent / "images" / nom
+            if fichier.exists() and fichier.suffix.lower() == ".png":
+                self._brut(fichier.read_bytes(), "image/png")
+            else:
+                self.send_error(404)
         elif self.path == "/specimen.json":
             # Servi a part : les deux interfaces y puisent, aucune n en garde
             # une copie.
