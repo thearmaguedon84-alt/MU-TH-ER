@@ -1156,23 +1156,30 @@ def _image(t):
 
     sujet = re.split(r"\b(?:image|dessin|illustration|photo|visuel|rendu)\b", t, 1)
     sujet = sujet[-1] if len(sujet) > 1 else t
-    sujet = re.sub(r"^\s*(?:de|d|du|des|avec|representant|montrant|qui)\b\s*",
-                   "", sujet.strip())
+    # « dessine » ne contient pas « dessin » au sens des limites de mots : le
+    # verbe survivait au decoupage et se retrouvait dans la description.
+    sujet = re.sub(r"^\s*(?:fais|fabrique|genere|generer|cree|creer|dessine|"
+                   r"dessiner|montre)\b\s*(?:moi\s+)?", "", sujet.strip(),
+                   flags=re.I)
+    sujet = re.sub(r"^\s*(?:une?|le|la|les|de|d|du|des|avec|representant|"
+                   r"montrant|qui)\b\s*", "", sujet.strip(), flags=re.I)
 
     ecran = ""
     if _contient(t, ECRANS):
-        m = re.search(r"\bsur\s+(?:la|le|l|mon|ma)?\s*([^,]+)$", sujet)
+        # Le point de coupe est le DERNIER « sur » : sans le prefixe gourmand,
+        # « un chat sur un skateboard sur la tele » perdait le skateboard.
+        m = re.search(r"^.*\b(sur)\s+(?:la|le|l|mon|ma)?\s*([^,]+)$", sujet)
         if m:
             propre = re.sub(r"\b(ecran|television|tele|tv|chromecast)\b", " ",
-                            m.group(1))
+                            m.group(2))
             propre = _nettoyer_cible(propre)
             from tools.cast import _choisir
             if propre and _choisir(propre) is not None:
                 ecran = propre
-                sujet = sujet[:m.start()]
+                sujet = sujet[:m.start(1)]
         if not ecran:
             ecran = _premier_ecran()
-            sujet = re.sub(r"\bsur\s+(?:la|le|l|mon|ma)?\s*[^,]+$", "", sujet)
+            sujet = re.sub(r"^(.*)\bsur\s+(?:la|le|l|mon|ma)?\s*[^,]+$", r"\1", sujet)
 
     format_voulu = ""
     if re.search(r"\bportrait\b|\bvertical\b", sujet):
@@ -1180,6 +1187,12 @@ def _image(t):
     elif re.search(r"\bpaysage\b|\bhorizontal\b", sujet):
         format_voulu = "paysage"
 
+    if format_voulu:
+        # Le mot de format a servi, il n a plus rien a faire dans la demande.
+        sujet = re.sub(r"\b(?:en\s+)?(?:portrait|paysage|vertical|horizontal)\b",
+                       " ", sujet)
+
+    sujet = re.sub(r"^\s*(?:de|d|du|des|moi)\b\s*", "", sujet.strip())
     sujet = " ".join(sujet.split()).strip(" ,.")
     if len(sujet) < 3:
         return None
