@@ -53,13 +53,16 @@ def _demarrer_moteur(patience=180):
     if _moteur_repond():
         return True
 
-    dossier = reglage("images.forge", r"F:\IA\forge")
-    lanceur = Path(dossier) / "webui-user.bat"
+    # Le paquet tout-en-un se lance par run.bat, qui charge d abord son propre
+    # Python. Appeler le lanceur interne recreerait un environnement et
+    # tenterait de tout reinstaller.
+    dossier = reglage("images.forge", r"F:\IA\forge_prete")
+    lanceur = Path(dossier) / "run.bat"
     if not lanceur.exists():
         return False
     try:
-        subprocess.Popen(["cmd", "/c", str(lanceur)], cwd=str(dossier),
-                         creationflags=subprocess.CREATE_NEW_CONSOLE)
+        subprocess.Popen(["cmd", "/c", "run.bat"], cwd=str(dossier),
+                         creationflags=subprocess.CREATE_NO_WINDOW)
     except Exception:
         return False
 
