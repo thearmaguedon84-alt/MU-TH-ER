@@ -49,8 +49,17 @@ def main():
     print(f"  {len(fichiers)} fichiers verifies, aucun contenu personnel.")
 
     if CIBLE.exists():
-        shutil.rmtree(CIBLE, ignore_errors=True)
-    CIBLE.mkdir(parents=True)
+        # Git marque ses objets en lecture seule : une suppression ordinaire
+        # les laisse en place et le dossier survit a moitie.
+        def forcer(fonction, chemin, _):
+            import stat
+            try:
+                os.chmod(chemin, stat.S_IWRITE)
+                fonction(chemin)
+            except Exception:
+                pass
+        shutil.rmtree(CIBLE, onexc=forcer)
+    CIBLE.mkdir(parents=True, exist_ok=True)
 
     for f in fichiers:
         dest = CIBLE / f
