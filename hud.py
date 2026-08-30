@@ -353,6 +353,17 @@ class _Poignee(BaseHTTPRequestHandler):
                            else "audio/wav")
             else:
                 self.send_error(404)
+        elif self.path.startswith("/clip/") or self.path.startswith("/video/"):
+            # Clips montes et sequences video, pour les televiseurs.
+            nom = os.path.basename(self.path)
+            sous = "clips" if self.path.startswith("/clip/") else "videos"
+            fichier = Path(__file__).parent / sous / nom
+            if fichier.exists() and fichier.suffix.lower() in (".mp4", ".webm"):
+                self._brut(fichier.read_bytes(),
+                           "video/mp4" if fichier.suffix.lower() == ".mp4"
+                           else "video/webm")
+            else:
+                self.send_error(404)
         elif self.path == "/specimen.json":
             # Servi a part : les deux interfaces y puisent, aucune n en garde
             # une copie.

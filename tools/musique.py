@@ -148,9 +148,12 @@ def generer_musique(style: str, paroles: str = "", duree: int = 60,
     if not tache:
         return "Le moteur n a pas accepte la demande."
 
-    # Premiere demande : le modele se charge, ce qui prend plusieurs minutes.
+    # Premiere demande : le moteur telecharge puis charge ses modeles, ce qui
+    # prend une bonne demi-heure. Les suivantes sont en minutes. On accorde
+    # donc large, et on ne s inquiete que si rien ne bouge du tout.
+    patience = int(reglage("musique.patience", 3600))
     fichier, debut = None, time.time()
-    while time.time() - debut < 1500:
+    while time.time() - debut < patience:
         time.sleep(6)
         try:
             q = httpx.post(f"{ADRESSE}/query_result",

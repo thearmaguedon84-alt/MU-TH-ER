@@ -1290,6 +1290,37 @@ RE_SAIT_MUSIQUE = re.compile(
     r"\b(?:musiques?|chansons?|morceaux?)\b")
 
 
+# « fais-moi un clip avec la musique » : le montage, pas la composition.
+RE_CLIP = re.compile(
+    r"\b(?:monte|monter|assemble|assembler|fais|fait|cree|creer|genere)\b"
+    r"[^.]{0,30}?\bclips?\b"
+    r"|\bclips?\b[^.]{0,30}?\b(?:avec|sur)\b[^.]{0,30}?"
+    r"\b(?:musique|morceau|chanson)\b")
+
+
+def _clip(t):
+    """« monte un clip avec la derniere musique et mes images »."""
+    if not RE_CLIP.search(t):
+        return None
+    sources = ""
+    if re.search(r"\b(?:images?|photos?)\b", t):
+        sources = "images"
+    elif re.search(r"\bvideos?\b|\bsequences?\b", t):
+        sources = "videos"
+
+    combien = 4
+    m = re.search(r"(\d{1,2})\s*(?:images?|photos?|videos?|sequences?)", t)
+    if m:
+        combien = int(m.group(1))
+
+    ecran = ""
+    if _contient(t, ECRANS):
+        ecran = _premier_ecran()
+
+    from tools.clip import monter_clip
+    return monter_clip(sources=sources, combien=combien, ecran=ecran)
+
+
 def _musique(t):
     """« compose une chanson douce a la guitare sur l automne »."""
     if RE_SAIT_MUSIQUE.search(t):
@@ -1502,7 +1533,7 @@ def _au_ton_mere(reponse):
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
 ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
-          _spotify_appareil, _musique, _spotify, _youtube,
+          _spotify_appareil, _clip, _musique, _spotify, _youtube,
           _diffuser_service, _chaine_tv, _streaming, _plex,
           _plex_sans_ecran, _musique_sans_source, _ecran_lecture,
           _remplacer_zone, _modifier_image, _media, _courrier,
