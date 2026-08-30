@@ -103,7 +103,20 @@ def _trouver(designation):
         if candidats:
             return max(candidats, key=lambda p: p.stat().st_mtime)
 
-    return _image_recente()
+    # Dernier recours. Il ne doit JAMAIS ramener une photo personnelle : c est
+    # ainsi qu une demande mal comprise finissait par retoucher indefiniment
+    # la meme photo de famille. En cas de doute, on prefere ne rien trouver et
+    # le dire, plutot que de toucher a ce qui n a pas ete demande.
+    if _DERNIERE.get("chemin") and Path(_DERNIERE["chemin"]).exists():
+        return Path(_DERNIERE["chemin"])
+    faites = sorted(DOSSIER.glob("*.png"), key=lambda p: -p.stat().st_mtime) \
+        if DOSSIER.is_dir() else []
+    if faites:
+        return faites[0]
+    # Une photo personnelle seulement si la demande la designait vraiment.
+    if re.search(r"\bma\b|\bmes\b|\bphoto\b", bas):
+        return _image_recente()
+    return None
 
 
 # Une consigne n est pas une description. « Enleve la tete de la dame et mets
