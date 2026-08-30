@@ -784,6 +784,13 @@ function appliquer(ev) {
       if (ev.v !== "mother") location.href = "/";
       break;
 
+    case "specimen":
+      // Ordre explicite : on trace sans attendre la veille, et on annule le
+      // compte a rebours d inactivite pour ne pas le voir repartir aussitot.
+      clearTimeout(attenteRepos);
+      montrerSpecimen(ev.duree || 24);
+      break;
+
     case "outil":
       ajouter("SOUS-ROUTINE",
               auTon(ev.nom + (ev.detail ? " · " + ev.detail : "")),

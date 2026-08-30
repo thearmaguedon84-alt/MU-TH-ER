@@ -154,6 +154,15 @@ def niveau(valeur):
 _VOIX = {"numero": 0, "donnees": None}
 
 
+def publier_specimen(duree=24):
+    """Demande aux interfaces de tracer le specimen tout de suite.
+
+    Le dessin se declenche normalement apres une demi-minute d inactivite.
+    Cet ordre permet de l appeler quand on veut, sans attendre la veille.
+    """
+    _diffuser({"t": "specimen", "duree": int(duree)})
+
+
 def publier_image(url, description=""):
     """Signale une image fraiche aux interfaces, qui l afficheront."""
     _diffuser({"t": "image", "url": url, "texte": str(description)[:120]})

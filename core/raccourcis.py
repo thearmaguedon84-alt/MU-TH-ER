@@ -1334,6 +1334,35 @@ RE_REFAIRE = re.compile(
     r"|\bpas terrible\b|\bratee?\b|\bloupee?\b")
 
 
+# « montre le specimen » : le dessin de veille, mais a la demande.
+RE_SPECIMEN = re.compile(
+    r"\b(?:montre|affiche|dessine|trace|lance|fais)\b[^.]{0,24}?"
+    r"\b(?:specimen|xenomorphe|creature|alien|bestiole|dessin de veille)\b"
+    r"|\ble specimen\b|\bimage de veille\b|\becran de veille\b")
+
+
+def _specimen(t):
+    """« montre-moi le specimen », « affiche l image de veille »."""
+    if not RE_SPECIMEN.search(t):
+        return None
+    # « fais-moi une image d un alien » reste une demande de generation. Mais
+    # « affiche l image de veille » n en est pas une, bien qu elle contienne
+    # le mot image : le mot « veille » ou « specimen » tranche.
+    explicite = re.search(r"\bspecimen\b|\bxenomorphe\b|\bveille\b", t)
+    if RE_IMAGE.search(t) and not explicite:
+        return None
+    duree = 24
+    m = re.search(r"(\d{1,3})\s*secondes?", t)
+    if m:
+        duree = max(6, min(int(m.group(1)), 120))
+    try:
+        import hud
+        hud.publier_specimen(duree)
+    except Exception:
+        return "L interface ne repond pas."
+    return "Specimen affiche."
+
+
 def _refaire_image(t):
     """« refais-la », « une autre version », « genere-en une nouvelle »."""
     if not (RE_REFAIRE.search(t) or RE_PAS_REPRENDRE.search(t)):
@@ -1625,9 +1654,9 @@ ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
           _spotify_appareil, _clip, _musique, _spotify, _youtube,
           _diffuser_service, _chaine_tv, _streaming, _plex,
           _plex_sans_ecran, _musique_sans_source, _ecran_lecture,
-          _refaire_image, _remplacer_zone, _modifier_image, _media,
-          _courrier, _application, _film, _heure, _meteo, _minuteur,
-          _stats, _capture, _web, _image, _image_mail)
+          _specimen, _refaire_image, _remplacer_zone, _modifier_image,
+          _media, _courrier, _application, _film, _heure, _meteo,
+          _minuteur, _stats, _capture, _web, _image, _image_mail)
 
 
 def essayer(question):
