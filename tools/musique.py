@@ -25,8 +25,10 @@ from pathlib import Path
 from core.config import reglage
 from core.registre import outil
 
+from core.dossiers import dossier
+
 RACINE = Path(__file__).resolve().parent.parent
-DOSSIER = RACINE / "musiques"
+DOSSIER = dossier("musiques")
 ADRESSE = "http://127.0.0.1:8001"
 
 _DERNIERE = {"chemin": None, "demande": None}

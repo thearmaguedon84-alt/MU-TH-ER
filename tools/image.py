@@ -27,8 +27,10 @@ from pathlib import Path
 from core.config import reglage
 from core.registre import outil
 
+from core.dossiers import dossier
+
 RACINE = Path(__file__).resolve().parent.parent
-DOSSIER = RACINE / "images"
+DOSSIER = dossier("images")
 ADRESSE = "http://127.0.0.1:7860"
 
 # Derniere image produite : sert a « envoie-la sur la tele ».

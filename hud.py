@@ -338,7 +338,8 @@ class _Poignee(BaseHTTPRequestHandler):
         elif self.path.startswith("/image/"):
             # Les images fabriquees, servies a l interface et aux televiseurs.
             nom = os.path.basename(self.path)
-            fichier = Path(__file__).parent / "images" / nom
+            from core.dossiers import dossier
+            fichier = dossier("images") / nom
             if fichier.exists() and fichier.suffix.lower() == ".png":
                 self._brut(fichier.read_bytes(), "image/png")
             else:
@@ -346,7 +347,8 @@ class _Poignee(BaseHTTPRequestHandler):
         elif self.path.startswith("/musique/"):
             # Les morceaux composes, pour les enceintes et les televiseurs.
             nom = os.path.basename(self.path)
-            fichier = Path(__file__).parent / "musiques" / nom
+            from core.dossiers import dossier
+            fichier = dossier("musiques") / nom
             if fichier.exists() and fichier.suffix.lower() in (".mp3", ".wav"):
                 self._brut(fichier.read_bytes(),
                            "audio/mpeg" if fichier.suffix.lower() == ".mp3"
@@ -357,7 +359,8 @@ class _Poignee(BaseHTTPRequestHandler):
             # Clips montes et sequences video, pour les televiseurs.
             nom = os.path.basename(self.path)
             sous = "clips" if self.path.startswith("/clip/") else "videos"
-            fichier = Path(__file__).parent / sous / nom
+            from core.dossiers import dossier
+            fichier = dossier(sous) / nom
             if fichier.exists() and fichier.suffix.lower() in (".mp4", ".webm"):
                 self._brut(fichier.read_bytes(),
                            "video/mp4" if fichier.suffix.lower() == ".mp4"

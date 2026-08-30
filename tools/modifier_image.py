@@ -30,6 +30,12 @@ def _dossiers_images():
             profil / "Images", profil / "Téléchargements", profil / "Bureau"]
 
 
+def _est_creation(chemin):
+    """Un fichier fabrique par MU-TH-UR, par opposition aux affaires perso."""
+    from core.dossiers import est_une_creation
+    return est_une_creation(chemin)
+
+
 def _image_recente(dossiers=None, depuis_jours=0):
     """Image la plus recemment modifiee dans les dossiers usuels.
 
@@ -43,6 +49,11 @@ def _image_recente(dossiers=None, depuis_jours=0):
             continue
         for f in d.iterdir():
             try:
+                # « ma derniere photo » designe une photo a soi. Les creations
+                # de MU-TH-UR vivent maintenant dans le meme arbre : il faut
+                # les ecarter, sinon les deux notions se confondent.
+                if _est_creation(f):
+                    continue
                 if (f.suffix.lower() in _EXTENSIONS and f.is_file()
                         and f.stat().st_mtime > max(date, limite)):
                     meilleure, date = f, f.stat().st_mtime

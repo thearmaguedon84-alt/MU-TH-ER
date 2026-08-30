@@ -19,8 +19,10 @@ from pathlib import Path
 
 from core.registre import outil
 
+from core.dossiers import dossier
+
 RACINE = Path(__file__).resolve().parent.parent
-DOSSIER = RACINE / "clips"
+DOSSIER = dossier("clips")
 
 
 def _ffmpeg():
@@ -112,7 +114,7 @@ def monter_clip(musique: str = "", sources: str = "", combien: int = 4,
     veut_images = bool(re.search(r"image|photo", (sources or "").lower()))
 
     from tools.image import DOSSIER as IMAGES
-    videos = [] if veut_images else _derniers(RACINE / "videos",
+    videos = [] if veut_images else _derniers(dossier("videos"),
                                               ["*.mp4", "*.webm"], combien)
     if videos:
         return _montage_videos(exe, videos, piste, duree, ecran)
