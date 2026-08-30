@@ -1267,6 +1267,55 @@ RE_DESIGNE_IMAGE = re.compile(
     r"|\bl\s*(?:image|photo)\b|\bma\s+photo\b")
 
 
+# « remplace la tete par une tete de poule » : une zone precise, pas toute
+# l image. Le detourage donne un resultat propre la ou la reprise globale
+# refaisait le decor et laissait l ancienne tete en transparence.
+RE_ZONE = re.compile(
+    r"\b(?:remplace|remplacer|mets?|mettre|change|changer|colle|coller)\b"
+    r"[^.]{0,45}?\b(tetes?|visages?|figures?|faces?|mains?)\b"
+    r"|\b(tetes?|visages?|mains?)\b[^.]{0,25}\ba la place\b")
+
+
+def _remplacer_zone(t):
+    """« remplace la tete de la dame par une tete de poule »."""
+    if not RE_ZONE.search(t):
+        return None
+    if not re.search(r"\b(?:image|photo|dessin|illustration|visuel|dame|"
+                     r"femme|homme|personnage|elle|lui)\b", t):
+        return None
+
+    zone = "tete"
+    if re.search(r"\bmains?\b", t):
+        zone = "mains"
+    elif re.search(r"\bvisages?|figures?\b", t):
+        zone = "visage"
+
+    # Ce qui vient apres « par », ou avant « a la place ».
+    m = re.search(r"\bpar\s+(.+?)(?:\s+a la place|$)", t)
+    if not m:
+        m = re.search(r"\b(?:mets?|mettre|colle)\s+(.+?)\s+a la place", t)
+    if not m:
+        return None
+    par = " ".join(m.group(1).split()).strip(" ,.")
+    # La designation de l image traine parfois en fin de phrase : « par des
+    # pinces de crabe sur cette image ».
+    par = RE_DESIGNE_IMAGE.sub(" ", par)
+    par = re.sub(r"\b(?:sur|dans|de)\s*$", " ", par.strip())
+    par = re.sub(r"^(?:une?|le|la|les|des|du|de)\s+", "", par.strip())
+    par = " ".join(par.split()).strip(" ,.")
+    if len(par) < 3:
+        return None
+
+    image = ""
+    d = RE_DESIGNE_IMAGE.search(t)
+    if d:
+        image = d.group(0)
+
+    par_mail = bool(RE_PAR_MAIL.search(t))
+    from tools.zone import remplacer_zone
+    return remplacer_zone(par=par, zone=zone, image=image, par_mail=par_mail)
+
+
 def _modifier_image(t):
     """« transforme ma derniere photo en dessin anime ».
 
@@ -1404,9 +1453,10 @@ def _au_ton_mere(reponse):
 ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
           _spotify_appareil, _spotify, _youtube, _diffuser_service,
           _chaine_tv, _streaming, _plex, _plex_sans_ecran,
-          _musique_sans_source, _ecran_lecture, _modifier_image, _media,
-          _courrier, _application, _film, _heure, _meteo, _minuteur,
-          _stats, _capture, _web, _image, _image_mail)
+          _musique_sans_source, _ecran_lecture, _remplacer_zone,
+          _modifier_image, _media, _courrier, _application, _film,
+          _heure, _meteo, _minuteur, _stats, _capture, _web, _image,
+          _image_mail)
 
 
 def essayer(question):
