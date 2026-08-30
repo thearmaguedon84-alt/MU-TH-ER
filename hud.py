@@ -376,6 +376,10 @@ class _Poignee(BaseHTTPRequestHandler):
                            else "video/webm")
             else:
                 self.send_error(404)
+        elif self.path in ("/veille", "/veille.html", "/tel/veille",
+                           "/economiseur"):
+            # L economiseur autonome : un seul fichier, qui n a besoin de rien.
+            self._page(Path(__file__).parent / "veille.html")
         elif self.path == "/specimens.json":
             # Les quatre releves complets. Trop lourds pour etre inscrits
             # dans la page, servis a part et mis en cache par le navigateur.

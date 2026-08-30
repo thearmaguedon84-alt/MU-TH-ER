@@ -88,11 +88,43 @@ def _arreter(marqueur):
     return arretes > 0
 
 
+def _occupe(url, lire):
+    """Un moteur au travail ne doit jamais etre arrete.
+
+    L arbitre a coute un rendu video de huit minutes : il a libere la memoire
+    pour une image alors que la video etait a la moitie. Rien ne le lui
+    interdisait. Desormais on demande d abord.
+    """
+    try:
+        import httpx
+        return bool(lire(httpx.get(url, timeout=4).json()))
+    except Exception:
+        # Injoignable : soit il est mort, soit il rame. Dans le doute on ne
+        # tue pas, sauf s il ne repond meme pas au port.
+        return False
+
+
+def _video_occupe():
+    return _occupe("http://127.0.0.1:8188/queue",
+                   lambda d: (d.get("queue_running") or [])
+                   or (d.get("queue_pending") or []))
+
+
+def _musique_occupee():
+    return _occupe("http://127.0.0.1:8001/v1/stats",
+                   lambda d: ((d.get("data") or d).get("running") or 0)
+                   or ((d.get("data") or d).get("pending") or 0))
+
+
 def _musique():
+    if _musique_occupee():
+        return False
     return _arreter("acestep")
 
 
 def _video():
+    if _video_occupe():
+        return False
     return _arreter("comfyui")
 
 
