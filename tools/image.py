@@ -144,13 +144,18 @@ def _nom_de_fichier(demande):
                 "type": "string",
                 "description": "Nom d un ecran pour l y envoyer. Vide = sur le PC.",
             },
+            "par_mail": {
+                "type": "boolean",
+                "description": "Envoyer l image par mail a l utilisateur.",
+            },
         },
         "required": ["description"],
     },
     lent=True,
     phrase_attente="Je fabrique l image.",
 )
-def generer_image(description: str, format: str = "", ecran: str = "") -> str:
+def generer_image(description: str, format: str = "", ecran: str = "",
+                  par_mail: bool = False) -> str:
     description = (description or "").strip()
     if not description:
         return "Que veux-tu que je represente ?"
@@ -200,15 +205,19 @@ def generer_image(description: str, format: str = "", ecran: str = "") -> str:
     except Exception:
         pass
 
+    mail = ""
+    if par_mail or reglage("images.mail_auto", False):
+        mail = " " + _envoyer_par_mail(chemin, description)
+
     if ecran:
         envoi = envoyer_image_ecran(ecran=ecran)
-        return f"Voila. {envoi}"
+        return f"Voila. {envoi}{mail}"
 
     try:
         os.startfile(str(chemin))
     except Exception:
         pass
-    return "Voila ton image."
+    return f"Voila ton image.{mail}"
 
 
 @outil(
@@ -263,3 +272,94 @@ def images_recentes() -> str:
         return "Je n ai encore fabrique aucune image."
     return (f"{len(fichiers)} images dans le dossier images. "
             f"La derniere : {fichiers[0].stem.split('-', 2)[-1].replace('-', ' ')}.")
+
+
+# --------------------------------------------------------------- envoi par mail
+
+# Une image envoyee par mail quitte la machine : elle transite par Gmail et y
+# reste. C'est le seul endroit du parcours ou cela arrive, et c'est un choix
+# explicite de l'utilisateur, jamais un comportement par defaut.
+
+_TYPES = {".png": "png", ".jpg": "jpeg", ".jpeg": "jpeg",
+          ".webp": "webp", ".gif": "gif", ".bmp": "bmp"}
+
+
+def _envoyer_par_mail(chemin, description="", destinataire=""):
+    """Envoie une image en piece jointe. Sans destinataire : a soi-meme."""
+    from tools import mail as messagerie
+
+    if not messagerie._mail_configure():
+        return "La messagerie n est pas configuree, je ne l ai pas envoyee."
+
+    chemin = Path(chemin)
+    if not chemin.exists():
+        return "Je n ai pas l image sous la main."
+
+    adresse = (destinataire or "").strip() or messagerie.MAIL_ADRESSE
+    sujet = " ".join((description or chemin.stem).split())[:70] or "Image"
+
+    try:
+        import smtplib
+        from email.message import EmailMessage
+
+        msg = EmailMessage()
+        msg["From"] = messagerie.MAIL_ADRESSE
+        msg["To"] = adresse
+        msg["Subject"] = sujet
+        msg.set_content(
+            f"Image fabriquee en local par Jarvis.\n\n"
+            f"Demande : {description or '(non precisee)'}\n"
+            f"Fichier : {chemin.name}\n")
+        msg.add_attachment(chemin.read_bytes(), maintype="image",
+                           subtype=_TYPES.get(chemin.suffix.lower(), "png"),
+                           filename=chemin.name)
+        with smtplib.SMTP_SSL(messagerie.SMTP_SERVEUR, messagerie.SMTP_PORT) as smtp:
+            smtp.login(messagerie.MAIL_ADRESSE, messagerie._mail_mdp())
+            smtp.send_message(msg)
+    except Exception as e:
+        return f"L envoi par mail a echoue : {str(e)[:60]}"
+
+    if destinataire:
+        return f"Envoyee a {adresse}."
+    return "Je te l ai envoyee par mail."
+
+
+def _annonce_envoi_image(args):
+    qui = (args or {}).get("destinataire") or "toi-meme"
+    return f"Je vais envoyer l image par mail a {qui}."
+
+
+@outil(
+    nom="envoyer_image_mail",
+    description=("Envoie par mail, en piece jointe, la derniere image "
+                 "fabriquee. Sans destinataire, elle part vers l adresse de "
+                 "l utilisateur. Pour « envoie-la moi par mail »."),
+    parametres={
+        "type": "object",
+        "properties": {
+            "destinataire": {
+                "type": "string",
+                "description": "Adresse du destinataire. Vide = a soi-meme.",
+            },
+        },
+        "required": [],
+    },
+    confirmation=True,
+    annonce=_annonce_envoi_image,
+    lent=True,
+    phrase_attente="J envoie le mail.",
+)
+def envoyer_image_mail(destinataire: str = "") -> str:
+    chemin = _DERNIERE.get("chemin")
+    if not chemin or not Path(chemin).exists():
+        return "Je n ai pas d image sous la main. Demande-m en une d abord."
+    return _envoyer_par_mail(chemin, _DERNIERE.get("demande") or "",
+                             destinataire)
+
+
+def envoyer_derniere_a_soi():
+    """Raccourci : la derniere image, a soi-meme, sans confirmation."""
+    chemin = _DERNIERE.get("chemin")
+    if not chemin or not Path(chemin).exists():
+        return "Je n ai pas d image sous la main."
+    return _envoyer_par_mail(chemin, _DERNIERE.get("demande") or "")

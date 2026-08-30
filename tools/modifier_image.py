@@ -113,6 +113,8 @@ def _trouver(designation):
                       "description": "legere, moyenne ou forte. Moyenne par defaut."},
             "ecran": {"type": "string",
                       "description": "Nom d un ecran pour l y envoyer."},
+            "par_mail": {"type": "boolean",
+                         "description": "Envoyer le resultat par mail."},
         },
         "required": ["description"],
     },
@@ -120,9 +122,10 @@ def _trouver(designation):
     phrase_attente="Je reprends l image.",
 )
 def modifier_image(description: str, image: str = "", force: str = "",
-                   ecran: str = "") -> str:
+                   ecran: str = "", par_mail: bool = False) -> str:
     from tools.image import (DOSSIER, _DERNIERE, _demarrer_moteur, _en_anglais,
-                             _nom_de_fichier, envoyer_image_ecran)
+                             _envoyer_par_mail, _nom_de_fichier,
+                             envoyer_image_ecran)
 
     description = (description or "").strip()
     if not description:
@@ -194,16 +197,21 @@ def modifier_image(description: str, image: str = "", force: str = "",
     except Exception:
         pass
 
+    mail = ""
+    if par_mail:
+        mail = " " + _envoyer_par_mail(chemin, description)
+
     origine = Path(source).name
     if ecran:
-        return f"Repris depuis {origine}. {envoyer_image_ecran(ecran=ecran)}"
+        return (f"Repris depuis {origine}. "
+                f"{envoyer_image_ecran(ecran=ecran)}{mail}")
 
     try:
         import os
         os.startfile(str(chemin))
     except Exception:
         pass
-    return f"Voila, repris depuis {origine}."
+    return f"Voila, repris depuis {origine}.{mail}"
 
 
 @outil(

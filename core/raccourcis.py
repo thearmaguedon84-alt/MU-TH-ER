@@ -1139,6 +1139,24 @@ def _web(t):
 
 
 
+# « et envoie-la moi par mail » se greffe sur n importe quelle demande d image.
+# La mention doit etre retiree du texte avant qu il ne devienne la description,
+# sans quoi le moteur dessinerait consciencieusement une enveloppe.
+RE_PAR_MAIL = re.compile(r"\b(?:par|via)\s+(?:mail|e-?mail|courriel|mel)\b")
+
+
+def _sans_mention_mail(t):
+    t = RE_PAR_MAIL.sub(" ", t)
+    # Les pronoms s empilent : « envoie-la-moi ». Il faut tous les manger,
+    # sinon un « moi » orphelin finit dans la description de l image.
+    t = re.sub(r"\bet\s+(?:tu\s+m\s*)?(?:envoie|envoies|envoi|envoyer|"
+               r"transmets|transmet)(?:\s+(?:moi|la|le|les|ca|nous))*\b",
+               " ", t)
+    t = re.sub(r"\b(?:envoie|envoies|envoyer)(?:\s+(?:moi|la|le|les|ca))*\s*$",
+               " ", t)
+    return " ".join(t.split()).strip(" ,.")
+
+
 RE_IMAGE = re.compile(
     r"\b(?:fais|fait|fabrique|genere|generer|cree|creer|dessine|dessiner|"
     r"montre|produis|sors)\b[^.]{0,26}?"
@@ -1168,6 +1186,10 @@ def _image(t):
 
     if not RE_IMAGE.search(t):
         return None
+
+    par_mail = bool(RE_PAR_MAIL.search(t))
+    if par_mail:
+        t = _sans_mention_mail(t)
 
     sujet = re.split(r"\b(?:image|dessin|illustration|photo|visuel|rendu)\b", t, 1)
     sujet = sujet[-1] if len(sujet) > 1 else t
@@ -1213,7 +1235,8 @@ def _image(t):
         return None
 
     from tools.image import generer_image
-    return generer_image(description=sujet, format=format_voulu, ecran=ecran)
+    return generer_image(description=sujet, format=format_voulu, ecran=ecran,
+                         par_mail=par_mail)
 
 
 
@@ -1231,6 +1254,10 @@ def _modifier_image(t):
     """
     if not RE_MODIF_IMAGE.search(t):
         return None
+
+    par_mail = bool(RE_PAR_MAIL.search(t))
+    if par_mail:
+        t = _sans_mention_mail(t)
 
     m = re.search(r"\b(?:modifie|modifier|transforme|transformer|retouche|"
                   r"retoucher|refais|refaire|reprends|reprendre|change|"
@@ -1263,7 +1290,24 @@ def _modifier_image(t):
 
     from tools.modifier_image import modifier_image
     return modifier_image(description=voulu, image=quelle, force=force,
-                          ecran=ecran)
+                          ecran=ecran, par_mail=par_mail)
+
+
+def _image_mail(t):
+    """« envoie-moi la derniere image par mail ».
+
+    Place apres les raccourcis de generation : une demande qui fabrique ET
+    envoie doit d abord fabriquer.
+    """
+    if not RE_PAR_MAIL.search(t) or "@" in t:
+        return None
+    if not re.search(r"\benvoi", t):
+        return None
+    if not re.search(r"\b(?:image|photo|dessin|illustration|visuel)\b", t):
+        return None
+    from tools.image import envoyer_derniere_a_soi
+    return envoyer_derniere_a_soi()
+
 
 
 # --------------------------------------------------------------- ton MU-TH-UR
@@ -1317,7 +1361,7 @@ ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
           _streaming, _plex, _plex_sans_ecran, _musique_sans_source,
           _ecran_lecture, _media, _courrier, _application, _film,
           _heure, _meteo, _minuteur, _stats, _capture, _web,
-          _modifier_image, _image)
+          _modifier_image, _image, _image_mail)
 
 
 def essayer(question):
