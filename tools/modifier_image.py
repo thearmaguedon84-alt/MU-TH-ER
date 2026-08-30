@@ -124,7 +124,7 @@ def _trouver(designation):
 def modifier_image(description: str, image: str = "", force: str = "",
                    ecran: str = "", par_mail: bool = False) -> str:
     from tools.image import (DOSSIER, _DERNIERE, _demarrer_moteur, _en_anglais,
-                             _envoyer_par_mail, _nom_de_fichier,
+                             _envoyer_par_mail, _liberer_vram, _nom_de_fichier,
                              envoyer_image_ecran)
 
     description = (description or "").strip()
@@ -137,6 +137,7 @@ def modifier_image(description: str, image: str = "", force: str = "",
                 "tes images et demande « ma derniere photo ».")
 
     description = _en_anglais(description)
+    _liberer_vram()
     if not _demarrer_moteur():
         return "Le moteur d images ne repond pas."
 

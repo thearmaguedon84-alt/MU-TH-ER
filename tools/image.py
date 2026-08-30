@@ -115,9 +115,144 @@ def _en_anglais(texte):
         pass
     return texte
 
+def _liberer_vram():
+    """Decharge les modeles d Ollama avant une generation.
+
+    Les douze giga-octets de la carte sont partages entre le modele de langage
+    et le modele d images. Quand les deux y tiennent de force, le moteur
+    deborde sur la memoire vive et passe de 1,4 image par seconde a une image
+    toutes les neuf secondes — six fois plus lent, sans rien dire.
+
+    Ollama rechargera son modele a la prochaine phrase, en quelques secondes.
+    """
+    try:
+        import httpx
+        r = httpx.get("http://127.0.0.1:11434/api/ps", timeout=4)
+        for m in (r.json() or {}).get("models") or []:
+            nom = m.get("name") or m.get("model")
+            if nom:
+                httpx.post("http://127.0.0.1:11434/api/generate",
+                           json={"model": nom, "keep_alive": 0}, timeout=20)
+    except Exception:
+        pass
+
+
 def _nom_de_fichier(demande):
     propre = re.sub(r"[^a-z0-9]+", "-", (demande or "image").lower())[:48]
     return f"{time.strftime('%Y%m%d-%H%M%S')}-{propre.strip('-')}.png"
+
+
+# ------------------------------------------------------- retouche des mains
+
+# Un modele de diffusion dessine tout a l echelle de l image entiere : sur un
+# personnage en pied, une main occupe quelques dizaines de pixels — bien trop
+# peu pour cinq doigts credibles. D ou les mains ratees, defaut d origine de
+# ces modeles et non de la demande.
+#
+# La correction consiste a reperer les mains apres coup, a les recadrer en
+# pleine resolution, a les redessiner, puis a les recoller. C est ce que fait
+# ADetailer, et c est la seule methode qui marche vraiment.
+
+_ADETAILER = {"dispo": None}
+
+
+def _adetailer_dispo():
+    """Une seule verification par session : la reponse ne change pas."""
+    if _ADETAILER["dispo"] is None:
+        try:
+            import httpx
+            r = httpx.get(f"{ADRESSE}/sdapi/v1/scripts", timeout=8)
+            noms = (r.json() or {}).get("txt2img") or []
+            _ADETAILER["dispo"] = any("adetailer" in str(n).lower()
+                                      for n in noms)
+        except Exception:
+            _ADETAILER["dispo"] = False
+    return _ADETAILER["dispo"]
+
+
+def _retouche(mains=True, visages=True):
+    """Reglages ADetailer. Le recadrage a 512 est ce qui change tout."""
+    unites = []
+    if visages:
+        unites.append({
+            "ad_model": "face_yolov8s.pt",
+            "ad_confidence": 0.3,
+            # Assez pour nettoyer les traits, pas assez pour changer le visage.
+            "ad_denoising_strength": 0.4,
+            "ad_inpaint_only_masked": True,
+            "ad_inpaint_only_masked_padding": 32,
+            "ad_use_inpaint_width_height": True,
+            "ad_inpaint_width": 512,
+            "ad_inpaint_height": 512,
+        })
+    if mains:
+        unites.append({
+            "ad_model": "hand_yolov8n.pt",
+            # Une main mal formee se detecte mal : on abaisse le seuil, quitte
+            # a retoucher une fois de trop.
+            "ad_confidence": 0.25,
+            "ad_denoising_strength": 0.5,
+            "ad_prompt": "detailed hand, five fingers, correct anatomy",
+            "ad_negative_prompt": ("deformed hand, extra fingers, fused "
+                                   "fingers, missing fingers, mutated"),
+            "ad_inpaint_only_masked": True,
+            "ad_inpaint_only_masked_padding": 32,
+            "ad_use_inpaint_width_height": True,
+            "ad_inpaint_width": 512,
+            "ad_inpaint_height": 512,
+        })
+    if not unites:
+        return None
+    return {"ADetailer": {"args": [True, False] + unites}}
+
+
+def _modele_actuel():
+    try:
+        import httpx
+        r = httpx.get(f"{ADRESSE}/sdapi/v1/options", timeout=8)
+        return (r.json() or {}).get("sd_model_checkpoint") or ""
+    except Exception:
+        return ""
+
+
+def modeles_disponibles():
+    """Liste des modeles installes.
+
+    Forge repond parfois 500 sur /sd-models alors que tout va bien par
+    ailleurs. Le dossier, lui, ne ment jamais : on s en sert en secours.
+    """
+    try:
+        import httpx
+        r = httpx.get(f"{ADRESSE}/sdapi/v1/sd-models", timeout=15)
+        if r.status_code == 200:
+            noms = [m.get("model_name") or m.get("title") for m in r.json()]
+            if noms:
+                return noms
+    except Exception:
+        pass
+    dossier = Path(reglage("images.forge", "")) / "webui" / "models" / "Stable-diffusion"
+    if not dossier.is_dir():
+        return []
+    return sorted(p.name for p in dossier.glob("*.safetensors"))
+
+
+def utiliser_modele(fragment):
+    """Bascule de modele. Le chargement prend une trentaine de secondes."""
+    fragment = (fragment or "").strip().lower()
+    if not fragment:
+        return False
+    if fragment in (_modele_actuel() or "").lower():
+        return True
+    for nom in modeles_disponibles():
+        if nom and fragment in nom.lower():
+            try:
+                import httpx
+                httpx.post(f"{ADRESSE}/sdapi/v1/options",
+                           json={"sd_model_checkpoint": nom}, timeout=300)
+                return True
+            except Exception:
+                return False
+    return False
 
 
 @outil(
@@ -148,6 +283,12 @@ def _nom_de_fichier(demande):
                 "type": "boolean",
                 "description": "Envoyer l image par mail a l utilisateur.",
             },
+            "soigner": {
+                "type": "boolean",
+                "description": ("Retoucher mains et visages apres coup. Vrai "
+                                "par defaut ; faux si on demande d aller "
+                                "vite ou sans retouche."),
+            },
         },
         "required": ["description"],
     },
@@ -155,7 +296,7 @@ def _nom_de_fichier(demande):
     phrase_attente="Je fabrique l image.",
 )
 def generer_image(description: str, format: str = "", ecran: str = "",
-                  par_mail: bool = False) -> str:
+                  par_mail: bool = False, soigner: bool = True) -> str:
     description = (description or "").strip()
     if not description:
         return "Que veux-tu que je represente ?"
@@ -169,21 +310,29 @@ def generer_image(description: str, format: str = "", ecran: str = "",
     tailles = {"portrait": (832, 1216), "paysage": (1216, 832)}
     largeur, hauteur = tailles.get((format or "").lower(), (1024, 1024))
 
+    _liberer_vram()
+
+    modele = reglage("images.modele", "")
+    if modele:
+        utiliser_modele(modele)
+
+    charge = {
+        "prompt": description,
+        "steps": int(reglage("images.etapes", 28)),
+        "cfg_scale": float(reglage("images.guidage", 5.5)),
+        "width": largeur,
+        "height": hauteur,
+        "sampler_name": reglage("images.echantillonneur", "DPM++ 2M"),
+        "scheduler": "Karras",
+    }
+    if soigner and reglage("images.soigner", True) and _adetailer_dispo():
+        greffe = _retouche()
+        if greffe:
+            charge["alwayson_scripts"] = greffe
+
     try:
         import httpx
-        r = httpx.post(
-            f"{ADRESSE}/sdapi/v1/txt2img",
-            json={
-                "prompt": description,
-                "steps": int(reglage("images.etapes", 28)),
-                "cfg_scale": float(reglage("images.guidage", 5.5)),
-                "width": largeur,
-                "height": hauteur,
-                "sampler_name": reglage("images.echantillonneur", "DPM++ 2M"),
-                "scheduler": "Karras",
-            },
-            timeout=300,
-        )
+        r = httpx.post(f"{ADRESSE}/sdapi/v1/txt2img", json=charge, timeout=600)
         r.raise_for_status()
         images = r.json().get("images") or []
     except Exception as e:

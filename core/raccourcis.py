@@ -1157,6 +1157,10 @@ def _sans_mention_mail(t):
     return " ".join(t.split()).strip(" ,.")
 
 
+RE_SANS_RETOUCHE = re.compile(
+    r"\bsans retouche\b|\bvite fait\b|\bsans corriger\b|\bbrut\b")
+
+
 RE_IMAGE = re.compile(
     r"\b(?:fais|fait|fabrique|genere|generer|cree|creer|dessine|dessiner|"
     r"montre|produis|sors)\b[^.]{0,26}?"
@@ -1190,6 +1194,12 @@ def _image(t):
     par_mail = bool(RE_PAR_MAIL.search(t))
     if par_mail:
         t = _sans_mention_mail(t)
+
+    # La correction des mains coute une quinzaine de secondes : on laisse la
+    # possibilite de s en passer.
+    soigner = not RE_SANS_RETOUCHE.search(t)
+    if not soigner:
+        t = RE_SANS_RETOUCHE.sub(" ", t)
 
     sujet = re.split(r"\b(?:image|dessin|illustration|photo|visuel|rendu)\b", t, 1)
     sujet = sujet[-1] if len(sujet) > 1 else t
@@ -1236,7 +1246,7 @@ def _image(t):
 
     from tools.image import generer_image
     return generer_image(description=sujet, format=format_voulu, ecran=ecran,
-                         par_mail=par_mail)
+                         par_mail=par_mail, soigner=soigner)
 
 
 
