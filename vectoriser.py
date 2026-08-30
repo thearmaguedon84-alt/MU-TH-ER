@@ -1,160 +1,138 @@
-"""Convertir le releve fourni en chemins que le terminal pourra tracer.
+# -*- coding: utf-8 -*-
+"""Transformer un releve vert en traits que l'interface peut dessiner.
 
-Dessiner une anatomie a la main en coordonnees etait au-dessus de mes moyens :
-le resultat tenait du coquillage. On part donc du modele lui-meme.
+Le principe est le meme que pour le premier specimen : on ne redessine pas
+l'image, on en extrait le squelette des traits, puis on suit chaque trait
+comme le ferait une main. C'est ce qui permet a l'interface de le tracer
+progressivement plutot que de l'afficher d'un coup.
 
-Le principe : isoler les traits verts, les reduire a une epaisseur d'un pixel,
-puis suivre chaque trait pour en faire une suite de points. On obtient des
-chemins, c'est-a-dire exactement ce qu'un traceur dessinerait — et non une
-image plaquee. Le terminal pourra donc les tracer un a un, au son de la tete
-d'impression, comme pour le dessin precedent.
+Trois etapes :
 
-Les bandes de texte du haut et du bas sont ecartees : elles sont deja dans
-l'interface, les reprendre ferait doublon.
+1. **Isoler le dessin.** Les releves portent un panneau de donnees a droite et
+   du texte en haut et en bas. On ne garde que la zone de la creature, sans
+   quoi les lettres seraient tracees elles aussi.
+2. **Squelettiser.** Un trait epais de trois pixels devient une ligne d'un
+   pixel : sans cela, on suivrait deux fois chaque contour.
+3. **Suivre et simplifier.** On parcourt le squelette de proche en proche, et
+   on supprime les points qui n'apportent rien a la courbe.
 """
 import json
-import os
 import sys
+from pathlib import Path
 
 import numpy as np
 from PIL import Image
 from skimage.morphology import skeletonize
 
-SOURCE = os.path.join(
-    os.environ["APPDATA"], "Claude", "local-agent-mode-sessions",
-    "327b4f54-e932-4f68-a54f-a353ef86e8d5",
-    "11c10fec-c2d5-4fc4-83cc-85d2d6601924",
-    "local_f988af02-2f2b-4577-90ea-6e628cdf7147", "uploads",
-    "27f86623-4bd1-4dad-b28c-faea8d28ce83.png")
-
-# Le dessin occupe la partie centrale ; au-dessus et en dessous, du texte.
-HAUT, BAS = 196, 858   # au-dessus et en dessous : du texte, deja dans l interface
-LARGEUR, HAUTEUR = 300, 190          # repere de destination
-MIN_POINTS = 6                       # en deca, c'est du grain, pas un trait
+# Ce que l'interface attend : un canevas de 300 sur 190.
+LARGEUR, HAUTEUR = 300.0, 190.0
 
 
-def masque():
-    a = np.asarray(Image.open(SOURCE).convert("RGB")).astype(int)
-    vert = a[:, :, 1] - (a[:, :, 0] + a[:, :, 2]) // 2
-    m = vert > 38
-    m[:HAUT] = False
-    m[BAS:] = False
-    return m
+def isoler(chemin, boite):
+    """Ne garde que la zone du dessin, en noir et blanc."""
+    img = Image.open(chemin).convert("RGB")
+    L, H = img.size
+    g, d, h, b = boite
+    img = img.crop((int(L * g), int(H * h), int(L * d), int(H * b)))
+    a = np.asarray(img).astype(np.int16)
+    # Le trace est vert sur fond noir : on cherche un vert franc, pas une
+    # simple luminosite, pour ignorer les reflets et le grain de l'ecran.
+    vert = (a[:, :, 1] > 60) & (a[:, :, 1] > a[:, :, 0] + 18) \
+        & (a[:, :, 1] > a[:, :, 2] + 18)
+    return vert
 
 
-def voisins(y, x, forme):
-    for dy in (-1, 0, 1):
-        for dx in (-1, 0, 1):
-            if dy or dx:
-                ny, nx = y + dy, x + dx
-                if 0 <= ny < forme[0] and 0 <= nx < forme[1]:
-                    yield ny, nx
+def tracer(sq):
+    """Suit le squelette et en tire des polylignes."""
+    H, W = sq.shape
+    reste = set(zip(*np.nonzero(sq)))
+    voisins = [(-1, -1), (-1, 0), (-1, 1), (0, -1),
+               (0, 1), (1, -1), (1, 0), (1, 1)]
 
+    def autour(p):
+        y, x = p
+        for dy, dx in voisins:
+            q = (y + dy, x + dx)
+            if q in reste:
+                yield q
 
-def suivre(sq):
-    """Decompose un squelette en chemins continus.
-
-    On part des extremites — les points n'ayant qu'un seul voisin — puis on
-    avance tant qu'il reste du chemin. Les boucles fermees, sans extremite,
-    sont traitees ensuite depuis un point quelconque.
-    """
-    reste = {(int(y), int(x)) for y, x in zip(*np.nonzero(sq))}
-    forme = sq.shape
-    degre = {}
-    for y, x in reste:
-        degre[(y, x)] = sum(1 for v in voisins(y, x, forme) if v in reste)
+    def degre(p):
+        return sum(1 for _ in autour(p))
 
     chemins = []
-
-    def marcher(depart):
+    # On part des extremites : un trait suivi depuis son bout ne se coupe pas
+    # en deux morceaux.
+    departs = [p for p in list(reste) if degre(p) == 1]
+    while reste:
+        depart = None
+        while departs:
+            c = departs.pop()
+            if c in reste:
+                depart = c
+                break
+        if depart is None:
+            depart = next(iter(reste))
         chemin = [depart]
         reste.discard(depart)
-        courant = depart
         while True:
-            suite = [v for v in voisins(*courant, forme) if v in reste]
-            if not suite:
+            suite = next(autour(chemin[-1]), None)
+            if suite is None:
                 break
-            # Preferer la continuite : le voisin le plus aligne avec le pas
-            # precedent, pour ne pas zigzaguer aux intersections.
-            if len(chemin) > 1 and len(suite) > 1:
-                py, px = chemin[-2]
-                cy, cx = courant
-                dy, dx = cy - py, cx - px
-                suite.sort(key=lambda v: -((v[0]-cy)*dy + (v[1]-cx)*dx))
-            courant = suite[0]
-            reste.discard(courant)
-            chemin.append(courant)
-        return chemin
-
-    for p in sorted([p for p, d in degre.items() if d == 1]):
-        if p in reste:
-            chemins.append(marcher(p))
-    while reste:
-        chemins.append(marcher(next(iter(sorted(reste)))))
+            chemin.append(suite)
+            reste.discard(suite)
+        if len(chemin) >= 3:
+            chemins.append(chemin)
     return chemins
 
 
-def simplifier(points, seuil=1.2):
-    """Douglas-Peucker : garde la forme, jette les points inutiles."""
+def simplifier(points, tolerance=0.9):
+    """Douglas-Peucker : on garde les points qui font la forme."""
     if len(points) < 3:
         return points
-    a, b = points[0], points[-1]
-    ax, ay = a[1], a[0]
-    bx, by = b[1], b[0]
-    dx, dy = bx - ax, by - ay
-    norme = (dx * dx + dy * dy) ** 0.5 or 1
-    pire, idx = 0, 0
-    for i in range(1, len(points) - 1):
-        px, py = points[i][1], points[i][0]
-        d = abs(dy * px - dx * py + bx * ay - by * ax) / norme
-        if d > pire:
-            pire, idx = d, i
-    if pire <= seuil:
-        return [a, b]
-    return simplifier(points[:idx + 1], seuil)[:-1] + simplifier(points[idx:], seuil)
+    a, b = np.array(points[0], float), np.array(points[-1], float)
+    ab = b - a
+    norme = np.hypot(*ab)
+    if norme < 1e-9:
+        ecarts = [np.hypot(*(np.array(p, float) - a)) for p in points]
+    else:
+        # numpy 2 a retire le produit vectoriel en dimension deux : on
+        # ecrit le determinant a la main, c est la meme chose.
+        ecarts = [abs(ab[0] * (p[1] - a[1]) - ab[1] * (p[0] - a[0])) / norme
+                  for p in points]
+    i = int(np.argmax(ecarts))
+    if ecarts[i] > tolerance:
+        return simplifier(points[:i + 1], tolerance)[:-1] + \
+            simplifier(points[i:], tolerance)
+    return [points[0], points[-1]]
 
 
-def main():
-    m = masque()
-    print("pixels retenus :", int(m.sum()))
-
-    sq = skeletonize(m)
-    print("apres amincissement :", int(sq.sum()))
-
-    bruts = suivre(sq)
-    print("chemins bruts :", len(bruts))
-
-    ys, xs = np.nonzero(sq)
-    y0, y1 = ys.min(), ys.max()
-    x0, x1 = xs.min(), xs.max()
-    # Une marge : sans elle la machoire vient mordre le bord du cadre.
-    MARGE = 0.93
-    echelle = min(LARGEUR / (x1 - x0), HAUTEUR / (y1 - y0)) * MARGE
-    decx = (LARGEUR - (x1 - x0) * echelle) / 2
-    decy = (HAUTEUR - (y1 - y0) * echelle) / 2
+def convertir(chemin, boite, tolerance=0.9, epaisseur_min=4):
+    vert = isoler(chemin, boite)
+    sq = skeletonize(vert)
+    bruts = tracer(sq)
+    H, W = sq.shape
+    # Mise a l'echelle du canevas, en gardant les proportions.
+    facteur = min(LARGEUR / W, HAUTEUR / H)
+    dx = (LARGEUR - W * facteur) / 2
+    dy = (HAUTEUR - H * facteur) / 2
 
     sortie = []
     for c in bruts:
-        if len(c) < MIN_POINTS:
+        if len(c) < epaisseur_min:
             continue
-        c = simplifier(c, 1.1)
-        pts = [[round((x - x0) * echelle + decx, 1),
-                round((y - y0) * echelle + decy, 1)] for y, x in c]
+        pts = [(x * facteur + dx, y * facteur + dy) for y, x in c]
+        pts = simplifier(pts, tolerance)
         if len(pts) >= 2:
-            sortie.append(pts)
-
-    # Ordre de trace : un balayage de gauche a droite, comme la tete d un
-    # traceur. Trier par longueur ferait surgir des fragments au hasard aux
-    # quatre coins ; le balayage donne une progression qu on suit du regard.
-    sortie.sort(key=lambda c: (min(p[0] for p in c), min(p[1] for p in c)))
-    total = sum(len(c) for c in sortie)
-    print(f"chemins retenus : {len(sortie)} | points : {total}")
-
-    with open("specimen_chemins.json", "w", encoding="utf-8") as f:
-        json.dump(sortie, f, separators=(",", ":"))
-    print("ecrit dans specimen_chemins.json",
-          os.path.getsize("specimen_chemins.json"), "octets")
+            sortie.append([[round(x, 1), round(y, 1)] for x, y in pts])
+    return sortie
 
 
 if __name__ == "__main__":
-    main()
+    source = Path(sys.argv[1])
+    # gauche, droite, haut, bas — en fraction de l'image.
+    boite = tuple(float(x) for x in sys.argv[2].split(","))
+    tol = float(sys.argv[3]) if len(sys.argv) > 3 else 0.9
+    chemins = convertir(source, boite, tol)
+    points = sum(len(c) for c in chemins)
+    print(json.dumps({"chemins": len(chemins), "points": points}))
+    Path(sys.argv[4]).write_text(json.dumps(chemins), encoding="utf-8")

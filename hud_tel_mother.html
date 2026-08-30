@@ -106,6 +106,11 @@
   #specimen .haut, #specimen .bas { position: absolute; left: 4%; right: 4%;
     white-space: pre; font: 400 11px/1.5 "Courier New", monospace;
     color: #35ff6a; }
+  /* Sur telephone la fiche passe sous le trace : l ecran est trop etroit
+     pour la mettre a cote sans ecraser le dessin. */
+  #specimen .fiche { position: absolute; left: 4%; right: 4%; bottom: 22%;
+    white-space: pre-line; font-size: 10px; line-height: 1.35;
+    letter-spacing: .4px; opacity: .85; columns: 2; }
   #specimen .haut { top: 3%; }
   #specimen .bas { bottom: 4%; }
   #specimen canvas { position: absolute; left: 50%; top: 50%;
@@ -125,6 +130,7 @@
 <div id="specimen">
   <div class="haut">***** MU/TH/UR 6000 *****</div>
   <canvas id="spec-toile" width="300" height="190"></canvas>
+  <div class="fiche" id="spec-fiche"></div>
   <div class="bas">SUBJ: SPECIMEN 8   STATUS: SECURE
 RMKS: ORGANIC. ACID BLOOD.
 &gt;_</div>
@@ -473,6 +479,28 @@ const specimen = document.getElementById("specimen");
 const specToile = document.getElementById("spec-toile");
 let animation = null;
 
+/* Les releves complets vivent sur le serveur : quatre traces pesent cent
+   soixante kilo-octets, trop pour etre inscrits dans la page. Celui d origine
+   reste en dur au-dessus et sert de repli. */
+let RELEVES = [];
+let indiceReleve = -1;
+
+fetch("/specimens.json")
+  .then((r) => r.ok ? r.json() : null)
+  .then((d) => { if (Array.isArray(d) && d.length) RELEVES = d; })
+  .catch(() => { /* on garde le repli */ });
+
+function avancerReleve() {
+  if (!RELEVES.length) return;
+  indiceReleve = (indiceReleve + 1) % RELEVES.length;
+  const r = RELEVES[indiceReleve];
+  SPECIMEN = r.chemins;
+  const fiche = document.getElementById("spec-fiche");
+  if (fiche) fiche.textContent = (r.lignes || []).join("\n");
+  const bas = document.querySelector("#specimen .bas");
+  if (bas && r.bas) bas.textContent = r.bas;
+}
+
 function tracerProgressif(secondes) {
   if (!SPECIMEN) return;
   const c = specToile.getContext("2d");
@@ -506,6 +534,7 @@ function tracerProgressif(secondes) {
 
 function montrerSpecimen(secondes) {
   if (!SPECIMEN) return;
+  avancerReleve();
   specimen.classList.add("visible");
   tracerProgressif(5);
   clearTimeout(montrerSpecimen.fin);
@@ -522,8 +551,9 @@ function reveiller() {
   clearInterval(retours);
   retours = null;
   attenteRepos = setTimeout(() => {
-    montrerSpecimen(11);
-    retours = setInterval(() => montrerSpecimen(24), 5 * 60 * 1000);
+    // Quarante secondes par releve, trace compris, puis le suivant.
+    montrerSpecimen(40);
+    retours = setInterval(() => montrerSpecimen(40), 40 * 1000);
   }, 30 * 1000);
 }
 

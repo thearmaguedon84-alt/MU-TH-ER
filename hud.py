@@ -376,6 +376,14 @@ class _Poignee(BaseHTTPRequestHandler):
                            else "video/webm")
             else:
                 self.send_error(404)
+        elif self.path == "/specimens.json":
+            # Les quatre releves complets. Trop lourds pour etre inscrits
+            # dans la page, servis a part et mis en cache par le navigateur.
+            try:
+                with open(Path(__file__).parent / "specimens.json", "rb") as f:
+                    self._brut(f.read(), "application/json")
+            except Exception:
+                self.send_error(404)
         elif self.path == "/specimen.json":
             # Servi a part : les deux interfaces y puisent, aucune n en garde
             # une copie.
