@@ -57,6 +57,8 @@ def _detecteur(zone):
                      "description": "tete, visage, mains ou personne."},
             "image": {"type": "string",
                       "description": "Quelle image : 'la derniere', 'ma photo', un nom."},
+            "ampleur": {"type": "string",
+                        "description": "large, normal ou serre. Elargit la zone reprise."},
             "ecran": {"type": "string", "description": "Nom d un ecran."},
             "par_mail": {"type": "boolean", "description": "Envoyer par mail."},
         },
@@ -66,7 +68,8 @@ def _detecteur(zone):
     phrase_attente="Je remplace la zone.",
 )
 def remplacer_zone(par: str, zone: str = "tete", image: str = "",
-                   ecran: str = "", par_mail: bool = False) -> str:
+                   ampleur: str = "", ecran: str = "",
+                   par_mail: bool = False) -> str:
     from tools.image import (DOSSIER, _DERNIERE, _demarrer_moteur, _en_anglais,
                              _envoyer_par_mail, _liberer_vram, _nom_de_fichier,
                              envoyer_image_ecran, _adetailer_dispo, ADRESSE)
@@ -87,6 +90,27 @@ def remplacer_zone(par: str, zone: str = "tete", image: str = "",
     if not _adetailer_dispo():
         return ("Le detourage n est pas disponible : l extension de retouche "
                 "n est pas chargee.")
+
+    # Sur une tete, il faut mordre franchement au-dela du visage ; sur une
+    # main, deborder autant deborderait sur le bras.
+    dilatation = {"tete": 96, "visage": 64, "mains": 24,
+                  "main": 24, "personne": 32}.get((zone or "tete").lower(), 64)
+    if ampleur:
+        a = ampleur.lower()
+        if re.search(r"large|grand|beaucoup|toute", a):
+            dilatation = int(dilatation * 1.6)
+        elif re.search(r"petit|serre|juste|peu", a):
+            dilatation = int(dilatation * 0.5)
+
+    # On dit explicitement ce qu on ne veut plus voir : sans cela, la
+    # chevelure d origine reapparait autour de la nouvelle tete.
+    negatif = "blurry, deformed, doubled, disfigured, extra head"
+    if (zone or "").lower() in ("tete", "visage", "figure", "face"):
+        negatif += ", human hair, human face, human ears, hair strands"
+        if not re.search(r"\bhead\b|\bmask\b", par.lower()):
+            par = par + " head"
+        par += ", full head replacing the human head, no human hair, " \
+               "anatomically proportionate to the body, seamless neck"
 
     try:
         import httpx
@@ -121,20 +145,26 @@ def remplacer_zone(par: str, zone: str = "tete", image: str = "",
                         {
                             "ad_model": _detecteur(zone),
                             "ad_prompt": par,
-                            "ad_negative_prompt": "blurry, deformed, doubled",
+                            "ad_negative_prompt": negatif,
                             "ad_confidence": 0.25,
                             # Eleve : on veut vraiment autre chose a la place.
-                            "ad_denoising_strength": 0.9,
+                            "ad_denoising_strength": 0.95,
                             "ad_inpaint_only_masked": True,
-                            "ad_inpaint_only_masked_padding": 48,
-                            "ad_mask_blur": 12,
-                            # Deborder un peu evite le lisere de raccord.
-                            "ad_dilate_erode": 16,
+                            # Large : le moteur a besoin de voir les epaules
+                            # pour donner a la nouvelle tete la bonne taille.
+                            "ad_inpaint_only_masked_padding": 128,
+                            "ad_mask_blur": 20,
+                            # Le detecteur ne cadre que le visage. Sans cette
+                            # dilatation, les cheveux restent autour de la
+                            # nouvelle tete et la trahissent.
+                            "ad_dilate_erode": dilatation,
                             "ad_use_inpaint_width_height": True,
-                            "ad_inpaint_width": 768,
-                            "ad_inpaint_height": 768,
+                            "ad_inpaint_width": 1024,
+                            "ad_inpaint_height": 1024,
                             "ad_use_steps": True,
-                            "ad_steps": 30,
+                            "ad_steps": 36,
+                            "ad_use_cfg_scale": True,
+                            "ad_cfg_scale": 7.0,
                         },
                     ]
                 }

@@ -343,6 +343,16 @@ class _Poignee(BaseHTTPRequestHandler):
                 self._brut(fichier.read_bytes(), "image/png")
             else:
                 self.send_error(404)
+        elif self.path.startswith("/musique/"):
+            # Les morceaux composes, pour les enceintes et les televiseurs.
+            nom = os.path.basename(self.path)
+            fichier = Path(__file__).parent / "musiques" / nom
+            if fichier.exists() and fichier.suffix.lower() in (".mp3", ".wav"):
+                self._brut(fichier.read_bytes(),
+                           "audio/mpeg" if fichier.suffix.lower() == ".mp3"
+                           else "audio/wav")
+            else:
+                self.send_error(404)
         elif self.path == "/specimen.json":
             # Servi a part : les deux interfaces y puisent, aucune n en garde
             # une copie.

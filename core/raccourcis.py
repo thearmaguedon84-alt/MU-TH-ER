@@ -1276,6 +1276,57 @@ RE_ZONE = re.compile(
     r"|\b(tetes?|visages?|mains?)\b[^.]{0,25}\ba la place\b")
 
 
+# « fais-moi une chanson sur ... ». Distinguer une demande de composition
+# d une demande de lecture est le point delicat : « mets de la musique » veut
+# dire Spotify, « compose une musique » veut dire le moteur.
+RE_MUSIQUE = re.compile(
+    r"\b(?:compose|composer|invente|inventer|ecris|ecrire|fabrique|fais|fait|"
+    r"genere|generer|cree|creer)\b[^.]{0,30}?"
+    r"\b(?:chansons?|musiques?|morceaux?|melodies?|airs?|instrumentaux?|"
+    r"instrumental|jingles?)\b")
+
+RE_SAIT_MUSIQUE = re.compile(
+    r"\b(?:tu sais|sais tu|tu peux|peux tu)\b[^.?]{0,34}"
+    r"\b(?:musiques?|chansons?|morceaux?)\b")
+
+
+def _musique(t):
+    """« compose une chanson douce a la guitare sur l automne »."""
+    if RE_SAIT_MUSIQUE.search(t):
+        return ("Oui. Je compose des morceaux en local, avec ou sans paroles. "
+                "Dis-moi le style : « compose une chanson douce a la guitare ».")
+    if not RE_MUSIQUE.search(t):
+        return None
+
+    # Ce qui suit le mot « chanson » (ou son equivalent) est le style voulu.
+    coupe = re.split(r"\b(?:chansons?|musiques?|morceaux?|melodies?|airs?|"
+                     r"instrumentaux?|instrumental|jingles?)\b", t, maxsplit=1)
+    style = coupe[1] if len(coupe) > 1 else ""
+    style = re.sub(r"^\s*(?:de|d|du|des|sur|avec|dans|en|qui|pour|le|la|les|"
+                   r"un|une)\b\s*", " ", style.strip())
+
+    duree = 60
+    m = re.search(r"(\d{1,3})\s*(?:secondes?|s)\b", t)
+    if m:
+        duree = int(m.group(1))
+    else:
+        m = re.search(r"(\d{1,2})\s*(?:minutes?|min)\b", t)
+        if m:
+            duree = int(m.group(1)) * 60
+
+    ecran = ""
+    if _contient(t, ECRANS):
+        ecran = _premier_ecran()
+        style = re.sub(r"\bsur\s+(?:la|le|l|mon|ma)?\s*[^,]+$", " ", style)
+
+    style = " ".join(style.split()).strip(" ,.")
+    if len(style) < 3:
+        style = "pleasant instrumental music"
+
+    from tools.musique import generer_musique
+    return generer_musique(style=style, duree=duree, ecran=ecran)
+
+
 def _remplacer_zone(t):
     """« remplace la tete de la dame par une tete de poule »."""
     if not RE_ZONE.search(t):
@@ -1451,12 +1502,12 @@ def _au_ton_mere(reponse):
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
 ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
-          _spotify_appareil, _spotify, _youtube, _diffuser_service,
-          _chaine_tv, _streaming, _plex, _plex_sans_ecran,
-          _musique_sans_source, _ecran_lecture, _remplacer_zone,
-          _modifier_image, _media, _courrier, _application, _film,
-          _heure, _meteo, _minuteur, _stats, _capture, _web, _image,
-          _image_mail)
+          _spotify_appareil, _musique, _spotify, _youtube,
+          _diffuser_service, _chaine_tv, _streaming, _plex,
+          _plex_sans_ecran, _musique_sans_source, _ecran_lecture,
+          _remplacer_zone, _modifier_image, _media, _courrier,
+          _application, _film, _heure, _meteo, _minuteur, _stats,
+          _capture, _web, _image, _image_mail)
 
 
 def essayer(question):
