@@ -15,6 +15,7 @@ import re
 import time
 from pathlib import Path
 
+from core.file_gpu import enfile
 from core.registre import outil
 
 # Ce que l'on sait detecter, et par quel detecteur.
@@ -67,6 +68,7 @@ def _detecteur(zone):
     lent=True,
     phrase_attente="Je remplace la zone.",
 )
+@enfile("image", "par")
 def remplacer_zone(par: str, zone: str = "tete", image: str = "",
                    ampleur: str = "", ecran: str = "",
                    par_mail: bool = False) -> str:

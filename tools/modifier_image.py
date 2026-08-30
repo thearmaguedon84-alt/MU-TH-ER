@@ -17,6 +17,7 @@ import re
 import time
 from pathlib import Path
 
+from core.file_gpu import enfile
 from core.registre import outil
 
 _EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".bmp")
@@ -190,6 +191,7 @@ def _decrire_resultat(consigne, source=None):
     lent=True,
     phrase_attente="Je reprends l image.",
 )
+@enfile("image", "description")
 def modifier_image(description: str, image: str = "", force: str = "",
                    ecran: str = "", par_mail: bool = False) -> str:
     from tools.image import (DOSSIER, _DERNIERE, _demarrer_moteur, _en_anglais,

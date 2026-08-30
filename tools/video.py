@@ -28,6 +28,7 @@ from pathlib import Path
 
 from core.config import reglage
 from core.dossiers import dossier
+from core.file_gpu import enfile
 from core.registre import outil
 
 ADRESSE = "http://127.0.0.1:8188"
@@ -230,6 +231,7 @@ def _bout_a_bout(morceaux, cible):
     lent=True,
     phrase_attente="Je fabrique la video. C est long, plusieurs minutes.",
 )
+@enfile("video", "description")
 def generer_video(description: str, image: str = "", duree: int = 5,
                   format: str = "", ecran: str = "") -> str:
     from tools.image import _en_anglais

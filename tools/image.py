@@ -25,6 +25,7 @@ import time
 from pathlib import Path
 
 from core.config import reglage
+from core.file_gpu import enfile
 from core.registre import outil
 
 from core.dossiers import dossier
@@ -316,6 +317,7 @@ def utiliser_modele(fragment):
     lent=True,
     phrase_attente="Je fabrique l image.",
 )
+@enfile("image", "description")
 def generer_image(description: str, format: str = "", ecran: str = "",
                   par_mail: bool = False, soigner: bool = True) -> str:
     description = (description or "").strip()

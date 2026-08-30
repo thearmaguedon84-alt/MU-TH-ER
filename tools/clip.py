@@ -17,6 +17,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from core.file_gpu import enfile
 from core.registre import outil
 
 from core.dossiers import dossier
@@ -97,6 +98,7 @@ def _trouver_musique(nom):
     lent=True,
     phrase_attente="Je monte le clip.",
 )
+@enfile("clip", "musique")
 def monter_clip(musique: str = "", sources: str = "", combien: int = 4,
                 ecran: str = "") -> str:
     exe = _ffmpeg()

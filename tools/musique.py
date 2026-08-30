@@ -23,6 +23,7 @@ import time
 from pathlib import Path
 
 from core.config import reglage
+from core.file_gpu import enfile
 from core.registre import outil
 
 from core.dossiers import dossier
@@ -109,6 +110,7 @@ def _instrumental(texte):
     lent=True,
     phrase_attente="Je compose le morceau.",
 )
+@enfile("musique", "style")
 def generer_musique(style: str, paroles: str = "", duree: int = 60,
                     langue: str = "fr", ecran: str = "") -> str:
     style = (style or "").strip()

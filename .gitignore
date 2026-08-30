@@ -34,3 +34,6 @@ mic_test_out.txt
 lancer_jarvis.bat
 telecharger_modele.py
 images/
+
+# Jeton de la file d attente : etat local, jamais partage
+.gpu_travail.json
