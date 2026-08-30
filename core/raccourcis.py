@@ -1244,10 +1244,37 @@ def _image(t):
     if len(sujet) < 3:
         return None
 
-    from tools.image import generer_image
-    return generer_image(description=sujet, format=format_voulu, ecran=ecran,
-                         par_mail=par_mail, soigner=soigner)
+    # « fais-moi une photo de X, et remplace sa tete par Y » : on cree, puis
+    # on remplace sur le resultat. La consigne de remplacement ne doit pas
+    # se retrouver dans la description, sinon le moteur dessine les deux.
+    zone_apres = _zone_demandee(t)
+    if zone_apres:
+        sujet = re.split(r"\b(?:je veux que tu|enleve|enlever|retire|remplace|"
+                         r"remplacer|et mets?|puis mets?)\b", sujet)[0]
+        sujet = " ".join(sujet.split()).strip(" ,.")
+        if len(sujet) < 3:
+            sujet = "a person, full body, photograph"
 
+    from tools.image import generer_image
+    faite = generer_image(description=sujet, format=format_voulu, ecran=ecran,
+                          par_mail=par_mail and not zone_apres,
+                          soigner=soigner)
+    if not zone_apres:
+        return faite
+
+    from tools.zone import remplacer_zone
+    return remplacer_zone(par=zone_apres["par"], zone=zone_apres["zone"],
+                          image="la derniere image", ecran=ecran,
+                          par_mail=par_mail)
+
+
+
+# Le refus explicite de reprendre une image existante. Sans lui, une demande
+# de creation reformulee retombait indefiniment sur le meme fichier.
+RE_PAS_REPRENDRE = re.compile(
+    r"\bne repren\w+\b|\barrete de repren\w+\b|\bpas repren\w+\b"
+    r"|\bnouvelle image\b|\bgener\w+ une nouvelle\b|\bune nouvelle\b"
+    r"|\bdepuis le (?:prompt|texte)\b|\ba partir du (?:prompt|texte)\b")
 
 
 RE_MODIF_IMAGE = re.compile(
@@ -1308,8 +1335,11 @@ RE_REFAIRE = re.compile(
 
 
 def _refaire_image(t):
-    """« refais-la », « une autre version », « elle est loupee »."""
-    if not RE_REFAIRE.search(t):
+    """« refais-la », « une autre version », « genere-en une nouvelle »."""
+    if not (RE_REFAIRE.search(t) or RE_PAS_REPRENDRE.search(t)):
+        return None
+    # « fais-moi une image de X » reste une creation neuve, pas une relance.
+    if RE_IMAGE.search(t):
         return None
     # On ne relance que si une image a bien ete faite juste avant.
     from tools.image import _DERNIERE, refaire_image
@@ -1379,8 +1409,12 @@ def _musique(t):
     return generer_musique(style=style, duree=duree, ecran=ecran)
 
 
-def _remplacer_zone(t):
-    """« remplace la tete de la dame par une tete de poule »."""
+def _zone_demandee(t):
+    """Ce que la phrase demande de remplacer, ou None.
+
+    Extrait a part pour que la generation puisse l enchainer : creer l image,
+    puis y remplacer la zone.
+    """
     if not RE_ZONE.search(t):
         return None
     if not re.search(r"\b(?:image|photo|dessin|illustration|visuel|dame|"
@@ -1393,20 +1427,37 @@ def _remplacer_zone(t):
     elif re.search(r"\bvisages?|figures?\b", t):
         zone = "visage"
 
-    # Ce qui vient apres « par », ou avant « a la place ».
     m = re.search(r"\bpar\s+(.+?)(?:\s+a la place|$)", t)
     if not m:
         m = re.search(r"\b(?:mets?|mettre|colle)\s+(.+?)\s+a la place", t)
     if not m:
         return None
     par = " ".join(m.group(1).split()).strip(" ,.")
-    # La designation de l image traine parfois en fin de phrase : « par des
-    # pinces de crabe sur cette image ».
     par = RE_DESIGNE_IMAGE.sub(" ", par)
     par = re.sub(r"\b(?:sur|dans|de)\s*$", " ", par.strip())
     par = re.sub(r"^(?:une?|le|la|les|des|du|de)\s+", "", par.strip())
+    # Les consignes de style appartiennent a la creation, pas au decoupage.
+    par = re.sub(r"\ble tout en\b.*|\bfais attention\b.*|\ben photo"
+                 r"[- ]?realis\w*\b", " ", par)
     par = " ".join(par.split()).strip(" ,.")
     if len(par) < 3:
+        return None
+    return {"par": par, "zone": zone}
+
+
+def _remplacer_zone(t):
+    """« remplace la tete de la dame par une tete de poule »."""
+    # Si la phrase demande de CREER une image, c est la creation qui mene ;
+    # elle enchainera le remplacement elle-meme. Sans cette porte, une
+    # demande de creation retombait indefiniment sur la derniere image.
+    if RE_IMAGE.search(t) and not RE_DESIGNE_IMAGE.search(t):
+        return None
+    if re.search(r"\bnouvelle\b|\bdepuis le (?:prompt|texte)\b|"
+                 r"\bne repren\w+\b|\barrete de repren\w+\b", t):
+        return None
+
+    demande = _zone_demandee(t)
+    if demande is None:
         return None
 
     image = ""
@@ -1416,7 +1467,8 @@ def _remplacer_zone(t):
 
     par_mail = bool(RE_PAR_MAIL.search(t))
     from tools.zone import remplacer_zone
-    return remplacer_zone(par=par, zone=zone, image=image, par_mail=par_mail)
+    return remplacer_zone(par=demande["par"], zone=demande["zone"],
+                          image=image, par_mail=par_mail)
 
 
 def _modifier_image(t):
@@ -1426,6 +1478,12 @@ def _modifier_image(t):
     « en » marque presque toujours la frontiere entre les deux.
     """
     if not RE_MODIF_IMAGE.search(t):
+        return None
+    # Meme regle que pour le remplacement de zone : creer l emporte sur
+    # reprendre. « Fais-moi une photo et transforme-la en... » doit fabriquer.
+    if RE_IMAGE.search(t) and not RE_DESIGNE_IMAGE.search(t):
+        return None
+    if RE_PAS_REPRENDRE.search(t):
         return None
 
     par_mail = bool(RE_PAR_MAIL.search(t))
@@ -1491,6 +1549,12 @@ def _modifier_image(t):
                           ecran=ecran, par_mail=par_mail)
 
 
+# « envoie-la moi par mail » : le pronom remplace le nom, et aucun raccourci
+# ne reconnaissait la phrase. Le modele choisissait alors un outil au hasard.
+RE_ENVOI_PRONOM = re.compile(
+    r"\benvoie?[- ]?(?:moi|la|le|les)\b|\benvoie?[- ]?(?:moi)\s+(?:la|le)\b")
+
+
 def _image_mail(t):
     """« envoie-moi la derniere image par mail ».
 
@@ -1501,9 +1565,13 @@ def _image_mail(t):
         return None
     if not re.search(r"\benvoi", t):
         return None
-    if not re.search(r"\b(?:image|photo|dessin|illustration|visuel)\b", t):
+    # Soit le nom est dit, soit un pronom y renvoie : « envoie-la moi ».
+    if not (re.search(r"\b(?:image|photo|dessin|illustration|visuel)\b", t)
+            or RE_ENVOI_PRONOM.search(t)):
         return None
-    from tools.image import envoyer_derniere_a_soi
+    from tools.image import _DERNIERE, envoyer_derniere_a_soi
+    if not _DERNIERE.get("chemin"):
+        return None
     return envoyer_derniere_a_soi()
 
 
