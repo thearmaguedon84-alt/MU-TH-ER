@@ -62,15 +62,12 @@ def _demarrer(patience=300):
 
 
 def _liberer_gpu():
-    """Fait de la place : Ollama et le moteur d images se rechargeront seuls."""
+    """Fait de la place. Les autres moteurs se rechargeront a leur tour."""
     try:
-        from tools.image import _liberer_vram, ADRESSE as IMG
-        _liberer_vram()
-        import httpx
-        # Forge garde son modele en memoire graphique entre deux images.
-        httpx.post(f"{IMG}/sdapi/v1/unload-checkpoint", timeout=30)
+        from core.vram import liberer
+        return liberer(pour="musique")
     except Exception:
-        pass
+        return []
 
 
 def _style_en_anglais(texte):

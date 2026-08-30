@@ -1298,6 +1298,27 @@ RE_CLIP = re.compile(
     r"\b(?:musique|morceau|chanson)\b")
 
 
+# « refais-la » : relancer le meme tirage est souvent la bonne reponse a une
+# image ratee, plus efficace que de reformuler la demande.
+RE_REFAIRE = re.compile(
+    r"\b(?:refais|refaire|recommence|recommencer|relance|relancer|reessaye|"
+    r"reessayer)\b[^.]{0,20}?\b(?:la|le|ca|une autre|image|dessin)\b"
+    r"|\bune autre (?:version|image|fois)\b|\bencore une\b"
+    r"|\bpas terrible\b|\bratee?\b|\bloupee?\b")
+
+
+def _refaire_image(t):
+    """« refais-la », « une autre version », « elle est loupee »."""
+    if not RE_REFAIRE.search(t):
+        return None
+    # On ne relance que si une image a bien ete faite juste avant.
+    from tools.image import _DERNIERE, refaire_image
+    if not _DERNIERE.get("demande"):
+        return None
+    ecran = _premier_ecran() if _contient(t, ECRANS) else ""
+    return refaire_image(ecran=ecran)
+
+
 def _clip(t):
     """« monte un clip avec la derniere musique et mes images »."""
     if not RE_CLIP.search(t):
@@ -1536,9 +1557,9 @@ ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
           _spotify_appareil, _clip, _musique, _spotify, _youtube,
           _diffuser_service, _chaine_tv, _streaming, _plex,
           _plex_sans_ecran, _musique_sans_source, _ecran_lecture,
-          _remplacer_zone, _modifier_image, _media, _courrier,
-          _application, _film, _heure, _meteo, _minuteur, _stats,
-          _capture, _web, _image, _image_mail)
+          _refaire_image, _remplacer_zone, _modifier_image, _media,
+          _courrier, _application, _film, _heure, _meteo, _minuteur,
+          _stats, _capture, _web, _image, _image_mail)
 
 
 def essayer(question):

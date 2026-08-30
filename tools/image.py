@@ -116,6 +116,16 @@ def _en_anglais(texte):
     return texte
 
 def _liberer_vram():
+    """Delegue a l arbitre, qui sait ce que les autres moteurs occupent."""
+    try:
+        from core.vram import liberer
+        return liberer(pour="image")
+    except Exception:
+        pass
+    return _liberer_vram_ancien()
+
+
+def _liberer_vram_ancien():
     """Decharge les modeles d Ollama avant une generation.
 
     Les douze giga-octets de la carte sont partages entre le modele de langage
@@ -135,6 +145,15 @@ def _liberer_vram():
                            json={"model": nom, "keep_alive": 0}, timeout=20)
     except Exception:
         pass
+
+
+# Ce qu on ne veut jamais voir. Un moteur de diffusion n a aucune notion de ce
+# qui est rate ; il faut le lui dire. L absence de cette liste explique une
+# bonne part des images ou les objets se fondent les uns dans les autres.
+NEGATIF = ("deformed, disfigured, malformed, mutated, fused together, merged "
+           "objects, extra limbs, extra heads, duplicate, cloned, bad "
+           "anatomy, melting, blurry, low quality, jpeg artifacts, "
+           "watermark, signature, text")
 
 
 def _nom_de_fichier(demande):
@@ -318,6 +337,7 @@ def generer_image(description: str, format: str = "", ecran: str = "",
 
     charge = {
         "prompt": description,
+        "negative_prompt": reglage("images.negatif", NEGATIF),
         "steps": int(reglage("images.etapes", 28)),
         "cfg_scale": float(reglage("images.guidage", 5.5)),
         "width": largeur,
@@ -512,3 +532,25 @@ def envoyer_derniere_a_soi():
     if not chemin or not Path(chemin).exists():
         return "Je n ai pas d image sous la main."
     return _envoyer_par_mail(chemin, _DERNIERE.get("demande") or "")
+
+@outil(
+    nom="refaire_image",
+    description=("Relance la derniere demande d image a l identique, avec un "
+                 "autre tirage. Pour « refais-la », « une autre version », "
+                 "« encore une ». La diffusion est une loterie : relancer est "
+                 "souvent plus efficace que reformuler."),
+    parametres={
+        "type": "object",
+        "properties": {
+            "ecran": {"type": "string", "description": "Nom d un ecran."},
+        },
+        "required": [],
+    },
+    lent=True,
+    phrase_attente="J en refais une.",
+)
+def refaire_image(ecran: str = "") -> str:
+    demande = _DERNIERE.get("demande")
+    if not demande:
+        return "Je n ai pas de demande precedente sous la main."
+    return generer_image(description=demande, ecran=ecran)
