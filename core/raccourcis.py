@@ -1341,6 +1341,82 @@ RE_SPECIMEN = re.compile(
     r"|\ble specimen\b|\bimage de veille\b|\becran de veille\b")
 
 
+# « fais-moi une video de », « anime cette photo ». Le mot « clip » est
+# reserve au montage : ici on fabrique une sequence, on ne l assemble pas.
+RE_VIDEO = re.compile(
+    r"\b(?:fais|fait|fabrique|genere|generer|cree|creer|filme|filmer)\b"
+    r"[^.]{0,26}?\b(?:videos?|sequences?|animations?|films?)\b"
+    r"|\b(?:anime|animer|fais bouger|met en mouvement)\b"
+    r"|\bvideos?\s+(?:de|d|du|des|avec)\b")
+
+
+def _video(t):
+    """« fais-moi une video de trois secondes d un chat, en portrait »."""
+    if not RE_VIDEO.search(t):
+        return None
+
+    # Duree : « de cinq secondes », ou en toutes lettres pour les petits
+    # nombres, que la reconnaissance vocale ecrit souvent ainsi.
+    duree = 5
+    m = re.search(r"(\d{1,2})\s*(?:secondes?|s)\b", t)
+    if m:
+        duree = int(m.group(1))
+    else:
+        mots = {"deux": 2, "trois": 3, "quatre": 4, "cinq": 5, "six": 6,
+                "sept": 7, "huit": 8, "neuf": 9, "dix": 10}
+        m = re.search(r"\b(%s)\s+secondes?\b" % "|".join(mots), t)
+        if m:
+            duree = mots[m.group(1)]
+
+    format_voulu = ""
+    if re.search(r"\bportrait\b|\bvertical\b|\bdebout\b", t):
+        format_voulu = "portrait"
+    elif re.search(r"\bcarree?\b", t):
+        format_voulu = "carre"
+    elif re.search(r"\bpaysage\b|\bhorizontal\b", t):
+        format_voulu = "paysage"
+
+    # Animer une image existante plutot que de partir de rien.
+    image = ""
+    d = RE_DESIGNE_IMAGE.search(t)
+    if d:
+        image = d.group(0)
+
+    ecran = _premier_ecran() if _contient(t, ECRANS) else ""
+
+    # Ce qui reste apres le verbe et les reglages decrit la scene.
+    sujet = re.split(r"\b(?:videos?|sequences?|animations?|films?)\b", t, 1)
+    sujet = sujet[-1] if len(sujet) > 1 else t
+    sujet = re.sub(r"\b(?:anime|animer|fais bouger|met en mouvement)\b",
+                   " ", sujet)
+    if d:
+        sujet = RE_DESIGNE_IMAGE.sub(" ", sujet)
+    # La duree a servi : elle ne doit plus figurer dans la scene, en chiffres
+    # comme en toutes lettres, ni le « pendant » qui l introduisait.
+    sujet = re.sub(r"\b(?:pendant|durant|de|d)?\s*\d{1,2}\s*"
+                   r"(?:secondes?|s)\b", " ", sujet)
+    sujet = re.sub(r"\b(?:pendant|durant|de|d)?\s*(?:deux|trois|quatre|cinq|"
+                   r"six|sept|huit|neuf|dix)\s+secondes?\b", " ", sujet)
+    sujet = re.sub(r"^\s*(?:pendant|durant)\b\s*", " ", sujet.strip())
+    sujet = re.sub(r"\b(?:en\s+)?(?:portrait|paysage|carree?|vertical|"
+                   r"horizontal)\b", " ", sujet)
+    if ecran:
+        sujet = re.sub(r"\bsur\s+(?:la|le|l|mon|ma)?\s*[^,]+$", " ", sujet)
+    sujet = re.sub(r"^\s*(?:moi|de|d|du|des|une?|le|la|les|avec|qui)\b\s*",
+                   " ", sujet.strip())
+    sujet = " ".join(sujet.split()).strip(" ,.")
+
+    if len(sujet) < 3 and not image:
+        return None
+    if len(sujet) < 3:
+        # On anime la photo sans autre consigne : un mouvement discret.
+        sujet = "subtle natural motion, slow camera push in"
+
+    from tools.video import generer_video
+    return generer_video(description=sujet, image=image, duree=duree,
+                         format=format_voulu, ecran=ecran)
+
+
 def _specimen(t):
     """« montre-moi le specimen », « affiche l image de veille »."""
     if not RE_SPECIMEN.search(t):
@@ -1651,7 +1727,7 @@ def _au_ton_mere(reponse):
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
 ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
-          _spotify_appareil, _clip, _musique, _spotify, _youtube,
+          _spotify_appareil, _video, _clip, _musique, _spotify, _youtube,
           _diffuser_service, _chaine_tv, _streaming, _plex,
           _plex_sans_ecran, _musique_sans_source, _ecran_lecture,
           _specimen, _refaire_image, _remplacer_zone, _modifier_image,
