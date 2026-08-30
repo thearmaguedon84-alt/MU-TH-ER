@@ -1363,7 +1363,9 @@ def _video(t):
         duree = int(m.group(1))
     else:
         mots = {"deux": 2, "trois": 3, "quatre": 4, "cinq": 5, "six": 6,
-                "sept": 7, "huit": 8, "neuf": 9, "dix": 10}
+                "sept": 7, "huit": 8, "neuf": 9, "dix": 10,
+                "quinze": 15, "vingt": 20, "trente": 30, "quarante": 40,
+                "cinquante": 50, "soixante": 60}
         m = re.search(r"\b(%s)\s+secondes?\b" % "|".join(mots), t)
         if m:
             duree = mots[m.group(1)]
@@ -1396,7 +1398,8 @@ def _video(t):
     sujet = re.sub(r"\b(?:pendant|durant|de|d)?\s*\d{1,2}\s*"
                    r"(?:secondes?|s)\b", " ", sujet)
     sujet = re.sub(r"\b(?:pendant|durant|de|d)?\s*(?:deux|trois|quatre|cinq|"
-                   r"six|sept|huit|neuf|dix)\s+secondes?\b", " ", sujet)
+                   r"six|sept|huit|neuf|dix|quinze|vingt|trente|"
+                   r"quarante|cinquante|soixante)\s+secondes?\b", " ", sujet)
     sujet = re.sub(r"^\s*(?:pendant|durant)\b\s*", " ", sujet.strip())
     sujet = re.sub(r"\b(?:en\s+)?(?:portrait|paysage|carree?|vertical|"
                    r"horizontal)\b", " ", sujet)

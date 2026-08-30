@@ -161,6 +161,48 @@ def _recuperer(fiche):
     return chemin if chemin.exists() else None
 
 
+SEGMENT = 5  # ce que le modele sait faire d une traite
+
+
+def _derniere_image(video, vers):
+    """Extrait la derniere image d une sequence, pour amorcer la suivante."""
+    try:
+        import imageio_ffmpeg
+        import subprocess
+        exe = imageio_ffmpeg.get_ffmpeg_exe()
+        # -sseof : on se place juste avant la fin, sans relire tout le fichier.
+        r = subprocess.run([exe, "-y", "-sseof", "-0.2", "-i", str(video),
+                            "-frames:v", "1", "-q:v", "2", str(vers)],
+                           capture_output=True, timeout=180)
+        return vers if vers.exists() else None
+    except Exception:
+        return None
+
+
+def _bout_a_bout(morceaux, cible):
+    """Colle les segments sans fondu : ils sont deja continus."""
+    import subprocess
+    import imageio_ffmpeg
+    exe = imageio_ffmpeg.get_ffmpeg_exe()
+    liste = cible.with_suffix(".txt")
+    liste.write_text("".join("file '%s'\n" % str(m).replace("\\", "/")
+                             for m in morceaux), encoding="utf-8")
+    r = subprocess.run([exe, "-y", "-f", "concat", "-safe", "0",
+                        "-i", str(liste), "-c", "copy", str(cible)],
+                       capture_output=True, timeout=900)
+    if not cible.exists():
+        # Les segments peuvent differer d un rien : on reencode alors.
+        subprocess.run([exe, "-y", "-f", "concat", "-safe", "0",
+                        "-i", str(liste), "-c:v", "libx264", "-preset",
+                        "medium", "-crf", "20", "-pix_fmt", "yuv420p",
+                        str(cible)], capture_output=True, timeout=1800)
+    try:
+        liste.unlink()
+    except Exception:
+        pass
+    return cible if cible.exists() else None
+
+
 @outil(
     nom="generer_video",
     description=(
@@ -206,7 +248,7 @@ def generer_video(description: str, image: str = "", duree: int = 5,
         return "Le moteur video ne repond pas."
 
     description = _en_anglais(description)
-    duree = max(2, min(int(duree or 5), 10))
+    duree = max(2, min(int(duree or 5), 60))
     # La longueur doit tomber sur un multiple de 4, plus un.
     images = int(duree * 24)
     images = images - (images % 4) + 1
@@ -231,6 +273,12 @@ def generer_video(description: str, image: str = "", duree: int = 5,
                     largeur, hauteur = 960, 960
         except Exception:
             pass
+
+    # Au-dela de ce que le modele sait faire d une traite, on enchaine : la
+    # derniere image d un segment devient la premiere du suivant.
+    if duree > SEGMENT:
+        return _enchainer(description, duree, largeur, hauteur, depart,
+                          ecran)
 
     graine = int(time.time()) % 2**31
     montage = _montage(description, largeur, hauteur, images, graine, depart,
@@ -272,6 +320,74 @@ def generer_video(description: str, image: str = "", duree: int = 5,
         pass
     depuis = " depuis ta photo" if depart else ""
     return f"Voila ta video de {duree} secondes{depuis}."
+
+
+def _enchainer(description, duree, largeur, hauteur, depart, ecran):
+    """Fabrique une longue sequence par segments qui se relaient."""
+    import httpx
+
+    nombre = (int(duree) + SEGMENT - 1) // SEGMENT
+    cible = dossier("videos")
+    travail = cible / ".segments"
+    travail.mkdir(parents=True, exist_ok=True)
+    morceaux = []
+    amorce = depart
+
+    for i in range(nombre):
+        images = SEGMENT * 24
+        images = images - (images % 4) + 1
+        graine = (int(time.time()) + i * 7919) % 2**31
+        montage = _montage(description, largeur, hauteur, images, graine,
+                           amorce, int(reglage("video.etapes", 12)))
+        try:
+            r = httpx.post(f"{ADRESSE}/prompt",
+                           json={"prompt": montage, "client_id": "jarvis"},
+                           timeout=120)
+            tache = (r.json() or {}).get("prompt_id") if r.status_code == 200 else None
+        except Exception:
+            tache = None
+        if not tache:
+            break
+        fiche = _attendre(tache, int(reglage("video.patience", 5400)))
+        if not fiche:
+            break
+        produit = _recuperer(fiche)
+        if produit is None:
+            break
+        bout = travail / f"segment-{i:02d}{produit.suffix}"
+        shutil.copy(str(produit), str(bout))
+        morceaux.append(bout)
+
+        # La derniere image amorce le segment suivant : c est ce qui rend la
+        # jointure invisible.
+        if i + 1 < nombre:
+            vue = travail / f"relais-{i:02d}.png"
+            if _derniere_image(bout, vue) is None:
+                break
+            amorce = _deposer_image(vue)
+
+    if not morceaux:
+        return "Aucun segment n a abouti."
+
+    propre = re.sub(r"[^a-z0-9]+", "-", description.lower())[:40].strip("-")
+    final = cible / f"{time.strftime('%Y%m%d-%H%M%S')}-{propre}.mp4"
+    assemble = _bout_a_bout(morceaux, final)
+    for m in morceaux:
+        try:
+            m.unlink()
+        except Exception:
+            pass
+    if assemble is None:
+        return "Les segments sont faits mais l assemblage a echoue."
+
+    _DERNIERE["chemin"] = assemble
+    _DERNIERE["demande"] = description
+    faits = len(morceaux) * SEGMENT
+    if ecran:
+        return (f"Sequence de {faits} secondes en {len(morceaux)} segments. "
+                f"{envoyer_video_ecran(ecran=ecran)}")
+    return (f"Voila ta sequence de {faits} secondes, "
+            f"montee a partir de {len(morceaux)} segments.")
 
 
 @outil(
