@@ -52,15 +52,41 @@ def _ollama():
         return False
 
 
+def _image_occupe():
+    try:
+        import httpx
+        d = httpx.get("http://127.0.0.1:7860/sdapi/v1/progress",
+                      timeout=4).json()
+        etat = d.get("state") or {}
+        return bool(etat.get("job")) and (d.get("progress") or 0) > 0
+    except Exception:
+        return False
+
+
 def _image():
-    """Forge sait decharger son modele sans s arreter : c est le cas ideal."""
+    """Decharger le modele de Forge, et l arreter si cela ne suffit pas.
+
+    Sa commande de dechargement existe mais ne rend pas la memoire : mesure
+    sur cette machine, Forge gardait six giga-octets apres l avoir appelee, ce
+    qui faisait passer un rendu video de vingt-quatre secondes par etape a
+    trois cent trente. On verifie donc le resultat, et on arrete le processus
+    s il n a rien lache. Il redemarre tout seul en une quarantaine de
+    secondes a la prochaine image.
+    """
+    if _image_occupe():
+        return False
+    avant = _octets_libres()
     try:
         import httpx
         httpx.post("http://127.0.0.1:7860/sdapi/v1/unload-checkpoint",
                    timeout=30)
-        return True
     except Exception:
-        return False
+        pass
+    time.sleep(3)
+    apres = _octets_libres()
+    if avant is not None and apres is not None and apres - avant > 1.5:
+        return True
+    return _arreter("forge")
 
 
 def _arreter(marqueur):

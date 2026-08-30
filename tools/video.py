@@ -56,9 +56,16 @@ def _demarrer(patience=300):
     if not py.exists():
         return False
     try:
+        # DETACHED_PROCESS en plus : sans cela le moteur herite d une
+        # console, et la fermeture de cette console tue un rendu en cours.
+        # C est ainsi qu un calcul de quatre-vingt-dix minutes s est perdu a
+        # quatre-vingt-cinq pour cent.
         subprocess.Popen([str(py), "main.py", "--port", "8188"],
                          cwd=str(racine),
-                         creationflags=subprocess.CREATE_NO_WINDOW)
+                         stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL,
+                         creationflags=subprocess.CREATE_NO_WINDOW
+                         | subprocess.DETACHED_PROCESS)
     except Exception:
         return False
     debut = time.time()
@@ -204,8 +211,8 @@ def generer_video(description: str, image: str = "", duree: int = 5,
     images = int(duree * 24)
     images = images - (images % 4) + 1
 
-    tailles = {"portrait": (704, 1280), "carre": (960, 960)}
-    largeur, hauteur = tailles.get((format or "").lower(), (1280, 704))
+    tailles = {"portrait": (480, 832), "carre": (640, 640)}
+    largeur, hauteur = tailles.get((format or "").lower(), (832, 480))
 
     depart = None
     if image:
@@ -227,7 +234,7 @@ def generer_video(description: str, image: str = "", duree: int = 5,
 
     graine = int(time.time()) % 2**31
     montage = _montage(description, largeur, hauteur, images, graine, depart,
-                       int(reglage("video.etapes", 20)))
+                       int(reglage("video.etapes", 12)))
 
     try:
         import httpx
