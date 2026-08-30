@@ -1251,9 +1251,20 @@ def _image(t):
 
 
 RE_MODIF_IMAGE = re.compile(
-    r"\b(?:modifie|modifier|transforme|transformer|retouche|retoucher|"
-    r"refais|refaire|reprends|reprendre|change|changer)\b[^.]{0,30}?"
+    r"\b(?:modifie?|modifier|transforme|transformer|retouche|retoucher|"
+    r"refais|refaire|reprends?|rempr?ends?|reprendre|change|changer|"
+    r"remplace|remplacer|enleve|enlever|ajoute|ajouter)\b[^.]{0,40}?"
     r"\b(?:image|photo|dessin|illustration|visuel)\b")
+
+# Les facons de designer l image a reprendre. On les retire du texte : ce qui
+# reste est la consigne.
+RE_DESIGNE_IMAGE = re.compile(
+    r"\b(?:l\s*)?(?:image|photo)\s+que\s+tu\s+(?:viens\s+de\s+\w+|as\s+\w+)"
+    r"|\bla\s+derniere\s+(?:image|photo|creation|generation)\b"
+    r"|\bta\s+derniere\s+(?:image|creation)\b"
+    r"|\bma\s+derniere\s+(?:photo|image)\b"
+    r"|\bcette\s+(?:image|photo)\b"
+    r"|\bl\s*(?:image|photo)\b|\bma\s+photo\b")
 
 
 def _modifier_image(t):
@@ -1269,19 +1280,44 @@ def _modifier_image(t):
     if par_mail:
         t = _sans_mention_mail(t)
 
-    m = re.search(r"\b(?:modifie|modifier|transforme|transformer|retouche|"
-                  r"retoucher|refais|refaire|reprends|reprendre|change|"
-                  r"changer)\b\s*(?:moi\s+)?(.+)", t)
+    m = re.search(r"\b(?:modifie?|modifier|transforme|transformer|retouche|"
+                  r"retoucher|refais|refaire|reprends?|rempr?ends?|reprendre|"
+                  r"change|changer|remplace|remplacer)\b\s*(?:moi\s+)?(.+)", t)
     if not m:
-        return None
-    reste = m.group(1)
+        # « enleve la tete de l image et mets... » : le verbe porte sur le
+        # contenu, pas sur l image. Toute la phrase est alors la consigne.
+        m = re.search(r"\b(?:enleve|enlever|ajoute|ajouter)\b.*", t)
+        if not m:
+            return None
+        reste = m.group(0)
+    else:
+        reste = m.group(1)
 
-    coupe = re.split(r"\ben\s+", reste, 1)
-    # Les adverbes d intensite servent a la force, pas a designer l image.
-    quelle = re.sub(r"\b(?:legerement|leger|un peu|completement|fortement|"
-                    r"beaucoup|vraiment)\b", " ", coupe[0])
+    # On cherche d abord comment l image est designee. C est plus sur que de
+    # decouper sur « en », qui manque des que la consigne n en contient pas.
+    d = RE_DESIGNE_IMAGE.search(reste)
+    if d:
+        quelle = d.group(0)
+        voulu = (reste[:d.start()] + " " + reste[d.end():])
+        voulu = re.sub(r"^\s*(?:et|,)\s*", " ", voulu)
+    else:
+        coupe = re.split(r"\ben\s+", reste, maxsplit=1)
+        quelle = coupe[0]
+        voulu = coupe[1] if len(coupe) > 1 else ""
+
+    # Les adverbes d intensite servent a la force, pas a decrire l image.
+    intensite = r"\b(?:legerement|leger|un peu|completement|fortement|" \
+                r"beaucoup|vraiment)\b"
+    quelle = re.sub(intensite, " ", quelle)
+    voulu = re.sub(intensite, " ", voulu)
+    # Le « en » de « en aquarelle » a servi de separateur : il ne fait plus
+    # partie de la description. Et retirer la designation laisse parfois une
+    # preposition orpheline.
+    voulu = re.sub(r"^\s*(?:en|vers|dans|comme)\s+", " ", voulu)
+    voulu = re.sub(r"\s+(?:de|du|des|d)\s+(?=et\b|$)", " ", voulu)
+    voulu = re.sub(r"\s+(?:de|du|des|d)\s*$", " ", voulu)
     quelle = " ".join(quelle.split()).strip(" ,.")
-    voulu = coupe[1].strip(" ,.") if len(coupe) > 1 else ""
+    voulu = " ".join(voulu.split()).strip(" ,.")
 
     force = ""
     if re.search(r"\blegerement\b|\bun peu\b|\bleger\b", t):
@@ -1366,12 +1402,11 @@ def _au_ton_mere(reponse):
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
 ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
-          _spotify_appareil,
-          _spotify, _youtube, _diffuser_service, _chaine_tv,
-          _streaming, _plex, _plex_sans_ecran, _musique_sans_source,
-          _ecran_lecture, _media, _courrier, _application, _film,
-          _heure, _meteo, _minuteur, _stats, _capture, _web,
-          _modifier_image, _image, _image_mail)
+          _spotify_appareil, _spotify, _youtube, _diffuser_service,
+          _chaine_tv, _streaming, _plex, _plex_sans_ecran,
+          _musique_sans_source, _ecran_lecture, _modifier_image, _media,
+          _courrier, _application, _film, _heure, _meteo, _minuteur,
+          _stats, _capture, _web, _image, _image_mail)
 
 
 def essayer(question):

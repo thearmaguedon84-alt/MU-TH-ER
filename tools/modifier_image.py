@@ -61,7 +61,9 @@ def _trouver(designation):
         return Path(d)
 
     bas = d.lower()
-    if not d or re.search(r"derniere?\s+(?:image|generation|creation)|celle",
+    if not d or re.search(r"derniere?\s+(?:image|generation|creation)|celle"
+                          r"|que\s+tu\s+viens\s+de|cette\s+image"
+                          r"|^l\s*image$|^image$",
                           bas):
         if _DERNIERE.get("chemin") and Path(_DERNIERE["chemin"]).exists():
             return Path(_DERNIERE["chemin"])
@@ -91,6 +93,49 @@ def _trouver(designation):
             return max(candidats, key=lambda p: p.stat().st_mtime)
 
     return _image_recente()
+
+
+# Une consigne n est pas une description. « Enleve la tete de la dame et mets
+# une tete de poule » ne veut rien dire pour un moteur de diffusion : il faut
+# lui decrire l image d arrivee, « une femme a tete de poule, bras leves ».
+# Le modele local fait cette reformulation en une phrase.
+RE_CONSIGNE = re.compile(
+    r"\b(?:enleve|enlever|retire|retirer|remplace|remplacer|ajoute|ajouter|"
+    r"mets|mettre|met|supprime|supprimer|change|changer)\b", re.I)
+
+
+def _decrire_resultat(consigne, source=None):
+    """Transforme une consigne de retouche en description de l image voulue."""
+    from tools.image import _en_anglais
+    from core.config import reglage
+
+    if not RE_CONSIGNE.search(consigne or ""):
+        return _en_anglais(consigne)
+
+    try:
+        import httpx
+        hote = reglage("ollama.hote", "http://127.0.0.1:11434")
+        r = httpx.post(
+            f"{hote}/api/generate",
+            json={
+                "model": reglage("ollama.modele", "qwen2.5:7b"),
+                "prompt": (
+                    "An image is going to be edited. Below is the edit "
+                    "instruction, in French. Write, in English, a short "
+                    "caption describing the IMAGE AFTER the edit \u2014 not the "
+                    "instruction itself. One sentence, no quotes, no "
+                    "explanation.\n\nInstruction: " + consigne),
+                "stream": False,
+                "options": {"temperature": 0.2},
+            },
+            timeout=60,
+        )
+        decrite = (r.json().get("response") or "").strip().strip('"')
+        if 3 < len(decrite) < 400:
+            return decrite
+    except Exception:
+        pass
+    return _en_anglais(consigne)
 
 
 @outil(
@@ -136,7 +181,7 @@ def modifier_image(description: str, image: str = "", force: str = "",
         return ("Je ne trouve pas l image. Dis-moi son nom, ou depose-la dans "
                 "tes images et demande « ma derniere photo ».")
 
-    description = _en_anglais(description)
+    description = _decrire_resultat(description, source)
     _liberer_vram()
     if not _demarrer_moteur():
         return "Le moteur d images ne repond pas."
