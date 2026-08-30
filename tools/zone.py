@@ -93,7 +93,7 @@ def remplacer_zone(par: str, zone: str = "tete", image: str = "",
 
     # Sur une tete, il faut mordre franchement au-dela du visage ; sur une
     # main, deborder autant deborderait sur le bras.
-    dilatation = {"tete": 96, "visage": 64, "mains": 24,
+    dilatation = {"tete": 78, "visage": 56, "mains": 24,
                   "main": 24, "personne": 32}.get((zone or "tete").lower(), 64)
     if ampleur:
         a = ampleur.lower()
@@ -106,11 +106,21 @@ def remplacer_zone(par: str, zone: str = "tete", image: str = "",
     # chevelure d origine reapparait autour de la nouvelle tete.
     negatif = "blurry, deformed, doubled, disfigured, extra head"
     if (zone or "").lower() in ("tete", "visage", "figure", "face"):
-        negatif += ", human hair, human face, human ears, hair strands"
+        negatif += (", human hair, human face, human ears, hair strands, "
+                    # Le moteur redresse et tourne la tete a sa guise : il
+                    # faut lui interdire explicitement les trois-quarts.
+                    "profile view, side view, three-quarter view, turned "
+                    "head, tilted head, looking away, oversized head, "
+                    "giant head, head too large")
         if not re.search(r"\bhead\b|\bmask\b", par.lower()):
             par = par + " head"
-        par += ", full head replacing the human head, no human hair, " \
-               "anatomically proportionate to the body, seamless neck"
+        par += (", full head replacing the human head, no human hair, "
+                # La tete doit suivre le corps : de face si le corps est de
+                # face. Sans le dire, le moteur la fait pivoter.
+                "front view facing the camera directly, head upright and "
+                "squarely aligned with the shoulders, symmetrical, "
+                "same size as a human head, proportionate to the neck and "
+                "body, seamless neck")
 
     try:
         import httpx
