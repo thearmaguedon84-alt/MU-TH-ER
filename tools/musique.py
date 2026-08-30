@@ -196,8 +196,8 @@ def generer_musique(style: str, paroles: str = "", duree: int = 60,
         os.startfile(str(chemin))
     except Exception:
         pass
-    quoi = "instrumental" if instrumental else "chanson"
-    return f"Voila ton {quoi}, {duree} secondes."
+    quoi = "ton instrumental" if instrumental else "ta chanson"
+    return f"Voila {quoi}, {duree} secondes."
 
 
 @outil(
