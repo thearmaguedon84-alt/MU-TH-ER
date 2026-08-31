@@ -334,6 +334,8 @@ def _enchainer(description, duree, largeur, hauteur, depart, ecran):
     travail.mkdir(parents=True, exist_ok=True)
     morceaux = []
     amorce = depart
+    # Les images de relais ne servent qu au chainage : on ne les garde pas.
+    a_effacer = []
 
     for i in range(nombre):
         images = SEGMENT * 24
@@ -367,6 +369,7 @@ def _enchainer(description, duree, largeur, hauteur, depart, ecran):
             if _derniere_image(bout, vue) is None:
                 break
             amorce = _deposer_image(vue)
+            a_effacer.append(vue)
 
     if not morceaux:
         return "Aucun segment n a abouti."
@@ -374,11 +377,15 @@ def _enchainer(description, duree, largeur, hauteur, depart, ecran):
     propre = re.sub(r"[^a-z0-9]+", "-", description.lower())[:40].strip("-")
     final = cible / f"{time.strftime('%Y%m%d-%H%M%S')}-{propre}.mp4"
     assemble = _bout_a_bout(morceaux, final)
-    for m in morceaux:
+    for m in morceaux + a_effacer:
         try:
             m.unlink()
         except Exception:
             pass
+    try:
+        travail.rmdir()
+    except Exception:
+        pass
     if assemble is None:
         return "Les segments sont faits mais l assemblage a echoue."
 
