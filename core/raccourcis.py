@@ -1287,8 +1287,12 @@ RE_MODIF_IMAGE = re.compile(
 # reste est la consigne.
 # Un nom de fichier dit a voix haute ou tape : « ma photo vernoux 21-04-07
 # 058.jpg ». Il prime sur toute designation vague, puisqu il est precis.
+# Attention : la phrase arrive DEJA aplatie — sans accents, sans ponctuation.
+# « vernoux 21-04-07 058.jpg » y devient « vernoux 21 04 07 058 jpg ». Une
+# expression qui attend un point ne peut donc jamais correspondre. On cherche
+# les mots qui precedent l extension, devenue un mot comme un autre.
 RE_NOM_FICHIER = re.compile(
-    r"([\w\-]+(?:[ _\-][\w\-]+){0,4}\.(?:jpe?g|png|webp|bmp))", re.I)
+    r"\b([a-z0-9][a-z0-9]*(?:\s+[a-z0-9]+){0,6})\s+(jpe?g|png|webp|bmp)\b")
 
 # « ma photo X », « la photo qui s appelle X » : le nom suit le mot photo.
 RE_PHOTO_NOMMEE = re.compile(
