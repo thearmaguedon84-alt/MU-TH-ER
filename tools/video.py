@@ -162,7 +162,35 @@ def _recuperer(fiche):
     return chemin if chemin.exists() else None
 
 
-SEGMENT = 5  # ce que le modele sait faire d une traite
+SEGMENT = 5      # ce que le modele sait faire d une traite
+RAPPEL = 3       # tous les combien on revient a l image de reference
+
+
+def _recaler_couleur(image, reference):
+    """Ramene une image aux couleurs d une autre.
+
+    Chaque passage dans le modele decale legerement la teinte et le contraste.
+    Sur six relais le decalage devient une derive complete — du sombre vers le
+    delave dans notre cas. On recale donc moyenne et ecart-type de chaque
+    canal sur l image de depart : c est sommaire, mais cela suffit a arreter
+    la derive, et cela ne touche pas au contenu.
+    """
+    try:
+        import numpy as np
+        from PIL import Image as PILImage
+
+        a = np.asarray(PILImage.open(image).convert("RGB")).astype("float32")
+        b = np.asarray(PILImage.open(reference).convert("RGB")).astype("float32")
+        for c in range(3):
+            ecart = a[:, :, c].std()
+            if ecart < 1e-3:
+                continue
+            a[:, :, c] = ((a[:, :, c] - a[:, :, c].mean()) / ecart
+                          * b[:, :, c].std() + b[:, :, c].mean())
+        PILImage.fromarray(a.clip(0, 255).astype("uint8")).save(image)
+        return True
+    except Exception:
+        return False
 
 
 def _derniere_image(video, vers):
@@ -255,8 +283,8 @@ def generer_video(description: str, image: str = "", duree: int = 5,
     images = int(duree * 24)
     images = images - (images % 4) + 1
 
-    tailles = {"portrait": (480, 832), "carre": (640, 640)}
-    largeur, hauteur = tailles.get((format or "").lower(), (832, 480))
+    tailles = {"portrait": (544, 960), "carre": (704, 704)}
+    largeur, hauteur = tailles.get((format or "").lower(), (960, 544))
 
     depart = None
     if image:
@@ -284,7 +312,7 @@ def generer_video(description: str, image: str = "", duree: int = 5,
 
     graine = int(time.time()) % 2**31
     montage = _montage(description, largeur, hauteur, images, graine, depart,
-                       int(reglage("video.etapes", 12)))
+                       int(reglage("video.etapes", 24)))
 
     try:
         import httpx
@@ -336,13 +364,15 @@ def _enchainer(description, duree, largeur, hauteur, depart, ecran):
     amorce = depart
     # Les images de relais ne servent qu au chainage : on ne les garde pas.
     a_effacer = []
+    # La toute premiere image sert d etalon : couleur et personnage.
+    reference = None
 
     for i in range(nombre):
         images = SEGMENT * 24
         images = images - (images % 4) + 1
         graine = (int(time.time()) + i * 7919) % 2**31
         montage = _montage(description, largeur, hauteur, images, graine,
-                           amorce, int(reglage("video.etapes", 12)))
+                           amorce, int(reglage("video.etapes", 24)))
         try:
             r = httpx.post(f"{ADRESSE}/prompt",
                            json={"prompt": montage, "client_id": "jarvis"},
@@ -368,6 +398,25 @@ def _enchainer(description, duree, largeur, hauteur, depart, ecran):
             vue = travail / f"relais-{i:02d}.png"
             if _derniere_image(bout, vue) is None:
                 break
+            if reference is None:
+                # La premiere image du premier segment devient l etalon.
+                reference = travail / "reference.png"
+                try:
+                    import shutil as _s
+                    _s.copy(str(vue), str(reference))
+                except Exception:
+                    reference = None
+                a_effacer.append(reference) if reference else None
+            elif (i + 1) % RAPPEL == 0:
+                # On revient a l etalon : on perd le raccord du mouvement,
+                # on garde le personnage. C est le meilleur des deux maux.
+                try:
+                    import shutil as _s
+                    _s.copy(str(reference), str(vue))
+                except Exception:
+                    pass
+            else:
+                _recaler_couleur(vue, reference)
             amorce = _deposer_image(vue)
             a_effacer.append(vue)
 
