@@ -87,7 +87,13 @@ def _demarrer(patience=300):
         # console, et la fermeture de cette console tue un rendu en cours.
         # C est ainsi qu un calcul de quatre-vingt-dix minutes s est perdu a
         # quatre-vingt-cinq pour cent.
-        subprocess.Popen([str(py), "main.py", "--port", "8188"],
+        # --cache-none : ComfyUI garde par defaut TOUS les modeles charges.
+        # L encodeur de texte pese 6,4 Go et le modele video 4,8 : ensemble
+        # ils saturent une carte de douze, et le rendu deborde sur la memoire
+        # vive. Mesure : quarante minutes par segment au lieu de six. On lui
+        # demande donc de decharger ce qui ne sert plus.
+        subprocess.Popen([str(py), "main.py", "--port", "8188",
+                          "--cache-none"],
                          cwd=str(racine),
                          stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL,
