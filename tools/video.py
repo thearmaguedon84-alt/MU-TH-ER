@@ -312,7 +312,7 @@ def generer_video(description: str, image: str = "", duree: int = 5,
 
     graine = int(time.time()) % 2**31
     montage = _montage(description, largeur, hauteur, images, graine, depart,
-                       int(reglage("video.etapes", 24)))
+                       int(reglage("video.etapes", 20)))
 
     try:
         import httpx
@@ -372,7 +372,7 @@ def _enchainer(description, duree, largeur, hauteur, depart, ecran):
         images = images - (images % 4) + 1
         graine = (int(time.time()) + i * 7919) % 2**31
         montage = _montage(description, largeur, hauteur, images, graine,
-                           amorce, int(reglage("video.etapes", 24)))
+                           amorce, int(reglage("video.etapes", 20)))
         try:
             r = httpx.post(f"{ADRESSE}/prompt",
                            json={"prompt": montage, "client_id": "jarvis"},
