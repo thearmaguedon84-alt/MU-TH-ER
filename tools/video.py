@@ -116,15 +116,44 @@ def _age_moteur():
     return 0.0
 
 
+def _port_libre(port=8188, patience=40):
+    """Attend que le port soit reellement rendu.
+
+    Un processus qui tient dix giga-octets sur la carte ne meurt pas
+    instantanement. Relancer avant qu il ait lache le port donne un second
+    moteur qui echoue a se lier et disparait : on se retrouve alors sans
+    moteur du tout, ce qui est pire que de n avoir rien fait.
+    """
+    import socket
+    debut = time.time()
+    while time.time() - debut < patience:
+        s = socket.socket()
+        s.settimeout(1)
+        pris = s.connect_ex(("127.0.0.1", port)) == 0
+        s.close()
+        if not pris:
+            return True
+        time.sleep(2)
+    return False
+
+
 def _arreter_moteur():
     try:
         import psutil
         racine = str(Path(reglage("video.moteur", r"F:\IA\comfyui"))).lower()
-        for p in psutil.process_iter(["pid", "exe"]):
-            if racine in (p.info.get("exe") or "").lower():
+        vises = [p for p in psutil.process_iter(["pid", "exe"])
+                 if racine in (p.info.get("exe") or "").lower()]
+        for p in vises:
+            try:
                 p.kill()
-        time.sleep(4)
-        return True
+            except Exception:
+                pass
+        # On attend leur disparition effective, puis celle du port.
+        try:
+            psutil.wait_procs(vises, timeout=30)
+        except Exception:
+            time.sleep(6)
+        return _port_libre()
     except Exception:
         return False
 
@@ -139,7 +168,13 @@ def _rafraichir(seuil=20):
         return False
     if _age_moteur() < seuil:
         return False
-    _arreter_moteur()
+    if not _arreter_moteur():
+        # Il refuse de mourir : mieux vaut le garder vieux que sans moteur.
+        return False
+    if _demarrer():
+        return True
+    # Un second essai : le premier echoue parfois sur un port pas encore rendu.
+    _port_libre()
     return _demarrer()
 
 
@@ -427,6 +462,11 @@ def _enchainer(description, duree, largeur, hauteur, depart, ecran):
     # Un enchainement dure une demi-heure ou plus : autant partir d un moteur
     # propre plutot que de le voir ralentir au troisieme segment.
     _rafraichir()
+    # Le rafraichissement peut echouer : sans cette verification on deposait
+    # les segments dans le vide et l on rendait « aucun segment n a abouti »
+    # sans dire pourquoi.
+    if not _repond() and not _demarrer():
+        return "Le moteur video ne repond plus. Relance-le ou reessaie."
     cible = dossier("videos")
     travail = cible / ".segments"
     travail.mkdir(parents=True, exist_ok=True)
