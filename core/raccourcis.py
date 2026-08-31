@@ -1285,6 +1285,18 @@ RE_MODIF_IMAGE = re.compile(
 
 # Les facons de designer l image a reprendre. On les retire du texte : ce qui
 # reste est la consigne.
+# Un nom de fichier dit a voix haute ou tape : « ma photo vernoux 21-04-07
+# 058.jpg ». Il prime sur toute designation vague, puisqu il est precis.
+RE_NOM_FICHIER = re.compile(
+    r"([\w\-]+(?:[ _\-][\w\-]+){0,4}\.(?:jpe?g|png|webp|bmp))", re.I)
+
+# « ma photo X », « la photo qui s appelle X » : le nom suit le mot photo.
+RE_PHOTO_NOMMEE = re.compile(
+    r"\b(?:photos?|images?|fichiers?)\s+(?:qui\s+s\s*appelle\s+|"
+    r"nommee?\s+|intitulee?\s+)?([\w\-]+(?:[ _\-][\w\-]+){0,4})",
+    re.I)
+
+
 RE_DESIGNE_IMAGE = re.compile(
     r"\b(?:l\s*)?(?:image|photo)\s+que\s+tu\s+(?:viens\s+de\s+\w+|as\s+\w+)"
     r"|\bla\s+derniere\s+(?:image|photo|creation|generation)\b"
@@ -1378,11 +1390,31 @@ def _video(t):
     elif re.search(r"\bpaysage\b|\bhorizontal\b", t):
         format_voulu = "paysage"
 
-    # Animer une image existante plutot que de partir de rien.
+    # Animer une image existante plutot que de partir de rien. Un nom de
+    # fichier l emporte sur une designation vague : il est plus precis.
     image = ""
-    d = RE_DESIGNE_IMAGE.search(t)
-    if d:
-        image = d.group(0)
+    m_nom = RE_NOM_FICHIER.search(t)
+    if m_nom:
+        # L expression remonte gloutonnement les mots qui precedent le nom :
+        # « anime ma photo alexandra-3.jpg » capturait le verbe avec. On rogne
+        # ce qui n appartient pas au nom du fichier.
+        image = re.sub(r"^(?:anime|animer|prends?|prend|photos?|images?|"
+                       r"fichiers?|ma|mon|mes|la|le|les|de|du|des|d|"
+                       r"partir|depuis|avec|sur)\s+", " ",
+                       m_nom.group(1), flags=re.I)
+        while True:
+            court = re.sub(r"^(?:anime|animer|prends?|prend|photos?|images?|"
+                           r"fichiers?|ma|mon|mes|la|le|les|de|du|des|d|"
+                           r"partir|depuis|avec|sur)\s+", " ", image.strip(),
+                           flags=re.I)
+            if court.strip() == image.strip():
+                break
+            image = court
+        image = image.strip()
+    else:
+        d = RE_DESIGNE_IMAGE.search(t)
+        if d:
+            image = d.group(0)
 
     ecran = _premier_ecran() if _contient(t, ECRANS) else ""
 
@@ -1391,8 +1423,9 @@ def _video(t):
     sujet = sujet[-1] if len(sujet) > 1 else t
     sujet = re.sub(r"\b(?:anime|animer|fais bouger|met en mouvement)\b",
                    " ", sujet)
-    if d:
-        sujet = RE_DESIGNE_IMAGE.sub(" ", sujet)
+    sujet = RE_NOM_FICHIER.sub(" ", sujet)
+    sujet = RE_DESIGNE_IMAGE.sub(" ", sujet)
+    sujet = re.sub(r"\ba partir de\b|\bdepuis\b|\bavec ma\b", " ", sujet)
     # La duree a servi : elle ne doit plus figurer dans la scene, en chiffres
     # comme en toutes lettres, ni le « pendant » qui l introduisait.
     sujet = re.sub(r"\b(?:pendant|durant|de|d)?\s*\d{1,2}\s*"

@@ -432,6 +432,10 @@ def _enchainer(description, duree, largeur, hauteur, depart, ecran):
     travail.mkdir(parents=True, exist_ok=True)
     morceaux = []
     amorce = depart
+    # Une image fournie par l utilisateur est le sujet, pas un point de
+    # depart : chaque segment y revient, quitte a perdre le raccord du
+    # mouvement. Deux relais suffisaient a ne plus reconnaitre sa photo.
+    fournie = depart is not None
     # Les images de relais ne servent qu au chainage : on ne les garde pas.
     a_effacer = []
     # La toute premiere image sert d etalon : couleur et personnage.
@@ -468,6 +472,10 @@ def _enchainer(description, duree, largeur, hauteur, depart, ecran):
             vue = travail / f"relais-{i:02d}.png"
             if _derniere_image(bout, vue) is None:
                 break
+            if fournie:
+                # On repart toujours de l original, jamais de sa copie.
+                amorce = depart
+                continue
             if reference is None:
                 # La premiere image du premier segment devient l etalon.
                 reference = travail / "reference.png"

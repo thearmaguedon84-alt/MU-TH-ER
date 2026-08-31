@@ -13,6 +13,7 @@ precise a la plus commode :
 - « ma derniere photo », la plus recente trouvee dans les dossiers usuels.
 """
 import base64
+import os
 import re
 import time
 from pathlib import Path
@@ -63,6 +64,36 @@ def _image_recente(dossiers=None, depuis_jours=0):
     return meilleure
 
 
+def _chercher_partout(mots, dossiers, profondeur=3, plafond=40000):
+    """Cherche un fichier par bouts de nom, sous-dossiers compris.
+
+    Les photos ne vivent pas a la racine de « Images » mais dans des dossiers
+    par annee ou par evenement. Ne regarder que le premier niveau revenait a
+    ne jamais trouver ce qu on nomme.
+    """
+    trouves = []
+    vus = 0
+    for base in dossiers:
+        if not base.is_dir():
+            continue
+        for chemin, sous, fichiers in os.walk(base):
+            # On ne descend pas indefiniment, et on evite les dossiers caches.
+            niveau = len(Path(chemin).relative_to(base).parts)
+            if niveau >= profondeur:
+                sous[:] = []
+            sous[:] = [s for s in sous if not s.startswith(".")]
+            for f in fichiers:
+                vus += 1
+                if vus > plafond:
+                    return trouves
+                if not f.lower().endswith(_EXTENSIONS):
+                    continue
+                bas = f.lower()
+                if all(m in bas for m in mots):
+                    trouves.append(Path(chemin) / f)
+    return trouves
+
+
 def _trouver(designation):
     """Retrouve l'image visee par une designation parlee ou un chemin."""
     from tools.image import DOSSIER, _DERNIERE
@@ -87,22 +118,16 @@ def _trouver(designation):
     if re.search(r"\bphoto\b|\bma derniere\b|\bmes images\b|\btelechargee?\b", bas):
         return _image_recente()
 
-    # Un nom partiel : on cherche dans les dossiers usuels et dans les notres.
+    # Un nom partiel : on cherche partout, sous-dossiers compris. Les photos
+    # ne vivent pas a la racine d Images mais dans des dossiers par annee.
     if len(d) >= 3:
-        mots = [m for m in re.findall(r"\w{3,}", bas)]
-        candidats = []
-        for dossier in _dossiers_images() + [DOSSIER]:
-            if not dossier.is_dir():
-                continue
-            for f in dossier.iterdir():
-                try:
-                    if f.suffix.lower() in _EXTENSIONS and all(
-                            m in f.stem.lower() for m in mots):
-                        candidats.append(f)
-                except Exception:
-                    continue
-        if candidats:
-            return max(candidats, key=lambda p: p.stat().st_mtime)
+        mots = [m for m in re.findall(r"\w{2,}", bas)
+                if m not in ("jpg", "jpeg", "png", "webp", "bmp", "photo",
+                             "image", "fichier", "partir")]
+        if mots:
+            candidats = _chercher_partout(mots, _dossiers_images() + [DOSSIER])
+            if candidats:
+                return max(candidats, key=lambda p: p.stat().st_mtime)
 
     # Dernier recours. Il ne doit JAMAIS ramener une photo personnelle : c est
     # ainsi qu une demande mal comprise finissait par retoucher indefiniment
