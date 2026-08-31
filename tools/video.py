@@ -35,6 +35,32 @@ ADRESSE = "http://127.0.0.1:8188"
 
 # Ce que le modele ne doit pas produire. Une video ratee l'est souvent par
 # scintillement ou par deformation progressive, d'ou ces termes precis.
+# Ce que le modele ne sait pas nommer mais sait dessiner. Les noms propres ne
+# lui evoquent rien de precis ; les formes, si.
+_LEXIQUE = {
+    r"\bxenomorphes?\b|\bxenomorphs?\b|\balien du film\b":
+        "a Giger-style biomechanical creature, glossy jet black ribbed "
+        "exoskeleton, very long smooth eyeless elongated curved skull, no "
+        "face, inner second jaw, skeletal elongated limbs, clawed fingers, "
+        "long segmented spiked tail, dripping saliva, hunched predatory posture",
+    r"\bfacehuggers?\b|\bfacehugger\b":
+        "a pale parasitic creature with eight long bony finger-like legs, "
+        "bulbous body and a long coiled muscular tail",
+    r"\bpredators?\b":
+        "a towering armoured hunter with dreadlocked tendrils, tusked "
+        "mandibles and a metal mask",
+}
+
+
+def _developper(texte):
+    """Remplace les noms propres par ce qu ils designent."""
+    import re as _re
+    for motif, forme in _LEXIQUE.items():
+        if _re.search(motif, texte, _re.I):
+            texte = _re.sub(motif, forme, texte, flags=_re.I)
+    return texte
+
+
 NEGATIF = ("blurry, low quality, distorted, deformed, flickering, jittery, "
            "morphing, watermark, text, static image, overexposed")
 
@@ -75,6 +101,46 @@ def _demarrer(patience=300):
         if _repond():
             return True
     return False
+
+
+def _age_moteur():
+    """Depuis combien de minutes le moteur tourne-t-il ?"""
+    try:
+        import psutil
+        racine = str(Path(reglage("video.moteur", r"F:\IA\comfyui"))).lower()
+        for p in psutil.process_iter(["pid", "exe", "create_time"]):
+            if racine in (p.info.get("exe") or "").lower():
+                return (time.time() - p.info["create_time"]) / 60.0
+    except Exception:
+        pass
+    return 0.0
+
+
+def _arreter_moteur():
+    try:
+        import psutil
+        racine = str(Path(reglage("video.moteur", r"F:\IA\comfyui"))).lower()
+        for p in psutil.process_iter(["pid", "exe"]):
+            if racine in (p.info.get("exe") or "").lower():
+                p.kill()
+        time.sleep(4)
+        return True
+    except Exception:
+        return False
+
+
+def _rafraichir(seuil=20):
+    """Relance le moteur s il traine depuis trop longtemps.
+
+    Sa memoire se fragmente a l usage. Quinze secondes de redemarrage valent
+    mieux qu un segment qui met quarante minutes au lieu de six.
+    """
+    if not reglage("video.rafraichir", True):
+        return False
+    if _age_moteur() < seuil:
+        return False
+    _arreter_moteur()
+    return _demarrer()
 
 
 def _deposer_image(source):
@@ -276,8 +342,9 @@ def generer_video(description: str, image: str = "", duree: int = 5,
 
     if not _demarrer():
         return "Le moteur video ne repond pas."
+    _rafraichir(45)
 
-    description = _en_anglais(description)
+    description = _developper(_en_anglais(_developper(description)))
     duree = max(2, min(int(duree or 5), 60))
     # La longueur doit tomber sur un multiple de 4, plus un.
     images = int(duree * 24)
@@ -357,6 +424,9 @@ def _enchainer(description, duree, largeur, hauteur, depart, ecran):
     import httpx
 
     nombre = (int(duree) + SEGMENT - 1) // SEGMENT
+    # Un enchainement dure une demi-heure ou plus : autant partir d un moteur
+    # propre plutot que de le voir ralentir au troisieme segment.
+    _rafraichir()
     cible = dossier("videos")
     travail = cible / ".segments"
     travail.mkdir(parents=True, exist_ok=True)
