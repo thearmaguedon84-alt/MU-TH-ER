@@ -283,8 +283,8 @@ def generer_video(description: str, image: str = "", duree: int = 5,
     images = int(duree * 24)
     images = images - (images % 4) + 1
 
-    tailles = {"portrait": (544, 960), "carre": (704, 704)}
-    largeur, hauteur = tailles.get((format or "").lower(), (960, 544))
+    tailles = {"portrait": (480, 832), "carre": (640, 640)}
+    largeur, hauteur = tailles.get((format or "").lower(), (832, 480))
 
     depart = None
     if image:
