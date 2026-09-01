@@ -1317,7 +1317,11 @@ _AVANT_NOM = (r"^(?:et|puis|sur|dans|de|du|la|le|les|l|ma|mon|mes|une?|"
               r"retouche|genere|generer|fais|fait|montre|reprends?)\s+")
 
 
-def _elaguer(nom):
+_LIAISON = (r"(?:comme|et|puis|pour|sur|dans|avec|afin|ensuite|remplace|"
+            r"mets?|mettre|reference|en|de|du|des)")
+
+
+def _elaguer(nom, garder="debut"):
     """Retire les mots de liaison colles au nom du fichier."""
     nom = (nom or "").strip()
     precedent = None
@@ -1326,11 +1330,14 @@ def _elaguer(nom):
         nom = re.sub(_AVANT_NOM, "", nom).strip()
     # Une extension prononcee ne fait pas partie du nom.
     nom = re.sub(r"\s+(jpe?g|png|webp|bmp)\b.*$", "", nom)
-    # Le nom s arrete au premier mot de liaison : sans cela il avale la suite
-    # de la phrase, « vernoux 21 04 07 058 comme visage de reference et... ».
-    nom = re.split(r"\s+(?:comme|et|puis|pour|sur|dans|avec|afin|ensuite|"
-                   r"remplace|mets?|mettre|reference|en)\b", nom)[0]
-    return nom.strip()
+    # Les mots de liaison decoupent la phrase. Selon ce qui a servi d ancre,
+    # le nom est avant ou apres : les chiffres ancrent le debut, l extension
+    # ancre la fin. « ... sur humain avant png » : le nom est le dernier bout.
+    morceaux = re.split(r"\s+%s\b\s*" % _LIAISON, nom)
+    morceaux = [m for m in morceaux if m.strip()]
+    if not morceaux:
+        return ""
+    return (morceaux[-1] if garder == "fin" else morceaux[0]).strip()
 
 
 def images_designees(t):
@@ -1341,7 +1348,7 @@ def images_designees(t):
     """
     vues = []
     for m in RE_NOM_FICHIER.finditer(t):
-        n = _elaguer(m.group(1))
+        n = _elaguer(m.group(1), garder="fin")
         if len(n) >= 3:
             vues.append((m.start(), n))
     for m in RE_NOM_SANS_EXTENSION.finditer(t):
@@ -1438,10 +1445,12 @@ RE_QUI = re.compile(
 
 # « mets le visage de Paul sur cette image » : deux images dans la phrase,
 # la premiere donne l identite, la seconde recoit.
+# La cible peut etre nommee sans le mot « image » : « ... sur humain-AVANT.png ».
+# On n exige donc plus ce mot, et l on verifie ensuite qu une cible existe.
 RE_TRANSPOSER = re.compile(
     r"\b(?:visages?|tetes?|tronches?)\b[^.]{0,60}?\b(?:sur|dans)\b"
-    r"[^.]{0,40}?\b(?:image|photo|dessin|portrait|celle|celui)\b"
-    r"|\bremplace\w*\s+le\s+visage\b|\btranspose\w*\b[^.]{0,30}\bvisage\b")
+    r"|\bremplace\w*\s+(?:le\s+)?visage\b"
+    r"|\btranspose\w*\b[^.]{0,30}\bvisage\b")
 
 
 def _transposer_visage(t):
