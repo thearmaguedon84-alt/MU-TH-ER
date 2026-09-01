@@ -239,6 +239,67 @@ def _montage(description, largeur, hauteur, images, graine, depart=None,
     return g
 
 
+
+# L agrandisseur : x2, photographique. Il ne cree rien, il restitue.
+AGRANDISSEUR = "RealESRGAN_x2.pth"
+
+
+def _graphe_agrandir(fichier):
+    return {
+        "1": {"class_type": "LoadVideo", "inputs": {"file": fichier}},
+        "2": {"class_type": "GetVideoComponents", "inputs": {"video": ["1", 0]}},
+        "3": {"class_type": "UpscaleModelLoader",
+              "inputs": {"model_name": reglage("video.agrandisseur",
+                                               AGRANDISSEUR)}},
+        "4": {"class_type": "ImageUpscaleWithModel",
+              "inputs": {"upscale_model": ["3", 0], "image": ["2", 0]}},
+        # On reprend la cadence lue dans la source : la recopier a la main est
+        # le meilleur moyen de fabriquer un ralenti sans s en apercevoir.
+        "5": {"class_type": "CreateVideo",
+              "inputs": {"images": ["4", 0], "fps": ["2", 2]}},
+        "6": {"class_type": "SaveVideo",
+              "inputs": {"video": ["5", 0],
+                         "filename_prefix": "muthur/agrandi",
+                         "format": "auto", "codec": "auto"}},
+    }
+
+
+def _agrandir(chemin):
+    """Double la definition d une sequence. Rend None si ca n a pas marche.
+
+    Le cout est d une minute environ pour cinq secondes ; c est peu au regard
+    des sept minutes de generation, et cela se voit sur les visages.
+    """
+    if not reglage("video.agrandir", True):
+        return None
+    import httpx
+
+    chemin = Path(chemin)
+    if not chemin.exists():
+        return None
+    racine = Path(reglage("video.moteur", r"F:\IA\comfyui"))
+    entree = racine / "input"
+    entree.mkdir(exist_ok=True)
+    nom = f"agrandir-{uuid.uuid4().hex[:8]}{chemin.suffix}"
+    try:
+        shutil.copy(str(chemin), str(entree / nom))
+        r = httpx.post(f"{ADRESSE}/prompt",
+                       json={"prompt": _graphe_agrandir(nom),
+                             "client_id": "jarvis"}, timeout=120)
+        if r.status_code != 200:
+            return None
+        fiche = _attendre((r.json() or {}).get("prompt_id"),
+                          int(reglage("video.patience_agrandir", 1800)))
+        produit = _recuperer(fiche) if fiche else None
+        return produit if produit and produit.exists() else None
+    except Exception:
+        return None
+    finally:
+        try:
+            (entree / nom).unlink()
+        except Exception:
+            pass
+
 def _attendre(tache, patience):
     import httpx
     debut = time.time()
@@ -441,6 +502,9 @@ def generer_video(description: str, image: str = "", duree: int = 5,
     produit = _recuperer(fiche)
     if produit is None:
         return "Le fichier produit est introuvable."
+    # La passe de finesse. Elle peut echouer sans consequence : on garde
+    # alors la sequence telle quelle.
+    produit = _agrandir(produit) or produit
 
     cible = dossier("videos")
     propre = re.sub(r"[^a-z0-9]+", "-", description.lower())[:44].strip("-")
@@ -547,9 +611,16 @@ def _enchainer(description, duree, largeur, hauteur, depart, ecran):
     if not morceaux:
         return "Aucun segment n a abouti."
 
+    # La finesse vient a la fin, segment par segment : quatre cents images
+    # agrandies d un coup ne tiennent pas sur la carte, cent vingt si.
+    affines = []
+    for m in morceaux:
+        fin = _agrandir(m)
+        affines.append(fin if fin else m)
+
     propre = re.sub(r"[^a-z0-9]+", "-", description.lower())[:40].strip("-")
     final = cible / f"{time.strftime('%Y%m%d-%H%M%S')}-{propre}.mp4"
-    assemble = _bout_a_bout(morceaux, final)
+    assemble = _bout_a_bout(affines, final)
     for m in morceaux + a_effacer:
         try:
             m.unlink()

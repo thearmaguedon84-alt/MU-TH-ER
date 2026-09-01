@@ -1176,6 +1176,28 @@ RE_SAIT_IMAGE = re.compile(
     r"[^.?]{0,34}\b(?:images?|dessins?|illustrations?)\b")
 
 
+
+# Les mots par lesquels on demande du soin plutot que de la vitesse. « avec
+# flux » y figure parce que c est ainsi qu on finit par le nommer une fois
+# qu on sait qu il existe.
+RE_SOIGNEE = re.compile(
+    r"\b(?:tres\s+)?(?:soignees?|soignes?|peaufinees?|lechees?|"
+    r"haute\s+qualite|meilleure\s+qualite|qualite\s+maximale|"
+    r"tres\s+belle|superbe|impeccable|detaillee?s?)\b"
+    r"|\b(?:avec|en|sous|via)\s+flux\b")
+
+# Quand on accepte d attendre sept minutes plutot qu une.
+RE_PATIENT = re.compile(
+    r"\bprends?\s+ton\s+temps\b|\bau\s+maximum\b|\bqualite\s+maximale\b"
+    r"|\ble\s+mieux\s+possible\b|\bmeme\s+si\s+c\s+est\s+long\b"
+    r"|\bsans\s+te\s+presser\b")
+
+# Ce qui, malgre le mot « soigne », ne demande pas une image neuve : la
+# retouche d une partie de ce qui existe deja.
+RE_SOIN_RETOUCHE = re.compile(
+    r"\bsoigne\w*\s+(?:les?\s+|la\s+|ses\s+|mes\s+)?"
+    r"(?:mains?|doigts?|visages?|yeux|dents|details?)\b")
+
 def _image(t):
     """« fais-moi une image d un alien en maillot de bain ».
 
@@ -1254,6 +1276,17 @@ def _image(t):
         sujet = " ".join(sujet.split()).strip(" ,.")
         if len(sujet) < 3:
             sujet = "a person, full body, photograph"
+
+    # « une image tres soignee » : c est Flux qu on veut. Il est bien plus
+    # lent, donc on ne le choisit que sur demande explicite — et jamais quand
+    # il faudra ensuite remplacer une zone, ce que seul SDXL sait faire.
+    if RE_SOIGNEE.search(t) and not RE_SOIN_RETOUCHE.search(t) and not zone_apres:
+        sujet_soigne = " ".join(RE_SOIGNEE.sub(" ", sujet).split()).strip(" ,.")
+        from tools.flux import image_soignee
+        return image_soignee(description=sujet_soigne or sujet,
+                             format=format_voulu,
+                             patient=bool(RE_PATIENT.search(t)),
+                             ecran=ecran, par_mail=par_mail)
 
     from tools.image import generer_image
     faite = generer_image(description=sujet, format=format_voulu, ecran=ecran,

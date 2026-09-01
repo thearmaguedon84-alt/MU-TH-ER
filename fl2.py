@@ -6,19 +6,12 @@ J = Path(r"F:/IA/flux.log")
 def dire(t):
     with open(J, "a", encoding="utf-8") as f:
         f.write(time.strftime("%H:%M:%S ") + str(t) + chr(10))
-J.write_text("", encoding="utf-8")
 C = Path(r"F:/IA/comfyui/models")
-# La recette des douze giga-octets : le modele quantifie tient sur la carte,
-# l encodeur de texte passe en fp8 et se decharge apres usage.
-lot = [
-    ("city96/FLUX.1-dev-gguf", "flux1-dev-Q4_K_S.gguf", "unet", "flux1-dev-Q4_K_S.gguf"),
-    ("comfyanonymous/flux_text_encoders", "t5xxl_fp8_e4m3fn_scaled.safetensors", "clip", "t5xxl_fp8_scaled.safetensors"),
-    ("comfyanonymous/flux_text_encoders", "clip_l.safetensors", "clip", "clip_l.safetensors"),
-    ("second-state/FLUX.1-schnell-GGUF", "ae.safetensors", "vae", "flux-ae.safetensors"),
-]
+# Schnell : le meme modele distille pour rendre en quatre etapes au lieu de
+# vingt-quatre. Sur cette carte c est la difference entre sept minutes et une.
+lot = [("city96/FLUX.1-schnell-gguf", "flux1-schnell-Q4_K_S.gguf", "unet", "flux1-schnell-Q4_K_S.gguf")]
 for repo, fichier, sous, nom in lot:
-    d = C / sous
-    d.mkdir(parents=True, exist_ok=True)
+    d = C / sous; d.mkdir(parents=True, exist_ok=True)
     dest = d / nom
     if dest.exists():
         dire("deja la : " + nom); continue
@@ -30,4 +23,4 @@ for repo, fichier, sous, nom in lot:
         dire("fini %s  %.2f Go" % (nom, dest.stat().st_size / 2**30))
     except Exception as e:
         dire("ECHEC %s : %s" % (nom, str(e)[:200]))
-dire("TERMINE")
+dire("TERMINE-SCHNELL")
