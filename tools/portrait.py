@@ -232,24 +232,170 @@ def _cadre_serre(boite, largeur, hauteur, marge=1.9):
     return (int(gx), int(gy), int(gx + cote), int(gy + cote))
 
 
-def _recaler_teint(morceau, temoin):
-    """Aligne moyenne et ecart-type de chaque canal sur la zone d origine.
+def _recaler_teint(morceau, temoin, masque=None):
+    """Aligne moyenne et ecart-type de chaque canal, sur le visage seul.
 
-    Sans cela le gros plan revient plus clair ou plus froid, et le raccord se
-    voit malgre le fondu du masque.
+    Comparer les rectangles entiers etait l erreur : a contre-jour, le ciel et
+    les arbres dominent les statistiques, et aligner leurs moyennes assombrit
+    la peau pour compenser un ciel trop clair.
     """
     try:
         import numpy as np
         a = np.asarray(morceau, dtype="float32")
         b = np.asarray(temoin.resize(morceau.size), dtype="float32")
+        if masque is not None:
+            m = np.asarray(masque.resize(morceau.size), dtype="float32") > 128
+            if m.sum() < 200:
+                m = None
+        else:
+            m = None
         for c in range(3):
-            ma, sa = a[..., c].mean(), a[..., c].std() or 1.0
-            mb, sb = b[..., c].mean(), b[..., c].std()
-            a[..., c] = (a[..., c] - ma) * (sb / sa) + mb
+            ca, cb = a[..., c], b[..., c]
+            if m is None:
+                ma, sa, mb, sb = ca.mean(), ca.std() or 1.0, cb.mean(), cb.std()
+            else:
+                ma, sa = ca[m].mean(), ca[m].std() or 1.0
+                mb, sb = cb[m].mean(), cb[m].std()
+            a[..., c] = (ca - ma) * (sb / sa) + mb
         from PIL import Image as PILImage
         return PILImage.fromarray(a.clip(0, 255).astype("uint8"))
     except Exception:
         return morceau
+
+
+
+def _energie(image, masque=None):
+    """Combien de detail contient une image, dans le masque s il y en a un.
+
+    On somme les differences entre pixels voisins : c est une mesure grossiere
+    mais monotone, et c est tout ce dont on a besoin pour comparer deux etats
+    de la meme image.
+    """
+    import numpy as np
+    a = np.asarray(image.convert("L"), dtype="float32")
+    d = np.abs(np.diff(a, axis=0))[:, :-1] + np.abs(np.diff(a, axis=1))[:-1, :]
+    if masque is not None:
+        m = np.asarray(masque.convert("L"), dtype="float32")[:-1, :-1] > 128
+        if m.sum() < 200:
+            return float(d.mean())
+        return float(d[m].mean())
+    return float(d.mean())
+
+
+def _accorder_nettete(morceau, temoin, masque):
+    """Adoucit le visage produit jusqu a la nettete de la photo d accueil.
+
+    Un visage plus pique que son entourage se lit comme un decoupage, meme
+    quand la couleur est juste. C est le dernier indice qui trahit le montage.
+    """
+    try:
+        from PIL import ImageFilter
+
+        voulue = _energie(temoin, masque)
+        actuelle = _energie(morceau, masque)
+        if voulue <= 0 or actuelle <= voulue * 1.12:
+            return morceau  # deja dans le meme registre
+
+        meilleur, ecart_min = morceau, abs(actuelle - voulue)
+        for rayon in (0.4, 0.7, 1.0, 1.4, 1.9, 2.5):
+            essai = morceau.filter(ImageFilter.GaussianBlur(rayon))
+            ecart = abs(_energie(essai, masque) - voulue)
+            if ecart < ecart_min:
+                meilleur, ecart_min = essai, ecart
+            else:
+                # L energie decroit avec le rayon : des qu on s eloigne, on
+                # s eloignera pour tous les rayons suivants.
+                break
+        return meilleur
+    except Exception:
+        return morceau
+
+
+def _rendre_le_grain(morceau, temoin, masque):
+    """Reinjecte un bruit de meme ampleur que celui de la photo d accueil.
+
+    Une image de synthese est propre ; une photographie ne l est jamais. Sans
+    ce grain, la peau reste trop lisse et l oeil le remarque avant d en
+    identifier la cause.
+    """
+    try:
+        import numpy as np
+        a = np.asarray(morceau, dtype="float32")
+        b = np.asarray(temoin.resize(morceau.size), dtype="float32")
+        m = np.asarray(masque.convert("L"), dtype="float32") > 128
+        if m.sum() < 200:
+            return morceau
+        # L ecart-type des hautes frequences, canal par canal, dans le masque.
+        from PIL import Image as PILImage, ImageFilter
+        lisse = np.asarray(temoin.resize(morceau.size).filter(
+            ImageFilter.GaussianBlur(1.2)), dtype="float32")
+        grain = float((b - lisse)[m].std())
+        if grain < 0.6:
+            return morceau
+        bruit = np.random.normal(0, min(grain, 6.0), a.shape).astype("float32")
+        a[m] = a[m] + bruit[m]
+        return PILImage.fromarray(a.clip(0, 255).astype("uint8"))
+    except Exception:
+        return morceau
+
+
+def _fondu_poisson(fond, morceau, masque, centre):
+    """Fondu de Poisson : recopie les variations, pas les couleurs.
+
+    C est ce qui distingue un montage d un autocollant. Le collage ordinaire
+    impose une frontiere ; celui-ci resout une equation qui fait coincider les
+    gradients de part et d autre, si bien que la peau prend la lumiere de la
+    scene d accueil et que le bord n existe plus.
+
+    Rend None si l on n a pas su faire — l appelant recolle alors a l ancienne.
+    """
+    import subprocess
+    import tempfile
+    import uuid as _uuid
+
+    racine = Path(reglage("video.moteur", r"F:\IA\comfyui"))
+    py = racine / ".venv" / "Scripts" / "python.exe"
+    if not py.exists():
+        return None
+    dossier_tmp = Path(tempfile.gettempdir())
+    jeton = _uuid.uuid4().hex[:8]
+    f_fond = dossier_tmp / ("fond-%s.png" % jeton)
+    f_morceau = dossier_tmp / ("morceau-%s.png" % jeton)
+    f_masque = dossier_tmp / ("masque-%s.png" % jeton)
+    f_sortie = dossier_tmp / ("fondu-%s.png" % jeton)
+    try:
+        fond.save(f_fond)
+        morceau.save(f_morceau)
+        masque.save(f_masque)
+        script = """
+import cv2, sys
+fond = cv2.imread(r'{fond}')
+morceau = cv2.imread(r'{morceau}')
+masque = cv2.imread(r'{masque}', cv2.IMREAD_GRAYSCALE)
+# seamlessClone veut un masque franc : le fondu des bords, c est lui qui le
+# fait, et un masque deja adouci le ferait deux fois.
+masque = (masque > 96).astype('uint8') * 255
+if masque.sum() == 0:
+    sys.exit(1)
+sortie = cv2.seamlessClone(morceau, fond, masque, ({cx}, {cy}),
+                           cv2.NORMAL_CLONE)
+cv2.imwrite(r'{sortie}', sortie)
+""".format(fond=f_fond, morceau=f_morceau, masque=f_masque,
+           cx=int(centre[0]), cy=int(centre[1]), sortie=f_sortie)
+        r = subprocess.run([str(py), "-c", script], capture_output=True,
+                           text=True, timeout=180)
+        if r.returncode or not f_sortie.exists():
+            return None
+        from PIL import Image as PILImage
+        return PILImage.open(f_sortie).convert("RGB").copy()
+    except Exception:
+        return None
+    finally:
+        for f in (f_fond, f_morceau, f_masque, f_sortie):
+            try:
+                f.unlink()
+            except Exception:
+                pass
 
 
 def _masque_adouci(taille, douceur=0.16):
@@ -261,6 +407,63 @@ def _masque_adouci(taille, douceur=0.16):
     ImageDraw.Draw(m).rectangle(
         [marge, marge, taille[0] - marge, taille[1] - marge], fill=255)
     return m.filter(ImageFilter.GaussianBlur(marge * 0.7))
+
+
+
+def _masque_traits(taille, points, marge_front=0.34, retrait=0.04):
+    """La peau du visage, d apres ses points de contour.
+
+    On s arrete a la peau : les cheveux de la photo d accueil passent alors
+    par-dessus, comme ils le faisaient avant, et le raccord se cache dedans.
+    C est ce qui distingue un montage d un autocollant, bien plus que la
+    finesse du fondu.
+    """
+    if not points or len(points) < 20:
+        return None
+    try:
+        from PIL import Image as PILImage, ImageDraw, ImageFilter
+
+        xs = [x for x, _ in points]
+        ys = [y for _, y in points]
+        hauteur = max(ys) - min(ys)
+        centre_x = (min(xs) + max(xs)) / 2.0
+
+        # Les points s arretent aux sourcils : on prolonge vers le front, sans
+        # aller jusqu aux cheveux.
+        haut = min(ys) - hauteur * marge_front
+        enveloppe = list(points) + [
+            [centre_x - (max(xs) - min(xs)) * 0.32, haut + hauteur * 0.10],
+            [centre_x, haut],
+            [centre_x + (max(xs) - min(xs)) * 0.32, haut + hauteur * 0.10],
+        ]
+
+        # Enveloppe convexe, a la main : la dependance ne vaut pas trois lignes.
+        pts = sorted((float(x), float(y)) for x, y in enveloppe)
+
+        def demi(suite):
+            pile = []
+            for q in suite:
+                while len(pile) >= 2:
+                    (x1, y1), (x2, y2) = pile[-2], pile[-1]
+                    if (x2 - x1) * (q[1] - y1) - (y2 - y1) * (q[0] - x1) <= 0:
+                        pile.pop()
+                    else:
+                        break
+                pile.append(q)
+            return pile
+
+        coque = demi(pts)[:-1] + demi(pts[::-1])[:-1]
+        if len(coque) < 3:
+            return None
+
+        m = PILImage.new("L", taille, 0)
+        ImageDraw.Draw(m).polygon([(int(x), int(y)) for x, y in coque],
+                                  fill=255)
+        # Le fondu doit se faire dans la peau, pas sur sa limite.
+        flou = max(3, int(hauteur * retrait))
+        return m.filter(ImageFilter.GaussianBlur(flou))
+    except Exception:
+        return None
 
 
 def _masque_visage(taille, cadre, boite):
@@ -284,31 +487,35 @@ def _masque_visage(taille, cadre, boite):
     return m.filter(ImageFilter.GaussianBlur(max(4, int((x2 - x1) * 0.14))))
 
 
-def _aligner(morceau, boite_produite, boite_voulue):
-    """Amene le visage produit sur la place et la taille de l ancien.
+def _transformation(boite_produite, boite_voulue):
+    """De combien agrandir et deplacer pour amener un visage sur l autre.
 
-    Sans cela, coller revient a superposer deux visages qui ne se regardent
-    pas : le modele a dessine les yeux ou il a voulu dans le carre qu on lui a
-    donne.
+    Rendue a part de son application : le masque se taille sur les points de
+    contour, qui doivent subir la meme transformation que l image.
     """
-    from PIL import Image as PILImage
     gx1, gy1, gx2, gy2 = boite_produite
     ox1, oy1, ox2, oy2 = boite_voulue
     if gx2 - gx1 < 4 or gy2 - gy1 < 4:
-        return morceau
+        return 1.0, 0, 0
     facteur = ((ox2 - ox1) / (gx2 - gx1) + (oy2 - oy1) / (gy2 - gy1)) / 2.0
     facteur = min(max(facteur, 0.25), 4.0)
-
-    large = max(1, int(morceau.width * facteur))
-    haut = max(1, int(morceau.height * facteur))
-    agrandi = morceau.resize((large, haut), PILImage.LANCZOS)
-
-    # On fait coincider les centres des deux visages.
     dx = int((ox1 + ox2) / 2 - (gx1 + gx2) / 2 * facteur)
     dy = int((oy1 + oy2) / 2 - (gy1 + gy2) / 2 * facteur)
+    return facteur, dx, dy
+
+
+def _transporter(morceau, facteur, dx, dy):
+    """Applique la transformation a l image."""
+    from PIL import Image as PILImage
+    if abs(facteur - 1.0) < 1e-3 and dx == 0 and dy == 0:
+        return morceau
+    agrandi = morceau.resize((max(1, int(morceau.width * facteur)),
+                              max(1, int(morceau.height * facteur))),
+                             PILImage.LANCZOS)
     canevas = PILImage.new("RGB", morceau.size, (0, 0, 0))
     canevas.paste(agrandi, (dx, dy))
     return canevas
+
 
 
 def _recoller(original, resultat_serre, cadre, boite):
@@ -321,15 +528,54 @@ def _recoller(original, resultat_serre, cadre, boite):
     morceau = brut.resize((largeur, hauteur), PILImage.LANCZOS)
 
     # Ou le modele a-t-il mis le visage ? On le mesure au lieu de le supposer.
-    _, _, produite = _visages_dans(resultat_serre)
+    _, _, produite, points = _visages_dans(resultat_serre)
     voulue = (boite[0] - cadre[0], boite[1] - cadre[1],
               boite[2] - cadre[0], boite[3] - cadre[1])
+    traits = None
     if produite:
-        morceau = _aligner(morceau, [v * echelle for v in produite], voulue)
+        depart = [v * echelle for v in produite]
+        facteur, dx, dy = _transformation(depart, voulue)
+        morceau = _transporter(morceau, facteur, dx, dy)
+        if points:
+            # Les points suivent l image : c est sur eux qu on taillera le
+            # masque, donc ils doivent subir exactement le meme deplacement.
+            traits = [[x * echelle * facteur + dx, y * echelle * facteur + dy]
+                      for x, y in points]
 
-    morceau = _recaler_teint(morceau, fond.crop(cadre))
-    masque = (_masque_visage((largeur, hauteur), cadre, boite) if produite
-              else _masque_adouci((largeur, hauteur)))
+    masque = _masque_traits((largeur, hauteur), traits)
+    if masque is None:
+        masque = (_masque_visage((largeur, hauteur), cadre, boite) if produite
+                  else _masque_adouci((largeur, hauteur)))
+    # Le teint se juge sur le visage, pas sur le ciel qui l entoure.
+    temoin = fond.crop(cadre)
+    morceau = _recaler_teint(morceau, temoin, masque)
+    # Puis la nettete, puis le grain : trois accords, dans cet ordre, parce
+    # que chacun se mesure sur le resultat du precedent.
+    morceau = _accorder_nettete(morceau, temoin, masque)
+    morceau = _rendre_le_grain(morceau, temoin, masque)
+
+    # On tente le fondu de Poisson sur toute l image : il lui faut le contexte
+    # autour du masque pour resoudre son equation.
+    grand_morceau = fond.copy()
+    grand_morceau.paste(morceau, cadre[:2])
+    grand_masque = PILImage.new("L", fond.size, 0)
+    grand_masque.paste(masque, cadre[:2])
+    centre = ((boite[0] + boite[2]) / 2, (boite[1] + boite[3]) / 2)
+    # Trace de mise au point : voir le masque vaut mieux que le deduire.
+    import os as _os
+    if _os.environ.get("JARVIS_TRACE_MASQUE"):
+        d = Path(_os.environ["JARVIS_TRACE_MASQUE"])
+        try:
+            grand_masque.save(d / "trace-masque.png")
+            grand_morceau.save(d / "trace-morceau.png")
+            PILImage.open(resultat_serre).save(d / "trace-gros-plan.png")
+        except Exception:
+            pass
+
+    fondu = _fondu_poisson(fond, grand_morceau, grand_masque, centre)
+    if fondu is not None:
+        return fondu
+
     fond.paste(morceau, cadre[:2], masque)
     return fond
 
@@ -337,13 +583,14 @@ def _recoller(original, resultat_serre, cadre, boite):
 def _visages_dans(chemin):
     """Combien de visages, quelle place occupe le plus grand, et ou il est.
 
-    Rend (nombre, proportion, cadre) ; des None si l on n a pas su regarder —
+    Rend (nombre, proportion, cadre, points) ; des None si l on n a pas su
+    regarder —
     auquel cas on laisse passer, plutot que de bloquer sur une incertitude.
     """
     racine = Path(reglage("video.moteur", r"F:\IA\comfyui"))
     py = racine / ".venv" / "Scripts" / "python.exe"
     if not py.exists():
-        return None, None, None
+        return None, None, None, None
     script = """
 import json, sys
 import cv2
@@ -353,7 +600,7 @@ a = FaceAnalysis(name='antelopev2', root=r'{modeles}',
 a.prepare(ctx_id=-1, det_size=(640, 640))
 i = cv2.imread(r'{image}')
 if i is None:
-    print(json.dumps([None, None, None]))
+    print(json.dumps([None, None, None, None]))
     sys.exit()
 h, w = i.shape[0], i.shape[1]
 v = a.get(i)
@@ -362,13 +609,18 @@ v = a.get(i)
 v = [f for f in v if f.bbox[0] > -w * 0.01 and f.bbox[1] > -h * 0.01
      and f.bbox[2] < w * 1.01 and f.bbox[3] < h * 1.01]
 if not v:
-    print(json.dumps([0, 0.0, None]))
+    print(json.dumps([0, 0.0, None, None]))
     sys.exit()
 v.sort(key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]),
        reverse=True)
 x1, y1, x2, y2 = [float(z) for z in v[0].bbox]
+# Les 106 points de contour dessinent la peau du visage : machoire, joues,
+# nez, bouche, sourcils. Les cheveux n en portent aucun, et c est
+# precisement ce qui nous interesse.
+points = getattr(v[0], 'landmark_2d_106', None)
+points = [[float(a), float(b)] for a, b in points] if points is not None else None
 print(json.dumps([len(v), round((x2 - x1) * (y2 - y1) / (h * w), 4),
-                  [x1, y1, x2, y2]]))
+                  [x1, y1, x2, y2], points]))
 """.format(modeles=str(racine / "models" / "insightface"), image=str(chemin))
     try:
         import subprocess
@@ -377,7 +629,7 @@ print(json.dumps([len(v), round((x2 - x1) * (y2 - y1) / (h * w), 4),
         sortie = (r.stdout or "").strip().split("\n")[-1]
         return tuple(json.loads(sortie))
     except Exception:
-        return None, None, None
+        return None, None, None, None
 
 
 def ressemblance(reference, produite):
@@ -622,7 +874,7 @@ def transposer_visage(visage: str, sur: str = "", force: str = "") -> str:
     # savoir ou poser les traits. S il n y en a pas, il n a pas d ancrage : le
     # debruitage repart librement et le modele invente quelqu un. Mieux vaut
     # le dire en trois secondes que le decouvrir en soixante.
-    combien, part, boite = _visages_dans(cible)
+    combien, part, boite, _ = _visages_dans(cible)
     if combien == 0:
         # Le conseil doit renvoyer vers quelque chose qui existe. Renvoyer
         # vers une autre formulation de la meme demande ferait tourner en
