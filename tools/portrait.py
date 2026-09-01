@@ -129,6 +129,59 @@ def _graphe(visage, positif, negatif, largeur, hauteur, poids,
     }
 
 
+def _graphe_transposition(visage, cible, positif, negatif, poids, force,
+                         graine):
+    """Reprend une image existante en y imposant un autre visage.
+
+    On ne colle rien : l image est reencodee puis redessinee partiellement,
+    avec l identite en guide. La force decide de ce qui subsiste — en
+    dessous de 0,5 la composition tient mais le visage change peu, au-dela
+    de 0,75 c est presque une nouvelle image.
+    """
+    modele = reglage("portrait.modele", "RealVisXL_V5.0_fp16.safetensors")
+    return {
+        "1": {"class_type": "CheckpointLoaderSimple",
+              "inputs": {"ckpt_name": modele}},
+        "2": {"class_type": "InstantIDModelLoader",
+              "inputs": {"instantid_file": "ip-adapter.bin"}},
+        "3": {"class_type": "InstantIDFaceAnalysis",
+              "inputs": {"provider": "CPU"}},
+        "4": {"class_type": "ControlNetLoader",
+              "inputs": {"control_net_name":
+                         "instantid-controlnet.safetensors"}},
+        "5": {"class_type": "LoadImage", "inputs": {"image": visage}},
+        "13": {"class_type": "LoadImage", "inputs": {"image": cible}},
+        # On borne la taille : au-dela la memoire graphique sature.
+        "14": {"class_type": "ImageScaleToTotalPixels",
+               "inputs": {"image": ["13", 0], "upscale_method": "lanczos",
+                          "megapixels": 1.0,
+                          "resolution_steps": 64}},
+        "15": {"class_type": "VAEEncode",
+               "inputs": {"pixels": ["14", 0], "vae": ["1", 2]}},
+        "6": {"class_type": "CLIPTextEncode",
+              "inputs": {"text": positif, "clip": ["1", 1]}},
+        "7": {"class_type": "CLIPTextEncode",
+              "inputs": {"text": negatif, "clip": ["1", 1]}},
+        "8": {"class_type": "ApplyInstantID",
+              "inputs": {"instantid": ["2", 0], "insightface": ["3", 0],
+                         "control_net": ["4", 0], "image": ["5", 0],
+                         "model": ["1", 0], "positive": ["6", 0],
+                         "negative": ["7", 0], "weight": poids,
+                         "start_at": 0.0, "end_at": 0.9}},
+        "10": {"class_type": "KSampler",
+               "inputs": {"model": ["8", 0], "positive": ["8", 1],
+                          "negative": ["8", 2], "latent_image": ["15", 0],
+                          "seed": graine, "steps": 30, "cfg": 5.0,
+                          "sampler_name": "dpmpp_2m",
+                          "scheduler": "karras", "denoise": force}},
+        "11": {"class_type": "VAEDecode",
+               "inputs": {"samples": ["10", 0], "vae": ["1", 2]}},
+        "12": {"class_type": "SaveImage",
+               "inputs": {"images": ["11", 0],
+                          "filename_prefix": "muthur/transposition"}},
+    }
+
+
 def _attendre(tache, patience):
     import httpx
     racine = Path(reglage("video.moteur", r"F:\IA\comfyui"))
@@ -346,3 +399,111 @@ def enregistrer_visage(nom: str, photo: str) -> str:
     except Exception as e:
         return f"Enregistrement impossible : {str(e)[:70]}"
     return f"C est note : {nom} sera reconnu a partir de {Path(p).name}."
+
+
+@outil(
+    nom="transposer_visage",
+    description=(
+        "Pose le visage d une personne sur une image DEJA EXISTANTE, en "
+        "gardant la scene, la pose et la lumiere. Pour « mets le visage de "
+        "Paul sur cette image ». Different de portrait_dans_scene, qui "
+        "fabrique une scene neuve."),
+    parametres={
+        "type": "object",
+        "properties": {
+            "visage": {"type": "string",
+                       "description": "Qui : nom enregistre ou nom de fichier."},
+            "sur": {"type": "string",
+                    "description": "L image a modifier : nom, ou la derniere."},
+            "force": {"type": "string",
+                      "description": "legere, moyenne ou forte. Moyenne par defaut."},
+        },
+        "required": ["visage"],
+    },
+    lent=True,
+    phrase_attente="Je transpose le visage.",
+)
+@enfile("image", "visage")
+def transposer_visage(visage: str, sur: str = "", force: str = "") -> str:
+    from tools.modifier_image import _trouver
+    from tools.video import _demarrer
+
+    source, nom = _trouver_visage(visage)
+    if source is None or not Path(source).exists():
+        connus = ", ".join(visages_connus()) or "aucun"
+        return (f"Je ne trouve pas de photo pour « {visage} ». "
+                f"Visages enregistres : {connus}.")
+
+    cible = _trouver(sur)
+    if cible is None or not Path(cible).exists():
+        return "Je ne trouve pas l image a modifier."
+    if Path(cible).resolve() == Path(source).resolve():
+        return "C est la meme image des deux cotes : precise laquelle modifier."
+
+    try:
+        from core.vram import liberer
+        liberer(pour="image", besoin=9.0)
+    except Exception:
+        pass
+    if not _demarrer():
+        return "Le moteur ne repond pas."
+
+    # Sous 0,5 le visage bouge a peine, au-dela de 0,75 la scene se defait.
+    forces = {"legere": 0.45, "leger": 0.45, "faible": 0.45,
+              "moyenne": 0.6, "moyen": 0.6,
+              "forte": 0.75, "fort": 0.75, "complete": 0.75}
+    intensite = forces.get((force or "").lower(), 0.6)
+
+    graine = int(time.time()) % 2**31
+    montage = _graphe_transposition(
+        _deposer(source), _deposer(cible),
+        "photograph of a person, natural skin texture, sharp focus",
+        NEGATIF, float(reglage("portrait.identite", 0.8)), intensite,
+        graine)
+
+    try:
+        import httpx
+        r = httpx.post(f"{ADRESSE}/prompt",
+                       json={"prompt": montage, "client_id": "jarvis"},
+                       timeout=120)
+        if r.status_code != 200:
+            return f"Le moteur a refuse : {r.text[:110]}"
+        tache = (r.json() or {}).get("prompt_id")
+    except Exception as e:
+        return f"La transposition n a pas demarre : {str(e)[:70]}"
+    if not tache:
+        return "Le moteur n a pas accepte la demande."
+
+    produit, souci = _attendre(tache, int(reglage("portrait.patience", 900)))
+    if produit is None:
+        return f"La transposition n a pas abouti : {souci}"
+
+    rangement = dossier("images")
+    chemin = rangement / ("%s-visage-%s.png" % (
+        time.strftime("%Y%m%d-%H%M%S"), re.sub(r"[^a-z0-9]+", "-", nom.lower())[:20]))
+    shutil.copy(str(produit), str(chemin))
+
+    from tools.image import _DERNIERE
+    _DERNIERE["chemin"] = chemin
+    _DERNIERE["demande"] = "visage de " + nom
+    try:
+        import hud
+        hud.publier_image("/image/" + chemin.name, "visage de " + nom)
+    except Exception:
+        pass
+    try:
+        import os
+        os.startfile(str(chemin))
+    except Exception:
+        pass
+
+    score = ressemblance(str(source), str(chemin))
+    if score is None:
+        jugement = " Je n ai pas pu mesurer la ressemblance."
+    elif score > 0.5:
+        jugement = f" La ressemblance est bonne ({score})."
+    elif score > 0.35:
+        jugement = f" La ressemblance est moyenne ({score}), essaie une force plus elevee."
+    else:
+        jugement = f" La ressemblance est faible ({score}) : monte la force, ou change de photo de reference."
+    return f"Visage de {nom} pose sur {Path(cible).name}.{jugement}"

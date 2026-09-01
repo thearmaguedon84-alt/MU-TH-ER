@@ -1436,6 +1436,55 @@ RE_QUI = re.compile(
     r"|\b(?:mets?|mettre|met|transforme|deguise|habille)\b\s+([a-z]{3,})\s+en\b")
 
 
+# « mets le visage de Paul sur cette image » : deux images dans la phrase,
+# la premiere donne l identite, la seconde recoit.
+RE_TRANSPOSER = re.compile(
+    r"\b(?:visages?|tetes?|tronches?)\b[^.]{0,60}?\b(?:sur|dans)\b"
+    r"[^.]{0,40}?\b(?:image|photo|dessin|portrait|celle|celui)\b"
+    r"|\bremplace\w*\s+le\s+visage\b|\btranspose\w*\b[^.]{0,30}\bvisage\b")
+
+
+def _transposer_visage(t):
+    """« prends le visage de Paul et mets-le sur cette image »."""
+    if not RE_TRANSPOSER.search(t):
+        return None
+
+    # Qui : un nom enregistre cite dans la phrase, sinon la premiere image
+    # nommee sert de reference.
+    from tools.portrait import visages_connus
+    qui = ""
+    for nom in visages_connus():
+        if re.search(r"\b%s\b" % re.escape(nom), t):
+            qui = nom
+            break
+
+    nommees = images_designees(t)
+    if qui:
+        # Le nom enregistre a servi : la photo de reference qui le porte ne
+        # doit pas etre prise pour la cible.
+        nommees = [n for n in nommees if qui not in n]
+    if not qui:
+        if not nommees:
+            return ("Dis-moi de qui prendre le visage : un nom enregistre, "
+                    "ou le nom du fichier de la photo.")
+        qui = nommees[0]
+        nommees = nommees[1:]
+
+    # Sur quoi : la seconde image nommee, ou une designation vague.
+    sur = nommees[0] if nommees else ""
+    if not sur:
+        d = RE_DESIGNE_IMAGE.search(t)
+        sur = d.group(0) if d else "la derniere image"
+
+    force = ""
+    if re.search(r"\blegerement\b|\bun peu\b", t):
+        force = "legere"
+    elif re.search(r"\bfortement\b|\bvraiment\b|\bcompletement\b", t):
+        force = "forte"
+
+    from tools.portrait import transposer_visage
+    return transposer_visage(visage=qui, sur=sur, force=force)
+
 def _portrait(t):
     """« mets-moi en highlander sur une falaise »."""
     if not RE_PORTRAIT.search(t):
@@ -1894,9 +1943,10 @@ ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
           _spotify_appareil, _portrait, _video, _clip, _musique,
           _spotify, _youtube, _diffuser_service, _chaine_tv, _streaming,
           _plex, _plex_sans_ecran, _musique_sans_source, _ecran_lecture,
-          _specimen, _refaire_image, _remplacer_zone, _modifier_image,
-          _media, _courrier, _application, _film, _heure, _meteo,
-          _minuteur, _stats, _capture, _web, _image, _image_mail)
+          _specimen, _refaire_image, _transposer_visage, _remplacer_zone,
+          _modifier_image, _media, _courrier, _application, _film,
+          _heure, _meteo, _minuteur, _stats, _capture, _web, _image,
+          _image_mail)
 
 
 def essayer(question):
