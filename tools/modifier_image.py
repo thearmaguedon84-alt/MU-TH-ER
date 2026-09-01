@@ -129,6 +129,12 @@ def _trouver(designation):
             if candidats:
                 return max(candidats, key=lambda p: p.stat().st_mtime)
 
+    # Une designation qui ressemble a un nom de fichier et qu on n a pas su
+    # resoudre ne doit pas retomber sur autre chose : l utilisateur croirait
+    # avoir ete entendu. C est le defaut qui a le plus coute en confiance.
+    if d and re.search(r"\d{3,}", bas):
+        raise LookupError(d[:70])
+
     # Dernier recours. Il ne doit JAMAIS ramener une photo personnelle : c est
     # ainsi qu une demande mal comprise finissait par retoucher indefiniment
     # la meme photo de famille. En cas de doute, on prefere ne rien trouver et

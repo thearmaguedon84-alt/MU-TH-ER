@@ -1301,6 +1301,63 @@ RE_PHOTO_NOMMEE = re.compile(
     re.I)
 
 
+
+# Un nom de fichier survit mal a l aplatissement : « vernoux 21-04-07 058.jpg »
+# devient « vernoux 21 04 07 058 jpg », et sans extension il ne reste que des
+# mots. On s appuie donc sur ce qui distingue un nom de fichier d une phrase :
+# de longues suites de chiffres, que le francais courant ne contient pas.
+RE_NOM_SANS_EXTENSION = re.compile(
+    r"\b((?:[a-z]{3,}\s+)?(?:\d{4,}(?:\s+\d+)*|\d{2,}(?:\s+\d{2,}){1,6})"
+    r"(?:\s+[a-z0-9]{2,}){0,8})")
+
+# Les mots qui introduisent une image, et qui ne font pas partie du nom.
+_AVANT_NOM = (r"^(?:et|puis|sur|dans|de|du|la|le|les|l|ma|mon|mes|une?|"
+              r"photos?|images?|fichiers?|partir|depuis|prends?|prend|"
+              r"remplace|mets?|avec|comme|anime|animer|transforme|modifie?|"
+              r"retouche|genere|generer|fais|fait|montre|reprends?)\s+")
+
+
+def _elaguer(nom):
+    """Retire les mots de liaison colles au nom du fichier."""
+    nom = (nom or "").strip()
+    precedent = None
+    while nom and nom != precedent:
+        precedent = nom
+        nom = re.sub(_AVANT_NOM, "", nom).strip()
+    # Une extension prononcee ne fait pas partie du nom.
+    nom = re.sub(r"\s+(jpe?g|png|webp|bmp)\b.*$", "", nom)
+    # Le nom s arrete au premier mot de liaison : sans cela il avale la suite
+    # de la phrase, « vernoux 21 04 07 058 comme visage de reference et... ».
+    nom = re.split(r"\s+(?:comme|et|puis|pour|sur|dans|avec|afin|ensuite|"
+                   r"remplace|mets?|mettre|reference|en)\b", nom)[0]
+    return nom.strip()
+
+
+def images_designees(t):
+    """Toutes les images nommees dans la phrase, dans l ordre.
+
+    On rend des designations, pas des chemins : c est a _trouver de les
+    resoudre, lui seul sachant ou chercher.
+    """
+    vues = []
+    for m in RE_NOM_FICHIER.finditer(t):
+        n = _elaguer(m.group(1))
+        if len(n) >= 3:
+            vues.append((m.start(), n))
+    for m in RE_NOM_SANS_EXTENSION.finditer(t):
+        n = _elaguer(m.group(1))
+        if len(n) < 4:
+            continue
+        if any(abs(p - m.start()) < 8 for p, _ in vues):
+            continue
+        vues.append((m.start(), n))
+    vues.sort()
+    sortie = []
+    for _, n in vues:
+        if not any(n in d or d in n for d in sortie):
+            sortie.append(n)
+    return sortie
+
 RE_DESIGNE_IMAGE = re.compile(
     r"\b(?:l\s*)?(?:image|photo)\s+que\s+tu\s+(?:viens\s+de\s+\w+|as\s+\w+)"
     r"|\bla\s+derniere\s+(?:image|photo|creation|generation)\b"
@@ -1362,7 +1419,7 @@ RE_SPECIMEN = re.compile(
 RE_VIDEO = re.compile(
     r"\b(?:fais|fait|fabrique|genere|generer|cree|creer|filme|filmer)\b"
     r"[^.]{0,26}?\b(?:videos?|sequences?|animations?|films?)\b"
-    r"|\b(?:anime|animer|fais bouger|met en mouvement)\b"
+    r"|(?<!dessin )\b(?:anime|animer|fais bouger|met en mouvement)\b"
     r"|\bvideos?\s+(?:de|d|du|des|avec)\b")
 
 
@@ -1453,7 +1510,9 @@ def _video(t):
     # Animer une image existante plutot que de partir de rien. Un nom de
     # fichier l emporte sur une designation vague : il est plus precis.
     image = ""
-    m_nom = RE_NOM_FICHIER.search(t)
+    designees = images_designees(t)
+    image = designees[0] if designees else ""
+    m_nom = None if designees else RE_NOM_FICHIER.search(t)
     if m_nom:
         # L expression remonte gloutonnement les mots qui precedent le nom :
         # « anime ma photo alexandra-3.jpg » capturait le verbe avec. On rogne
@@ -1471,7 +1530,7 @@ def _video(t):
                 break
             image = court
         image = image.strip()
-    else:
+    if not image:
         d = RE_DESIGNE_IMAGE.search(t)
         if d:
             image = d.group(0)
@@ -1706,8 +1765,17 @@ def _modifier_image(t):
 
     # On cherche d abord comment l image est designee. C est plus sur que de
     # decouper sur « en », qui manque des que la consigne n en contient pas.
+    # Un nom de fichier precis l emporte sur toute designation vague.
+    nommees = images_designees(t)
     d = RE_DESIGNE_IMAGE.search(reste)
-    if d:
+    if nommees:
+        quelle = nommees[0]
+        voulu = reste
+        for nom in nommees:
+            voulu = voulu.replace(nom, " ")
+        voulu = RE_DESIGNE_IMAGE.sub(" ", voulu)
+        voulu = re.sub(r"\ben\s+", " ", voulu, count=1)
+    elif d:
         quelle = d.group(0)
         voulu = (reste[:d.start()] + " " + reste[d.end():])
         voulu = re.sub(r"^\s*(?:et|,)\s*", " ", voulu)
@@ -1842,6 +1910,13 @@ def essayer(question):
     for etape in ETAPES:
         try:
             reponse = etape(t)
+        except LookupError as absente:
+            # Un nom d image donne mais introuvable : on le dit, plutot que
+            # de laisser le modele improviser sur autre chose.
+            return _au_ton_mere(
+                "Je ne trouve pas d image nommee « %s ». "
+                "Verifie le nom, ou dis-moi dans quel dossier elle est."
+                % str(absente))
         except Exception:
             # Un raccourci qui casse ne doit jamais bloquer Jarvis :
             # on laisse simplement le LLM prendre le relais.
