@@ -335,42 +335,47 @@ def _recoller(original, resultat_serre, cadre, boite):
 
 
 def _visages_dans(chemin):
-    """Combien de visages, et quelle place occupe le plus grand.
+    """Combien de visages, quelle place occupe le plus grand, et ou il est.
 
-    Rend (nombre, proportion, cadre du plus grand) ; des None si l on n a
-    pas su regarder — auquel cas on laisse passer, plutot que de bloquer sur
-    une incertitude.
+    Rend (nombre, proportion, cadre) ; des None si l on n a pas su regarder —
+    auquel cas on laisse passer, plutot que de bloquer sur une incertitude.
     """
     racine = Path(reglage("video.moteur", r"F:\IA\comfyui"))
     py = racine / ".venv" / "Scripts" / "python.exe"
     if not py.exists():
         return None, None, None
-    code = (
-        "import cv2, json\n"
-        "from insightface.app import FaceAnalysis\n"
-        "a=FaceAnalysis(name='antelopev2', root=r'%s',"
-        " providers=['CPUExecutionProvider'])\n"
-        "a.prepare(ctx_id=-1, det_size=(640,640))\n"
-        "i=cv2.imread(r'%s')\n"
-        "if i is None: print(json.dumps([None,None]))\n"
-        "else:\n"
-        "    v=a.get(i)\n"
-        "    if not v: print(json.dumps([0,0.0,None]))\n"
-        "    else:\n"
-        "        v.sort(key=lambda f:(f.bbox[2]-f.bbox[0])*(f.bbox[3]-f.bbox[1]),"
-        " reverse=True)\n"
-        "        x1,y1,x2,y2=[float(z) for z in v[0].bbox]\n"
-        "        b=(x2-x1)*(y2-y1)\n"
-        "        print(json.dumps([len(v), round(b/(i.shape[0]*i.shape[1]),4),"
-        " [x1,y1,x2,y2]]))\n"
-        % (str(racine / "models" / "insightface"), str(chemin)))
+    script = """
+import json, sys
+import cv2
+from insightface.app import FaceAnalysis
+a = FaceAnalysis(name='antelopev2', root=r'{modeles}',
+                 providers=['CPUExecutionProvider'])
+a.prepare(ctx_id=-1, det_size=(640, 640))
+i = cv2.imread(r'{image}')
+if i is None:
+    print(json.dumps([None, None, None]))
+    sys.exit()
+h, w = i.shape[0], i.shape[1]
+v = a.get(i)
+# Un visage a cheval sur le bord est presque toujours une fausse detection :
+# sur l image de la pin-up, InsightFace en voyait un dans les palmiers.
+v = [f for f in v if f.bbox[0] > -w * 0.01 and f.bbox[1] > -h * 0.01
+     and f.bbox[2] < w * 1.01 and f.bbox[3] < h * 1.01]
+if not v:
+    print(json.dumps([0, 0.0, None]))
+    sys.exit()
+v.sort(key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]),
+       reverse=True)
+x1, y1, x2, y2 = [float(z) for z in v[0].bbox]
+print(json.dumps([len(v), round((x2 - x1) * (y2 - y1) / (h * w), 4),
+                  [x1, y1, x2, y2]]))
+""".format(modeles=str(racine / "models" / "insightface"), image=str(chemin))
     try:
         import subprocess
-        r = subprocess.run([str(py), "-c", code], capture_output=True,
+        r = subprocess.run([str(py), "-c", script], capture_output=True,
                            text=True, timeout=300)
-        n, part, boite = json.loads(
-            (r.stdout or "[null,null,null]").strip().split("\n")[-1])
-        return n, part, boite
+        sortie = (r.stdout or "").strip().split("\n")[-1]
+        return tuple(json.loads(sortie))
     except Exception:
         return None, None, None
 
@@ -392,7 +397,15 @@ def ressemblance(reference, produite):
         "    if i is None: return None\n"
         "    v=a.get(i)\n"
         "    if not v: return None\n"
-        "    v.sort(key=lambda f:(f.bbox[2]-f.bbox[0])*(f.bbox[3]-f.bbox[1]),"
+        # Un visage a moitie hors du cadre est presque toujours une fausse
+        # detection — sur son image, InsightFace « voyait » un visage dans les
+        # palmiers du bord gauche, a dix-huit pixels hors champ.
+        "    h,w=i.shape[0],i.shape[1]\n"
+        "    v=[f for f in v if f.bbox[0]>-w*0.01 and f.bbox[1]>-h*0.01"
+        " and f.bbox[2]<w*1.01 and f.bbox[3]<h*1.01]\n"
+        "    if not v: print(json.dumps([0,0.0,None]))\n"
+        "    else:\n"
+        "     v.sort(key=lambda f:(f.bbox[2]-f.bbox[0])*(f.bbox[3]-f.bbox[1]),"
         " reverse=True)\n"
         "    x=v[0].normed_embedding\n"
         "    return x/np.linalg.norm(x)\n"
@@ -611,11 +624,17 @@ def transposer_visage(visage: str, sur: str = "", force: str = "") -> str:
     # le dire en trois secondes que le decouvrir en soixante.
     combien, part, boite = _visages_dans(cible)
     if combien == 0:
-        return (f"Il n y a pas de visage humain reconnaissable sur "
-                f"{Path(cible).name} : la transposition n a rien ou s accrocher "
-                f"et fabriquerait quelqu un au hasard. Pour poser une tete la "
-                f"ou il n y en a pas d humaine, demande plutot : remplace la "
-                f"tete sur cette image par le visage de {nom}.")
+        # Le conseil doit renvoyer vers quelque chose qui existe. Renvoyer
+        # vers une autre formulation de la meme demande ferait tourner en
+        # rond — c est ce que faisait la version precedente.
+        return (f"Il n y a pas de visage humain sur {Path(cible).name} : "
+                f"la transposition s appuie sur un visage existant pour "
+                f"savoir ou poser les traits, et sans lui elle fabriquerait "
+                f"quelqu un au hasard. Je peux repeindre la tete a partir "
+                f"d une description — « remplace la tete par une tete d homme "
+                f"brun de quarante ans » — mais je ne sais pas encore y porter "
+                f"la ressemblance de {nom} : pour cela il faut une image qui "
+                f"contienne deja un visage humain.")
     # Un visage minuscule ne se transpose pas dans l image entiere : on
     # travaille en gros plan, puis on recolle.
     serre = None

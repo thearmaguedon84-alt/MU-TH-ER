@@ -1627,7 +1627,12 @@ RE_QUI = re.compile(
 RE_TRANSPOSER = re.compile(
     r"\b(?:visages?|tetes?|tronches?)\b[^.]{0,60}?\b(?:sur|dans)\b"
     r"|\bremplace\w*\s+(?:le\s+)?visage\b"
-    r"|\btranspose\w*\b[^.]{0,30}\bvisage\b")
+    r"|\btranspose\w*\b[^.]{0,30}\bvisage\b"
+    # « remplace la tete de X par celui de Y » : ni « sur » ni « dans », et le
+    # mot est « tete », pas « visage ». C est pourtant la meme demande, et
+    # elle partait vers le modele, qui peignait le nom du fichier.
+    r"|\b(?:remplace|change|echange)\w*\s+(?:la\s+|le\s+|les\s+|sa\s+|"
+    r"son\s+|ma\s+|mon\s+)?(?:tetes?|visages?|figures?)\b[^.]{0,80}?\bpar\b")
 
 
 def _transposer_visage(t):
@@ -1652,8 +1657,11 @@ def _transposer_visage(t):
             sur = reference if reference and qui not in reference else ""
     else:
         if not reference:
-            return ("Dis-moi de qui prendre le visage : un nom enregistre, "
-                    "ou le nom du fichier de la photo.")
+            # « remplace la tete par une tete de poule » tombe ici : aucune
+            # photo de reference n est nommee, donc ce n est pas une
+            # transposition mais une description a peindre. On rend la main
+            # au remplacement de zone plutot que de reclamer un nom.
+            return None
         qui = reference
     if not sur:
         d = RE_DESIGNE_IMAGE.search(t)
@@ -1940,8 +1948,22 @@ def _zone_demandee(t):
     """
     if not RE_ZONE.search(t):
         return None
-    if not re.search(r"\b(?:image|photo|dessin|illustration|visuel|dame|"
-                     r"femme|homme|personnage|elle|lui)\b", t):
+    # Le garde-fou demandait qu un support soit nomme. Mais « remplace la tete
+    # par une tete de poule » ne nomme rien et ne veut pourtant rien dire
+    # d autre que : sur la derniere image. La construction elle-meme suffit a
+    # lever le doute — un verbe de remplacement, une partie du corps, un
+    # complement en « par ».
+    explicite = re.search(r"\b(?:remplace|change|echange|mets?)\w*\s+"
+                          r"(?:la\s+|le\s+|les\s+|sa\s+|son\s+|ses\s+|"
+                          r"mes\s+)?(?:tetes?|visages?|figures?|mains?)\b"
+                          # « tete de lit », « tete d affiche » : la tete y est
+                          # une figure de style, pas une partie du corps.
+                          r"(?!\s+(?:de\s+lit|de\s+pont|d\s+affiche|"
+                          r"de\s+serie|de\s+liste))"
+                          r"[^.]{0,40}?\bpar\b", t)
+    if not explicite and not re.search(
+            r"\b(?:image|photo|dessin|illustration|visuel|dame|"
+            r"femme|homme|personnage|elle|lui)\b", t):
         return None
 
     zone = "tete"
