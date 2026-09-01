@@ -1339,9 +1339,18 @@ RE_PHOTO_NOMMEE = re.compile(
 # devient « vernoux 21 04 07 058 jpg », et sans extension il ne reste que des
 # mots. On s appuie donc sur ce qui distingue un nom de fichier d une phrase :
 # de longues suites de chiffres, que le francais courant ne contient pas.
+# Les mots qui, en francais, articulent une phrase et ne peuvent donc pas
+# se trouver au milieu d un nom de fichier.
+_ARRET = (r"(?!(?:par|celui|celle|ceux|celles|comme|et|puis|pour|avec|"
+          r"sur|dans|mais|donc|reference|remplace|remplacer|mets|met|mettre|"
+          r"prends|prend|prendre|utilise|utiliser|applique|appliquer|"
+          r"transpose|transposer|colle|coller|pose|poser|ajoute|greffe|"
+          r"incruste|recupere|extrais|copie|reprends|reprend|montre|affiche|"
+          r"anime|genere|image|images|photo|photos|fichier|fichiers)\b)")
+
 RE_NOM_SANS_EXTENSION = re.compile(
-    r"\b((?:[a-z]{3,}\s+)?(?:\d{4,}(?:\s+\d+)*|\d{2,}(?:\s+\d{2,}){1,6})"
-    r"(?:\s+[a-z0-9]{2,}){0,8})")
+    r"\b((?:" + _ARRET + r"[a-z]{3,}\s+)?(?:\d{4,}(?:\s+\d+)*|\d{2,}(?:\s+\d{2,}){1,6})"
+    r"(?:\s+" + _ARRET + r"[a-z0-9]{2,}){0,8})")
 
 # Les mots qui introduisent une image, et qui ne font pas partie du nom.
 _AVANT_NOM = (r"^(?:et|puis|sur|dans|de|du|la|le|les|l|ma|mon|mes|une?|"
@@ -1351,7 +1360,7 @@ _AVANT_NOM = (r"^(?:et|puis|sur|dans|de|du|la|le|les|l|ma|mon|mes|une?|"
 
 
 _LIAISON = (r"(?:comme|et|puis|pour|sur|dans|avec|afin|ensuite|remplace|"
-            r"mets?|mettre|reference|en|de|du|des)")
+            r"mets?|mettre|reference|en|de|du|des|par|celui|celle)")
 
 
 def _elaguer(nom, garder="debut"):
@@ -1370,7 +1379,112 @@ def _elaguer(nom, garder="debut"):
     morceaux = [m for m in morceaux if m.strip()]
     if not morceaux:
         return ""
-    return (morceaux[-1] if garder == "fin" else morceaux[0]).strip()
+    retenu = (morceaux[-1] if garder == "fin" else morceaux[0]).strip()
+    # Le bout retenu porte souvent encore ses articles : « la photo alexandra
+    # 3 ». On relance l elagage dessus, sinon le nom ne se resout pas.
+    precedent = None
+    while retenu and retenu != precedent:
+        precedent = retenu
+        retenu = re.sub(_AVANT_NOM, "", retenu).strip()
+    return retenu
+
+
+# Prendre designe une source, poser designe une destination.
+_PRISE = (r"prends?|prendre|utilise\w*|utiliser|reprends?|recupere\w*|"
+          r"extrais?|extraire|copie\w*")
+_POSE = (r"remplace\w*|remplacer|mets?|mettre|colle\w*|coller|applique\w*|"
+         r"appliquer|transpose\w*|transposer|pose\w*|poser|incruste\w*|"
+         r"greffe\w*|ajoute\w*")
+_VERBES = re.compile(r"\b(%s|%s)\b" % (_PRISE, _POSE))
+_EST_PRISE = re.compile(r"^(?:%s)$" % _PRISE)
+
+# « le visage de », « celui de la photo » : ce qui suit possede le visage.
+_POSSESSIF = re.compile(
+    r"\b(?:visages?|tetes?|tronches?|figures?|celui|celle)\s+"
+    r"(?:de\s+|du\s+|d\s+)?(?:la\s+|le\s+|les\s+|ma\s+|mon\s+|mes\s+)?"
+    r"(?:photos?\s+|images?\s+|fichiers?\s+)?$")
+
+
+def _role(avant, depuis_le_debut):
+    """« reference » ou « cible » pour la designation qui suit.
+
+    On regarde d abord le bout de phrase qui la precede immediatement ; s il
+    ne dit rien, on remonte au dernier verbe rencontre depuis le debut.
+    """
+    if _POSSESSIF.search(avant):
+        return "reference"
+    proches = _VERBES.findall(avant)
+    if proches:
+        return "reference" if _EST_PRISE.match(proches[-1]) else "cible"
+    tous = _VERBES.findall(depuis_le_debut)
+    if tous:
+        return "reference" if _EST_PRISE.match(tous[-1]) else "cible"
+    return ""
+
+
+def _place(t, nom, defaut):
+    """Ou commence vraiment le nom retenu, une fois les mots de liaison otes.
+
+    Le motif attrape souvent un mot de trop devant — « sur 20260901... ». Si
+    l on garde sa position, la fenetre d analyse s arrete avant ce mot et se
+    termine sur « visage », ce qui declenche a tort la lecture possessive.
+    """
+    ou = t.find(nom, defaut)
+    return ou if ou >= 0 else defaut
+
+
+def images_situees(t):
+    """Les images nommees, avec leur place dans la phrase."""
+    vues = []
+    for m in RE_NOM_FICHIER.finditer(t):
+        n = _elaguer(m.group(1), garder="fin")
+        if len(n) >= 3:
+            vues.append((_place(t, n, m.start()), m.end(), n))
+    for m in RE_NOM_SANS_EXTENSION.finditer(t):
+        n = _elaguer(m.group(1))
+        if len(n) < 4:
+            continue
+        if any(abs(d - m.start()) < 8 for d, _, _ in vues):
+            continue
+        vues.append((_place(t, n, m.start()), m.end(), n))
+    vues.sort()
+    sortie, deja = [], []
+    for debut, fin, n in vues:
+        if any(n in d or d in n for d in deja):
+            continue
+        deja.append(n)
+        sortie.append((debut, fin, n))
+    return sortie
+
+
+def visage_et_cible(t):
+    """Quelle image donne le visage, quelle image le recoit.
+
+    Rend un couple, chaque membre pouvant etre vide. Se fier au rang etait
+    l erreur : « remplace le visage sur B par celui de A » range la cible en
+    premier, « prends le visage sur A et mets-le sur B » la range en second.
+    """
+    situees = images_situees(t)
+    if not situees:
+        return "", ""
+    roles = []
+    precedent = 0
+    for debut, fin, nom in situees:
+        roles.append((_role(t[precedent:debut], t[:debut]), nom))
+        precedent = fin
+
+    reference = next((n for r, n in roles if r == "reference"), "")
+    cible = next((n for r, n in roles if r == "cible"), "")
+    # Aucun indice : on retombe sur l ordre d apparition, qui reste le cas le
+    # plus frequent.
+    if not reference and not cible:
+        reference = roles[0][1]
+        cible = roles[1][1] if len(roles) > 1 else ""
+    elif not reference:
+        reference = next((n for r, n in roles if n != cible), "")
+    elif not cible:
+        cible = next((n for r, n in roles if n != reference), "")
+    return reference, cible
 
 
 def images_designees(t):
@@ -1500,20 +1614,17 @@ def _transposer_visage(t):
             qui = nom
             break
 
-    nommees = images_designees(t)
+    reference, sur = visage_et_cible(t)
     if qui:
-        # Le nom enregistre a servi : la photo de reference qui le porte ne
-        # doit pas etre prise pour la cible.
-        nommees = [n for n in nommees if qui not in n]
-    if not qui:
-        if not nommees:
+        # Le nom enregistre a servi : la photo qui le porte ne doit pas etre
+        # prise pour la cible.
+        if sur and qui in sur:
+            sur = reference if reference and qui not in reference else ""
+    else:
+        if not reference:
             return ("Dis-moi de qui prendre le visage : un nom enregistre, "
                     "ou le nom du fichier de la photo.")
-        qui = nommees[0]
-        nommees = nommees[1:]
-
-    # Sur quoi : la seconde image nommee, ou une designation vague.
-    sur = nommees[0] if nommees else ""
+        qui = reference
     if not sur:
         d = RE_DESIGNE_IMAGE.search(t)
         sur = d.group(0) if d else "la derniere image"
@@ -1700,9 +1811,13 @@ def _refaire_image(t):
     return refaire_image(ecran=ecran)
 
 
+# Ce qui suit « clip avec mes ... » sans nommer un sujet : les mots de
+# quantite, et les noms des supports eux-memes.
 _HORS_THEME = {"derniere", "dernier", "dernieres", "derniers", "musique",
                "morceau", "chanson", "recentes", "recents", "generees",
-               "generes", "toutes", "quelques", "plusieurs"}
+               "generes", "toutes", "quelques", "plusieurs", "videos",
+               "video", "images", "image", "photos", "photo", "sequences",
+               "sequence", "clips", "films"}
 
 
 def _clip(t):
@@ -1728,12 +1843,22 @@ def _clip(t):
     # serie voulue. Les fichiers portent leur demande d origine dans leur nom,
     # donc chercher ce mot dedans suffit a retrouver la bonne matiere.
     theme = ""
-    m = re.search(r"\b(?:images?|photos?|videos?|sequences?|clips?)\s+"
-                  r"(?:de\s+|du\s+|des\s+|sur\s+|avec\s+)?"
-                  r"(?:la\s+|le\s+|les\s+|un\s+|une\s+|mes\s+|mon\s+|ma\s+)?"
-                  r"([a-z]{5,})", t)
-    if m and m.group(1) not in _HORS_THEME:
-        theme = m.group(1)
+    motif = re.compile(r"\b(?:images?|photos?|videos?|sequences?|clips?)\s+"
+                       r"(?:de\s+|du\s+|des\s+|sur\s+|avec\s+)?"
+                       r"(?:la\s+|le\s+|les\s+|un\s+|une\s+|mes\s+|"
+                       r"mon\s+|ma\s+)?([a-z]{5,})")
+    ou = 0
+    while True:
+        m = motif.search(t, ou)
+        if not m:
+            break
+        if m.group(1) not in _HORS_THEME:
+            theme = m.group(1)
+            break
+        # « clip avec mes videos de xenomorphe » : le mot ecarte est lui-meme
+        # un support. On repart de lui, pas apres lui, sinon le sujet qui le
+        # suit n est jamais examine.
+        ou = m.start(1)
 
     from tools.clip import monter_clip
     return monter_clip(sources=sources, combien=combien, theme=theme,
@@ -1999,7 +2124,7 @@ def _au_ton_mere(reponse):
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
 ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
-          _spotify_appareil, _portrait, _video, _clip, _musique,
+          _spotify_appareil, _portrait, _clip, _video, _musique,
           _spotify, _youtube, _diffuser_service, _chaine_tv, _streaming,
           _plex, _plex_sans_ecran, _musique_sans_source, _ecran_lecture,
           _specimen, _refaire_image, _transposer_visage, _remplacer_zone,
