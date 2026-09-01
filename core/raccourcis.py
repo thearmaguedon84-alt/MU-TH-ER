@@ -2133,6 +2133,19 @@ ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
           _image_mail)
 
 
+
+def _tracer(quoi, detail=""):
+    """Une ligne dans le journal, sans jamais faire echouer la demande."""
+    try:
+        # Passer par le journal maison : le logger n a de destination que si
+        # obtenir() l a configure, et un logger muet ne se remarque pas.
+        from core.journal import obtenir
+        obtenir().info("raccourci %s%s", quoi,
+                       (" : " + detail) if detail else "")
+    except Exception:
+        pass
+
+
 def essayer(question):
     """Traite la phrase si elle correspond a un raccourci connu.
 
@@ -2151,10 +2164,18 @@ def essayer(question):
                 "Je ne trouve pas d image nommee « %s ». "
                 "Verifie le nom, ou dis-moi dans quel dossier elle est."
                 % str(absente))
-        except Exception:
-            # Un raccourci qui casse ne doit jamais bloquer Jarvis :
-            # on laisse simplement le LLM prendre le relais.
+        except Exception as panne:
+            # Un raccourci qui casse ne doit jamais bloquer Jarvis : on laisse
+            # le modele prendre le relais. Mais on le dit — sans cette trace,
+            # une panne ici ressemble a une phrase mal comprise, et l on
+            # cherche des heures du mauvais cote.
+            _tracer("panne dans %s" % getattr(etape, "__name__", "?"),
+                    "%s: %s" % (type(panne).__name__, str(panne)[:120]))
             continue
         if reponse:
+            _tracer(getattr(etape, "__name__", "?"), t[:160])
             return _au_ton_mere(reponse)
+    # Aucun raccourci : la demande part vers le modele, qui devra deviner les
+    # arguments. C est la que naissent les « ecran = vernoux 21-04-07 058.jpg ».
+    _tracer("aucun, le modele prend la main", t[:160])
     return None
