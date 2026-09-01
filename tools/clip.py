@@ -5,25 +5,32 @@ secondes ; un morceau en dure quarante-cinq. Il faut donc combler, et la
 maniere de combler decide de tout.
 
 Boucler betement se voit : a chaque reprise, l'image saute. On monte donc les
-sequences en aller-retour — la video jouee, puis jouee a l'envers — ce qui
-donne un raccord invisible. Pour des photos, on prefere un lent mouvement de
-zoom, qui donne du mouvement sans rien inventer.
+sequences en aller-retour — jouees, puis rejouees a l'envers — ce qui donne un
+raccord invisible et double la matiere. Pour des photos, un lent mouvement de
+zoom donne du mouvement sans rien inventer.
 
-Le son est fondu au debut et a la fin ; sans cela un clip commence et finit
-par un claquement.
+Les sequences s'enchainent en fondu enchaine plutot que bout a bout : sur une
+musique continue, une coupe franche s'entend presque autant qu'elle se voit.
 """
 import re
 import subprocess
 import time
 from pathlib import Path
 
+from core.dossiers import dossier
 from core.file_gpu import enfile
 from core.registre import outil
 
-from core.dossiers import dossier
-
 RACINE = Path(__file__).resolve().parent.parent
 DOSSIER = dossier("clips")
+
+# Combien de temps dure un fondu enchaine entre deux sequences.
+FONDU = 1.0
+
+# Ce qui trahit un fichier d'essai plutot qu'une creation. On les ecarte quand
+# l'utilisateur ne demande rien de precis.
+_REBUTS = re.compile(r"(avant|apres|test|essai|temoin|ref|reference|"
+                     r"identite|ressemblance|humain-)", re.I)
 
 
 def _ffmpeg():
@@ -49,14 +56,32 @@ def _duree(fichier):
     return int(h) * 3600 + int(mi) * 60 + float(s)
 
 
-def _derniers(dossier, motifs, combien=1):
-    if not dossier.is_dir():
+def _choisir(dossier_source, motifs, combien, theme=""):
+    """Les fichiers a monter, du plus recent au plus ancien.
+
+    Un theme filtre sur le nom : les fichiers portent leur demande d'origine,
+    donc « xenomorphe » suffit a retrouver la serie. Sans theme, on ecarte les
+    fichiers d'essai — sinon le clip se remplit de temoins de laboratoire.
+    """
+    if not dossier_source.is_dir():
         return []
     lot = []
     for motif in motifs:
-        lot += list(dossier.glob(motif))
+        lot += list(dossier_source.glob(motif))
     lot.sort(key=lambda p: -p.stat().st_mtime)
-    return lot[:combien]
+
+    mots = [m for m in re.split(r"[^a-z0-9]+", (theme or "").lower())
+            if len(m) >= 4]
+    if mots:
+        vises = [p for p in lot
+                 if all(m in p.stem.lower() for m in mots)]
+        if vises:
+            return vises[:combien]
+        vises = [p for p in lot if any(m in p.stem.lower() for m in mots)]
+        if vises:
+            return vises[:combien]
+    propres = [p for p in lot if not _REBUTS.search(p.stem)]
+    return (propres or lot)[:combien]
 
 
 def _trouver_musique(nom):
@@ -67,11 +92,12 @@ def _trouver_musique(nom):
         d = M._DERNIERE.get("chemin")
         if d and Path(d).exists():
             return Path(d)
-    lot = _derniers(M.DOSSIER, ["*.mp3", "*.wav"])
-    if nom and len(nom) >= 3:
-        for p in (M.DOSSIER.glob("*") if M.DOSSIER.is_dir() else []):
-            if nom.lower().strip() in p.stem.lower():
+    if nom and len(nom) >= 3 and M.DOSSIER.is_dir():
+        cle = nom.lower().strip()
+        for p in M.DOSSIER.glob("*"):
+            if cle in p.stem.lower():
                 return p
+    lot = _choisir(M.DOSSIER, ["*.mp3", "*.wav"], 1)
     return lot[0] if lot else None
 
 
@@ -79,8 +105,8 @@ def _trouver_musique(nom):
     nom="monter_clip",
     description=(
         "Monte un clip video : assemble des videos ou des images sur un "
-        "morceau de musique, cale sur sa duree, avec fondus. Pour 'fais-moi "
-        "un clip avec la musique', 'monte une video sur le morceau'."
+        "morceau de musique, cale sur sa duree, avec fondus enchaines. Pour "
+        "'fais-moi un clip avec la musique', 'monte une video sur le morceau'."
     ),
     parametres={
         "type": "object",
@@ -89,6 +115,8 @@ def _trouver_musique(nom):
                         "description": "Fichier ou 'la derniere'. Vide = le dernier morceau."},
             "sources": {"type": "string",
                         "description": "'videos', 'images' ou 'photos'. Ce qu il faut monter."},
+            "theme": {"type": "string",
+                      "description": "Mot present dans le nom des fichiers a retenir, par exemple 'xenomorphe'."},
             "combien": {"type": "integer",
                         "description": "Nombre de sequences a enchainer. 4 par defaut."},
             "ecran": {"type": "string", "description": "Nom d un ecran."},
@@ -99,8 +127,8 @@ def _trouver_musique(nom):
     phrase_attente="Je monte le clip.",
 )
 @enfile("clip", "musique")
-def monter_clip(musique: str = "", sources: str = "", combien: int = 4,
-                ecran: str = "") -> str:
+def monter_clip(musique: str = "", sources: str = "", theme: str = "",
+                combien: int = 4, ecran: str = "") -> str:
     exe = _ffmpeg()
     if not exe:
         return "ffmpeg est introuvable, je ne peux pas monter."
@@ -114,97 +142,149 @@ def monter_clip(musique: str = "", sources: str = "", combien: int = 4,
 
     combien = max(1, min(int(combien or 4), 12))
     veut_images = bool(re.search(r"image|photo", (sources or "").lower()))
+    veut_videos = bool(re.search(r"video|sequence|film", (sources or "").lower()))
 
     from tools.image import DOSSIER as IMAGES
-    videos = [] if veut_images else _derniers(dossier("videos"),
-                                              ["*.mp4", "*.webm"], combien)
-    if videos:
-        return _montage_videos(exe, videos, piste, duree, ecran)
+    if not veut_images:
+        videos = _choisir(dossier("videos"), ["*.mp4", "*.webm"], combien,
+                          theme)
+        if videos:
+            return _montage_videos(exe, videos, piste, duree, ecran)
+        if veut_videos:
+            return "Je n ai pas de video qui corresponde."
 
-    photos = _derniers(IMAGES, ["*.png", "*.jpg"], combien)
+    photos = _choisir(IMAGES, ["*.png", "*.jpg"], combien, theme)
     if not photos:
         return "Je n ai ni video ni image a monter."
     return _montage_photos(exe, photos, piste, duree, ecran)
 
 
 def _sortie(nom):
-    DOSSIER.mkdir(exist_ok=True)
+    DOSSIER.mkdir(parents=True, exist_ok=True)
     propre = re.sub(r"[^a-z0-9]+", "-", nom.lower())[:40].strip("-")
     return DOSSIER / f"{time.strftime('%Y%m%d-%H%M%S')}-{propre}.mp4"
 
 
 def _lancer(exe, args, cible):
     r = subprocess.run([exe, "-y"] + args + [str(cible)], capture_output=True,
-                       text=True, errors="replace", timeout=1800)
+                       text=True, errors="replace", timeout=3600)
     if r.returncode or not cible.exists():
-        derniere = [l for l in (r.stderr or "").split("\n") if l.strip()][-1:]
-        return derniere[0][:120] if derniere else "ffmpeg a echoue"
+        lignes = [l for l in (r.stderr or "").split(chr(10)) if l.strip()]
+        return lignes[-1][:160] if lignes else "ffmpeg a echoue"
     return None
+
+
+def _enchainer(etiquettes, part, sortie):
+    """Enchaine les sequences en fondu, et rend les lignes de filtre.
+
+    Chaque fondu mange FONDU secondes de recouvrement : la sequence suivante
+    commence avant que la precedente ne finisse. Les decalages se cumulent
+    donc en retirant ce recouvrement a chaque fois.
+    """
+    lignes = []
+    courant = etiquettes[0]
+    for i in range(1, len(etiquettes)):
+        decalage = i * (part - FONDU)
+        prochain = f"[x{i}]" if i < len(etiquettes) - 1 else sortie
+        lignes.append(f"{courant}{etiquettes[i]}xfade=transition=fade:"
+                      f"duration={FONDU}:offset={decalage:.2f}{prochain}")
+        courant = prochain
+    if len(etiquettes) == 1:
+        lignes.append(f"{courant}null{sortie}")
+    return lignes
+
+
+def _son(indice, duree):
+    """La piste, fondue aux deux bouts. Sans cela, ca claque."""
+    return (f"[{indice}:a]afade=t=in:st=0:d=1.5,"
+            f"afade=t=out:st={max(0, duree - 3):.2f}:d=3,"
+            f"atrim=duration={duree:.2f}[af]")
+
+
+_FIN = ["-c:v", "libx264", "-preset", "medium", "-crf", "20",
+        "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k"]
 
 
 def _montage_photos(exe, photos, piste, duree, ecran):
     """Un lent zoom sur chaque photo, enchainees en fondu."""
-    par_photo = max(3.0, duree / len(photos))
+    n = len(photos)
+    # Avec des fondus qui se recouvrent, la duree utile de chaque photo est
+    # plus longue que la simple division : chaque raccord en reprend un bout.
+    part = max(3.0, (duree + (n - 1) * FONDU) / n)
     fps = 25
-    images_par_photo = int(par_photo * fps)
+    images = int(part * fps)
 
     entrees, filtres = [], []
     for i, p in enumerate(photos):
-        entrees += ["-loop", "1", "-t", f"{par_photo:.2f}", "-i", str(p)]
-        # Le zoom part de 1 et monte doucement : c est le mouvement le plus
-        # sobre, et le seul qui ne trahisse jamais une photo fixe.
+        entrees += ["-loop", "1", "-framerate", str(fps),
+                    "-t", f"{part:.2f}", "-i", str(p)]
+        # On agrandit avant de zoomer : zoompan travaille en nombres entiers,
+        # et sur une image a la taille finale le mouvement saccade.
+        # d=1 rend une image pour une image ; le zoom s accumule d une image
+        # a la suivante. Avec d superieur a 1 la duree serait multipliee.
         filtres.append(
-            f"[{i}:v]scale=1920:-2,crop=1920:1080,"
-            f"zoompan=z='min(zoom+0.0004,1.12)':d={images_par_photo}:"
+            f"[{i}:v]scale=2560:1440:force_original_aspect_ratio=increase,"
+            f"crop=2560:1440,"
+            f"zoompan=z='min(zoom+0.00035,1.14)':d=1:"
             f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps={fps},"
-            f"setsar=1[v{i}]")
+            f"trim=duration={part:.2f},setpts=PTS-STARTPTS,fps={fps},"
+            f"format=yuv420p,setsar=1[v{i}]")
 
-    chaine = "".join(f"[v{i}]" for i in range(len(photos)))
-    filtres.append(f"{chaine}concat=n={len(photos)}:v=1:a=0[vid]")
-    filtres.append(f"[vid]fade=t=in:st=0:d=1,"
+    filtres += _enchainer([f"[v{i}]" for i in range(n)], part, "[vx]")
+    filtres.append(f"[vx]trim=duration={duree:.2f},setpts=PTS-STARTPTS,"
+                   f"fade=t=in:st=0:d=1,"
                    f"fade=t=out:st={max(0, duree - 1.5):.2f}:d=1.5[vf]")
-    filtres.append(f"[{len(photos)}:a]afade=t=in:st=0:d=1.5,"
-                   f"afade=t=out:st={max(0, duree - 3):.2f}:d=3[af]")
+    filtres.append(_son(n, duree))
 
     args = entrees + ["-i", str(piste),
                       "-filter_complex", ";".join(filtres),
-                      "-map", "[vf]", "-map", "[af]",
-                      "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-                      "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
-                      "-shortest"]
+                      "-map", "[vf]", "-map", "[af]"] + _FIN + \
+        ["-t", f"{duree:.2f}"]
     cible = _sortie("clip-photos")
     souci = _lancer(exe, args, cible)
     if souci:
         return f"Le montage a echoue : {souci}"
-    return _rendu(cible, len(photos), "photos", ecran)
+    return _rendu(cible, n, "photos", ecran)
 
 
 def _montage_videos(exe, videos, piste, duree, ecran):
-    """Aller-retour sur chaque sequence pour combler sans raccord visible."""
+    """Aller-retour sur chaque sequence, puis boucle, puis fondu enchaine."""
+    n = len(videos)
+    part = max(3.0, (duree + (n - 1) * FONDU) / n)
+
     entrees, filtres = [], []
     for i, v in enumerate(videos):
-        entrees += ["-stream_loop", "-1", "-i", str(v)]
-        filtres.append(f"[{i}:v]scale=1280:720:force_original_aspect_ratio="
-                       f"increase,crop=1280:720,setsar=1,fps=25[v{i}]")
-    chaine = "".join(f"[v{i}]" for i in range(len(videos)))
-    filtres.append(f"{chaine}concat=n={len(videos)}:v=1:a=0[vid]")
-    filtres.append(f"[vid]trim=duration={duree:.2f},setpts=PTS-STARTPTS,"
+        entrees += ["-i", str(v)]
+        # L aller-retour : la sequence, puis la meme a l envers. Le raccord
+        # est invisible parce que la derniere image de l aller est aussi la
+        # premiere du retour.
+        filtres.append(
+            f"[{i}:v]scale=1280:720:force_original_aspect_ratio=increase,"
+            f"crop=1280:720,fps=25,setsar=1,split[a{i}][b{i}]")
+        filtres.append(f"[b{i}]reverse[r{i}]")
+        # loop compte en images et garde tout en memoire : on borne la reserve
+        # a ce qu on va reellement rejouer.
+        filtres.append(
+            f"[a{i}][r{i}]concat=n=2:v=1:a=0,"
+            f"loop=loop=-1:size=32000:start=0,"
+            f"trim=duration={part:.2f},setpts=PTS-STARTPTS,fps=25,"
+            f"format=yuv420p,setsar=1[v{i}]")
+
+    filtres += _enchainer([f"[v{i}]" for i in range(n)], part, "[vx]")
+    filtres.append(f"[vx]trim=duration={duree:.2f},setpts=PTS-STARTPTS,"
                    f"fade=t=in:st=0:d=1,"
                    f"fade=t=out:st={max(0, duree - 1.5):.2f}:d=1.5[vf]")
-    filtres.append(f"[{len(videos)}:a]afade=t=in:st=0:d=1.5,"
-                   f"afade=t=out:st={max(0, duree - 3):.2f}:d=3[af]")
+    filtres.append(_son(n, duree))
 
     args = entrees + ["-i", str(piste),
                       "-filter_complex", ";".join(filtres),
-                      "-map", "[vf]", "-map", "[af]",
-                      "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-                      "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
-                      "-t", f"{duree:.2f}"]
+                      "-map", "[vf]", "-map", "[af]"] + _FIN + \
+        ["-t", f"{duree:.2f}"]
     cible = _sortie("clip-video")
     souci = _lancer(exe, args, cible)
     if souci:
         return f"Le montage a echoue : {souci}"
-    return _rendu(cible, len(videos), "sequences", ecran)
+    return _rendu(cible, n, "sequences", ecran)
 
 
 def _rendu(cible, nombre, quoi, ecran):
@@ -241,12 +321,13 @@ def envoyer_clip_ecran(ecran: str) -> str:
     chemin = _DERNIER.get("chemin")
     if not chemin or not Path(chemin).exists():
         return "Je n ai pas de clip sous la main."
-    from tools.cast import _adresse_pour, _choisir
-    appareil = _choisir(ecran)
+    from tools.cast import _adresse_pour, _choisir as _ecran
+    appareil = _ecran(ecran)
     if appareil is None:
         return f"Je ne trouve pas {ecran}."
     port = int(reglage("hud.port", 8770))
-    url = f"http://{_adresse_pour(appareil.cast_info.host)}:{port}/clip/{Path(chemin).name}"
+    url = (f"http://{_adresse_pour(appareil.cast_info.host)}:{port}"
+           f"/clip/{Path(chemin).name}")
     try:
         appareil.wait(timeout=12)
         appareil.media_controller.play_media(url, "video/mp4")

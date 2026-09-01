@@ -1667,6 +1667,11 @@ def _refaire_image(t):
     return refaire_image(ecran=ecran)
 
 
+_HORS_THEME = {"derniere", "dernier", "dernieres", "derniers", "musique",
+               "morceau", "chanson", "recentes", "recents", "generees",
+               "generes", "toutes", "quelques", "plusieurs"}
+
+
 def _clip(t):
     """« monte un clip avec la derniere musique et mes images »."""
     if not RE_CLIP.search(t):
@@ -1686,8 +1691,20 @@ def _clip(t):
     if _contient(t, ECRANS):
         ecran = _premier_ecran()
 
+    # « un clip avec mes videos de xenomorphe » : le mot qui suit designe la
+    # serie voulue. Les fichiers portent leur demande d origine dans leur nom,
+    # donc chercher ce mot dedans suffit a retrouver la bonne matiere.
+    theme = ""
+    m = re.search(r"\b(?:images?|photos?|videos?|sequences?|clips?)\s+"
+                  r"(?:de\s+|du\s+|des\s+|sur\s+|avec\s+)?"
+                  r"(?:la\s+|le\s+|les\s+|un\s+|une\s+|mes\s+|mon\s+|ma\s+)?"
+                  r"([a-z]{5,})", t)
+    if m and m.group(1) not in _HORS_THEME:
+        theme = m.group(1)
+
     from tools.clip import monter_clip
-    return monter_clip(sources=sources, combien=combien, ecran=ecran)
+    return monter_clip(sources=sources, combien=combien, theme=theme,
+                       ecran=ecran)
 
 
 def _musique(t):
