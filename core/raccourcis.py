@@ -1366,6 +1366,62 @@ RE_VIDEO = re.compile(
     r"|\bvideos?\s+(?:de|d|du|des|avec)\b")
 
 
+# « mets-moi en cosmonaute », « mets Paul en chevalier ». Le visage vient
+# d une photo de reference, la scene est inventee autour.
+RE_PORTRAIT = re.compile(
+    r"\b(?:mets?|mettre|met|transforme|deguise|habille|imagine|dessine)\b"
+    r"\s*(?:moi|nous|le|la|les)?\s*"
+    r"(?:\b[a-z]+\b\s+)?\ben\b\s+(.+)")
+
+# Qui : « mets-moi », ou un prenom juste apres le verbe.
+RE_QUI = re.compile(
+    r"\b(?:mets?|mettre|met|transforme|deguise|habille)\b\s+(?:moi|nous)\b"
+    r"|\b(?:mets?|mettre|met|transforme|deguise|habille)\b\s+([a-z]{3,})\s+en\b")
+
+
+def _portrait(t):
+    """« mets-moi en highlander sur une falaise »."""
+    if not RE_PORTRAIT.search(t):
+        return None
+    # « mets la musique », « mets en pause » : ce ne sont pas des portraits.
+    if re.search(r"\ben pause\b|\bla musique\b|\ben route\b|\ben marche\b"
+                 r"|\ben veille\b|\ben mode\b", t):
+        return None
+
+    m = RE_PORTRAIT.search(t)
+    scene = " ".join(m.group(1).split()).strip(" ,.")
+    if len(scene) < 3:
+        return None
+
+    qui = ""
+    q = RE_QUI.search(t)
+    if q and q.group(1):
+        qui = q.group(1)
+        # Le prenom ne fait pas partie de la scene.
+        scene = re.sub(r"^%s\s+" % re.escape(qui), "", scene)
+
+    forte = bool(re.search(r"\bressemblance forte\b|\bplus ressemblant\b"
+                           r"|\bvraiment moi\b", t))
+    format_voulu = ""
+    if re.search(r"\bpaysage\b|\bhorizontal\b", t):
+        format_voulu = "paysage"
+    elif re.search(r"\bcarree?\b", t):
+        format_voulu = "carre"
+
+    # Les mots de reglage ont servi : ils n ont rien a faire dans la scene,
+    # sinon le moteur dessinerait un pompier « ressemblance forte ».
+    scene = re.sub(r"\bressemblance forte\b|\bplus ressemblant\b"
+                   r"|\bvraiment moi\b|\ben paysage\b|\ben carree?\b"
+                   r"|\bhorizontal\b|\bvertical\b", " ", scene)
+    scene = " ".join(scene.split()).strip(" ,.")
+    if len(scene) < 3:
+        return None
+
+    from tools.portrait import portrait_dans_scene
+    return portrait_dans_scene(scene=scene, qui=qui, format=format_voulu,
+                               ressemblance_forte=forte)
+
+
 def _video(t):
     """« fais-moi une video de trois secondes d un chat, en portrait »."""
     if not RE_VIDEO.search(t):
@@ -1767,9 +1823,9 @@ def _au_ton_mere(reponse):
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
 ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
-          _spotify_appareil, _video, _clip, _musique, _spotify, _youtube,
-          _diffuser_service, _chaine_tv, _streaming, _plex,
-          _plex_sans_ecran, _musique_sans_source, _ecran_lecture,
+          _spotify_appareil, _portrait, _video, _clip, _musique,
+          _spotify, _youtube, _diffuser_service, _chaine_tv, _streaming,
+          _plex, _plex_sans_ecran, _musique_sans_source, _ecran_lecture,
           _specimen, _refaire_image, _remplacer_zone, _modifier_image,
           _media, _courrier, _application, _film, _heure, _meteo,
           _minuteur, _stats, _capture, _web, _image, _image_mail)
