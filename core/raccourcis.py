@@ -1389,16 +1389,28 @@ def _elaguer(nom, garder="debut"):
     return retenu
 
 
-# Prendre designe une source, poser designe une destination.
+# Trois familles de verbes, qui ne rangent pas leurs complements pareil.
 _PRISE = (r"prends?|prendre|utilise\w*|utiliser|reprends?|recupere\w*|"
           r"extrais?|extraire|copie\w*")
-_POSE = (r"remplace\w*|remplacer|mets?|mettre|colle\w*|coller|applique\w*|"
-         r"appliquer|transpose\w*|transposer|pose\w*|poser|incruste\w*|"
-         r"greffe\w*|ajoute\w*")
-_VERBES = re.compile(r"\b(%s|%s)\b" % (_PRISE, _POSE))
-_EST_PRISE = re.compile(r"^(?:%s)$" % _PRISE)
+# Remplacer : le complement direct disparait, le complement en « par » arrive.
+_REMPLACE = r"remplace\w*|remplacer|change\w*|changer|echange\w*|substitue\w*"
+# Poser : le complement direct arrive, le complement en « sur » recoit.
+_POSE = (r"mets?|mettre|colle\w*|coller|applique\w*|appliquer|transpose\w*|"
+         r"transposer|pose\w*|poser|incruste\w*|greffe\w*|ajoute\w*")
 
-# « le visage de », « celui de la photo » : ce qui suit possede le visage.
+_VERBES = re.compile(r"\b(%s|%s|%s)\b" % (_PRISE, _REMPLACE, _POSE))
+
+
+def _famille(verbe):
+    if re.fullmatch(_PRISE, verbe):
+        return "prise"
+    if re.fullmatch(_REMPLACE, verbe):
+        return "remplace"
+    return "pose"
+
+
+# « le visage de », « celui de la photo » : la designation qui suit possede le
+# visage. Vrai avec les verbes de pose, faux avec remplacer.
 _POSSESSIF = re.compile(
     r"\b(?:visages?|tetes?|tronches?|figures?|celui|celle)\s+"
     r"(?:de\s+|du\s+|d\s+)?(?:la\s+|le\s+|les\s+|ma\s+|mon\s+|mes\s+)?"
@@ -1406,28 +1418,46 @@ _POSSESSIF = re.compile(
 
 
 def _role(avant, depuis_le_debut):
-    """« reference » ou « cible » pour la designation qui suit.
+    """« reference » ou « cible » pour la designation qui suit ce bout.
 
-    On regarde d abord le bout de phrase qui la precede immediatement ; s il
-    ne dit rien, on remonte au dernier verbe rencontre depuis le debut.
+    On cherche le dernier verbe qui la gouverne, puis on lit ce qui separe ce
+    verbe de la designation : c est la que se joue le sens.
     """
-    if _POSSESSIF.search(avant):
+    verbes = list(_VERBES.finditer(avant))
+    reste = avant
+    if verbes:
+        famille = _famille(verbes[-1].group(1))
+        reste = avant[verbes[-1].end():]
+    else:
+        # Rien devant : le verbe qui commande est le dernier rencontre.
+        tous = list(_VERBES.finditer(depuis_le_debut))
+        if not tous:
+            return ""
+        famille = _famille(tous[-1].group(1))
+
+    # « par celui de Y » : ce qui vient apres « par » est toujours ce qui
+    # arrive, donc la reference. C est vrai pour toutes les familles.
+    if re.search(r"\bpar\b", reste):
         return "reference"
-    proches = _VERBES.findall(avant)
-    if proches:
-        return "reference" if _EST_PRISE.match(proches[-1]) else "cible"
-    tous = _VERBES.findall(depuis_le_debut)
-    if tous:
-        return "reference" if _EST_PRISE.match(tous[-1]) else "cible"
-    return ""
+
+    if famille == "prise":
+        return "reference"
+    if famille == "remplace":
+        # Le complement direct de remplacer est ce qui disparait.
+        return "cible"
+    # Poser : le visage « de » quelqu un est la source ; « sur » quelque chose
+    # est la destination.
+    if _POSSESSIF.search(reste):
+        return "reference"
+    return "cible"
 
 
 def _place(t, nom, defaut):
     """Ou commence vraiment le nom retenu, une fois les mots de liaison otes.
 
-    Le motif attrape souvent un mot de trop devant — « sur 20260901... ». Si
-    l on garde sa position, la fenetre d analyse s arrete avant ce mot et se
-    termine sur « visage », ce qui declenche a tort la lecture possessive.
+    Le motif attrape souvent un mot de trop devant — « sur 20260901... ». En
+    gardant sa position, la fenetre d analyse s arrete avant ce mot, et l on
+    perd justement le mot qui dit le role.
     """
     ou = t.find(nom, defaut)
     return ou if ou >= 0 else defaut

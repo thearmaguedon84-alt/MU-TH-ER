@@ -210,6 +210,171 @@ def _attendre(tache, patience):
     return None, "delai depasse"
 
 
+
+
+# En dessous de cette part de l image, le visage n a pas assez de pixels pour
+# etre reconnaissable une fois la mise a l echelle faite. Mesure : a 1,2 % la
+# ressemblance tombait a 0,07, la ou un portrait serre donne 0,80.
+SEUIL_SERRE = 0.05
+
+
+def _cadre_serre(boite, largeur, hauteur, marge=1.9):
+    """Un carre autour du visage, avec de quoi couper dans les cheveux."""
+    x1, y1, x2, y2 = boite
+    cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+    cote = max(x2 - x1, y2 - y1) * marge
+    # Un visage n est pas centre dans sa boite : le front et le cou demandent
+    # plus de place que les cotes.
+    cy -= cote * 0.05
+    cote = min(cote, largeur, hauteur)
+    gx = min(max(cx - cote / 2, 0), largeur - cote)
+    gy = min(max(cy - cote / 2, 0), hauteur - cote)
+    return (int(gx), int(gy), int(gx + cote), int(gy + cote))
+
+
+def _recaler_teint(morceau, temoin):
+    """Aligne moyenne et ecart-type de chaque canal sur la zone d origine.
+
+    Sans cela le gros plan revient plus clair ou plus froid, et le raccord se
+    voit malgre le fondu du masque.
+    """
+    try:
+        import numpy as np
+        a = np.asarray(morceau, dtype="float32")
+        b = np.asarray(temoin.resize(morceau.size), dtype="float32")
+        for c in range(3):
+            ma, sa = a[..., c].mean(), a[..., c].std() or 1.0
+            mb, sb = b[..., c].mean(), b[..., c].std()
+            a[..., c] = (a[..., c] - ma) * (sb / sa) + mb
+        from PIL import Image as PILImage
+        return PILImage.fromarray(a.clip(0, 255).astype("uint8"))
+    except Exception:
+        return morceau
+
+
+def _masque_adouci(taille, douceur=0.16):
+    """Un masque plein au centre, fondu sur les bords. Solution de repli quand
+    on n a pas su localiser le visage produit."""
+    from PIL import Image as PILImage, ImageDraw, ImageFilter
+    m = PILImage.new("L", taille, 0)
+    marge = int(min(taille) * douceur)
+    ImageDraw.Draw(m).rectangle(
+        [marge, marge, taille[0] - marge, taille[1] - marge], fill=255)
+    return m.filter(ImageFilter.GaussianBlur(marge * 0.7))
+
+
+def _masque_visage(taille, cadre, boite):
+    """Une ellipse sur le visage seul, fondue sur ses bords.
+
+    Coller tout le rectangle du gros plan ne marche pas : le modele redessine
+    la tete a sa propre echelle, donc elle ressort trop grosse, et l ancienne
+    chevelure reste visible en bordure. En ne reprenant que l ovale du visage,
+    on garde la silhouette, les cheveux et les epaules d origine — seuls les
+    traits changent, ce qui est exactement la demande.
+    """
+    from PIL import Image as PILImage, ImageDraw, ImageFilter
+    m = PILImage.new("L", taille, 0)
+    x1, y1, x2, y2 = boite
+    # Repere du gros plan, et non de l image entiere.
+    x1, x2 = x1 - cadre[0], x2 - cadre[0]
+    y1, y2 = y1 - cadre[1], y2 - cadre[1]
+    # Le menton et le front debordent de la boite detectee.
+    dx, dy = (x2 - x1) * 0.16, (y2 - y1) * 0.20
+    ImageDraw.Draw(m).ellipse([x1 - dx, y1 - dy, x2 + dx, y2 + dy], fill=255)
+    return m.filter(ImageFilter.GaussianBlur(max(4, int((x2 - x1) * 0.14))))
+
+
+def _aligner(morceau, boite_produite, boite_voulue):
+    """Amene le visage produit sur la place et la taille de l ancien.
+
+    Sans cela, coller revient a superposer deux visages qui ne se regardent
+    pas : le modele a dessine les yeux ou il a voulu dans le carre qu on lui a
+    donne.
+    """
+    from PIL import Image as PILImage
+    gx1, gy1, gx2, gy2 = boite_produite
+    ox1, oy1, ox2, oy2 = boite_voulue
+    if gx2 - gx1 < 4 or gy2 - gy1 < 4:
+        return morceau
+    facteur = ((ox2 - ox1) / (gx2 - gx1) + (oy2 - oy1) / (gy2 - gy1)) / 2.0
+    facteur = min(max(facteur, 0.25), 4.0)
+
+    large = max(1, int(morceau.width * facteur))
+    haut = max(1, int(morceau.height * facteur))
+    agrandi = morceau.resize((large, haut), PILImage.LANCZOS)
+
+    # On fait coincider les centres des deux visages.
+    dx = int((ox1 + ox2) / 2 - (gx1 + gx2) / 2 * facteur)
+    dy = int((oy1 + oy2) / 2 - (gy1 + gy2) / 2 * facteur)
+    canevas = PILImage.new("RGB", morceau.size, (0, 0, 0))
+    canevas.paste(agrandi, (dx, dy))
+    return canevas
+
+
+def _recoller(original, resultat_serre, cadre, boite):
+    """Remet le visage travaille a sa place dans l image d origine."""
+    from PIL import Image as PILImage
+    fond = PILImage.open(original).convert("RGB")
+    largeur, hauteur = cadre[2] - cadre[0], cadre[3] - cadre[1]
+    brut = PILImage.open(resultat_serre).convert("RGB")
+    echelle = largeur / float(brut.width)
+    morceau = brut.resize((largeur, hauteur), PILImage.LANCZOS)
+
+    # Ou le modele a-t-il mis le visage ? On le mesure au lieu de le supposer.
+    _, _, produite = _visages_dans(resultat_serre)
+    voulue = (boite[0] - cadre[0], boite[1] - cadre[1],
+              boite[2] - cadre[0], boite[3] - cadre[1])
+    if produite:
+        morceau = _aligner(morceau, [v * echelle for v in produite], voulue)
+
+    morceau = _recaler_teint(morceau, fond.crop(cadre))
+    masque = (_masque_visage((largeur, hauteur), cadre, boite) if produite
+              else _masque_adouci((largeur, hauteur)))
+    fond.paste(morceau, cadre[:2], masque)
+    return fond
+
+
+def _visages_dans(chemin):
+    """Combien de visages, et quelle place occupe le plus grand.
+
+    Rend (nombre, proportion, cadre du plus grand) ; des None si l on n a
+    pas su regarder — auquel cas on laisse passer, plutot que de bloquer sur
+    une incertitude.
+    """
+    racine = Path(reglage("video.moteur", r"F:\IA\comfyui"))
+    py = racine / ".venv" / "Scripts" / "python.exe"
+    if not py.exists():
+        return None, None, None
+    code = (
+        "import cv2, json\n"
+        "from insightface.app import FaceAnalysis\n"
+        "a=FaceAnalysis(name='antelopev2', root=r'%s',"
+        " providers=['CPUExecutionProvider'])\n"
+        "a.prepare(ctx_id=-1, det_size=(640,640))\n"
+        "i=cv2.imread(r'%s')\n"
+        "if i is None: print(json.dumps([None,None]))\n"
+        "else:\n"
+        "    v=a.get(i)\n"
+        "    if not v: print(json.dumps([0,0.0,None]))\n"
+        "    else:\n"
+        "        v.sort(key=lambda f:(f.bbox[2]-f.bbox[0])*(f.bbox[3]-f.bbox[1]),"
+        " reverse=True)\n"
+        "        x1,y1,x2,y2=[float(z) for z in v[0].bbox]\n"
+        "        b=(x2-x1)*(y2-y1)\n"
+        "        print(json.dumps([len(v), round(b/(i.shape[0]*i.shape[1]),4),"
+        " [x1,y1,x2,y2]]))\n"
+        % (str(racine / "models" / "insightface"), str(chemin)))
+    try:
+        import subprocess
+        r = subprocess.run([str(py), "-c", code], capture_output=True,
+                           text=True, timeout=300)
+        n, part, boite = json.loads(
+            (r.stdout or "[null,null,null]").strip().split("\n")[-1])
+        return n, part, boite
+    except Exception:
+        return None, None, None
+
+
 def ressemblance(reference, produite):
     """Mesure objective : meme personne ou non. None si on ne sait pas dire."""
     racine = Path(reglage("video.moteur", r"F:\IA\comfyui"))
@@ -440,6 +605,33 @@ def transposer_visage(visage: str, sur: str = "", force: str = "") -> str:
     if Path(cible).resolve() == Path(source).resolve():
         return "C est la meme image des deux cotes : precise laquelle modifier."
 
+    # InstantID s appuie sur un visage detecte dans l image d arrivee pour
+    # savoir ou poser les traits. S il n y en a pas, il n a pas d ancrage : le
+    # debruitage repart librement et le modele invente quelqu un. Mieux vaut
+    # le dire en trois secondes que le decouvrir en soixante.
+    combien, part, boite = _visages_dans(cible)
+    if combien == 0:
+        return (f"Il n y a pas de visage humain reconnaissable sur "
+                f"{Path(cible).name} : la transposition n a rien ou s accrocher "
+                f"et fabriquerait quelqu un au hasard. Pour poser une tete la "
+                f"ou il n y en a pas d humaine, demande plutot : remplace la "
+                f"tete sur cette image par le visage de {nom}.")
+    # Un visage minuscule ne se transpose pas dans l image entiere : on
+    # travaille en gros plan, puis on recolle.
+    serre = None
+    if boite and part is not None and 0 < part < SEUIL_SERRE:
+        try:
+            from PIL import Image as PILImage
+            fond = PILImage.open(cible).convert("RGB")
+            cadre = _cadre_serre(boite, fond.width, fond.height)
+            morceau = fond.crop(cadre).resize((1024, 1024), PILImage.LANCZOS)
+            serre = Path(cible).parent / (".serre-%s.png" % uuid.uuid4().hex[:8])
+            morceau.save(serre)
+        except Exception:
+            serre = None
+    trop_petit = part is not None and 0 < part < SEUIL_SERRE and serre is None
+
+
     try:
         from core.vram import liberer
         liberer(pour="image", besoin=9.0)
@@ -453,13 +645,20 @@ def transposer_visage(visage: str, sur: str = "", force: str = "") -> str:
               "moyenne": 0.6, "moyen": 0.6,
               "forte": 0.75, "fort": 0.75, "complete": 0.75}
     intensite = forces.get((force or "").lower(), 0.6)
+    identite = float(reglage("portrait.identite", 0.8))
+    if serre is not None:
+        # Sur un gros plan on ne cherche pas a preserver le visage d origine,
+        # on le remplace : garder une intensite prudente ne fait que melanger
+        # les deux traits et rendre une bouillie. Et l identite monte au
+        # maximum, puisque plus rien d autre ne compte dans le cadre.
+        intensite = max(intensite, float(reglage("portrait.serre_force", 0.85)))
+        identite = 1.0
 
     graine = int(time.time()) % 2**31
     montage = _graphe_transposition(
-        _deposer(source), _deposer(cible),
+        _deposer(source), _deposer(serre or cible),
         "photograph of a person, natural skin texture, sharp focus",
-        NEGATIF, float(reglage("portrait.identite", 0.8)), intensite,
-        graine)
+        NEGATIF, identite, intensite, graine)
 
     try:
         import httpx
@@ -481,7 +680,19 @@ def transposer_visage(visage: str, sur: str = "", force: str = "") -> str:
     rangement = dossier("images")
     chemin = rangement / ("%s-visage-%s.png" % (
         time.strftime("%Y%m%d-%H%M%S"), re.sub(r"[^a-z0-9]+", "-", nom.lower())[:20]))
-    shutil.copy(str(produit), str(chemin))
+    if serre is not None:
+        # Le moteur n a travaille que le gros plan : l image rendue a
+        # l utilisateur est l originale, avec le visage remis a sa place.
+        try:
+            _recoller(cible, produit, cadre, boite).save(chemin)
+        except Exception:
+            shutil.copy(str(produit), str(chemin))
+        try:
+            Path(serre).unlink()
+        except Exception:
+            pass
+    else:
+        shutil.copy(str(produit), str(chemin))
 
     from tools.image import _DERNIERE
     _DERNIERE["chemin"] = chemin
@@ -504,6 +715,13 @@ def transposer_visage(visage: str, sur: str = "", force: str = "") -> str:
         jugement = f" La ressemblance est bonne ({score})."
     elif score > 0.35:
         jugement = f" La ressemblance est moyenne ({score}), essaie une force plus elevee."
+    elif trop_petit:
+        # Le conseil doit suivre la cause. Monter la force sur un visage de
+        # trente pixels ne fait qu inventer plus fort.
+        jugement = (f" La ressemblance est faible ({score}) : le visage est"
+                    f" minuscule dans cette image, il n y a pas assez de"
+                    f" pixels pour le reconnaitre. Prends un plan plus serre.")
     else:
-        jugement = f" La ressemblance est faible ({score}) : monte la force, ou change de photo de reference."
+        jugement = (f" La ressemblance est faible ({score}) : monte la force,"
+                    f" ou change de photo de reference.")
     return f"Visage de {nom} pose sur {Path(cible).name}.{jugement}"
