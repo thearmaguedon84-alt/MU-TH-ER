@@ -1318,10 +1318,10 @@ RE_MODIF_IMAGE = re.compile(
 
 # Les facons de designer l image a reprendre. On les retire du texte : ce qui
 # reste est la consigne.
-# Un nom de fichier dit a voix haute ou tape : « ma photo vernoux 21-04-07
+# Un nom de fichier dit a voix haute ou tape : « ma photo vacances 21-04-07
 # 058.jpg ». Il prime sur toute designation vague, puisqu il est precis.
 # Attention : la phrase arrive DEJA aplatie — sans accents, sans ponctuation.
-# « vernoux 21-04-07 058.jpg » y devient « vernoux 21 04 07 058 jpg ». Une
+# « vacances 21-04-07 058.jpg » y devient « vacances 21 04 07 058 jpg ». Une
 # expression qui attend un point ne peut donc jamais correspondre. On cherche
 # les mots qui precedent l extension, devenue un mot comme un autre.
 RE_NOM_FICHIER = re.compile(
@@ -1335,8 +1335,8 @@ RE_PHOTO_NOMMEE = re.compile(
 
 
 
-# Un nom de fichier survit mal a l aplatissement : « vernoux 21-04-07 058.jpg »
-# devient « vernoux 21 04 07 058 jpg », et sans extension il ne reste que des
+# Un nom de fichier survit mal a l aplatissement : « vacances 21-04-07 058.jpg »
+# devient « vacances 21 04 07 058 jpg », et sans extension il ne reste que des
 # mots. On s appuie donc sur ce qui distingue un nom de fichier d une phrase :
 # de longues suites de chiffres, que le francais courant ne contient pas.
 # Les mots qui, en francais, articulent une phrase et ne peuvent donc pas
@@ -1380,7 +1380,7 @@ def _elaguer(nom, garder="debut"):
     if not morceaux:
         return ""
     retenu = (morceaux[-1] if garder == "fin" else morceaux[0]).strip()
-    # Le bout retenu porte souvent encore ses articles : « la photo alexandra
+    # Le bout retenu porte souvent encore ses articles : « la photo portrait
     # 3 ». On relance l elagage dessus, sinon le nom ne se resout pas.
     precedent = None
     while retenu and retenu != precedent:
@@ -1755,7 +1755,7 @@ def _video(t):
     m_nom = None if designees else RE_NOM_FICHIER.search(t)
     if m_nom:
         # L expression remonte gloutonnement les mots qui precedent le nom :
-        # « anime ma photo alexandra-3.jpg » capturait le verbe avec. On rogne
+        # « anime ma photo portrait-3.jpg » capturait le verbe avec. On rogne
         # ce qui n appartient pas au nom du fichier.
         image = re.sub(r"^(?:anime|animer|prends?|prend|photos?|images?|"
                        r"fichiers?|ma|mon|mes|la|le|les|de|du|des|d|"
@@ -2228,6 +2228,6 @@ def essayer(question):
             _tracer(getattr(etape, "__name__", "?"), t[:160])
             return _au_ton_mere(reponse)
     # Aucun raccourci : la demande part vers le modele, qui devra deviner les
-    # arguments. C est la que naissent les « ecran = vernoux 21-04-07 058.jpg ».
+    # arguments. C est la que naissent les « ecran = vacances 21-04-07 058.jpg ».
     _tracer("aucun, le modele prend la main", t[:160])
     return None

@@ -31,6 +31,21 @@ sujet, plutôt que de rendre une liste de sites.
 **Commander l'ordinateur** — extinction, redémarrage, verrouillage, volume,
 avec un délai pendant lequel on peut se raviser.
 
+**Créer des images, de la musique, des vidéos** — tout en local, sur la carte
+graphique de la machine. Une image ordinaire en quelques secondes, une image
+soignée par Flux en une minute, un morceau chanté de quarante-cinq secondes en
+trois minutes, cinq secondes de vidéo en sept. Les créations se rangent dans
+`Images`, `Musique`, `Vidéos` et `Documents`, dans un sous-dossier `MU-TH-UR`.
+
+**Mettre quelqu'un dans une scène** — à partir d'une photo de référence, le
+visage est porté sur une scène inventée, ou transposé sur une image existante.
+La ressemblance est *mesurée* et annoncée, pas laissée à l'appréciation : deux
+empreintes de visage, leur cosinus, et au-delà de 0,5 c'est la même personne.
+
+**Monter un clip** — des images ou des séquences vidéo assemblées sur un
+morceau, calées sur sa durée, enchaînées en fondu. Les séquences sont jouées
+puis rejouées à l'envers, ce qui comble sans laisser voir la reprise.
+
 **Depuis un téléphone** — deux interfaces web installables comme des
 applications, avec dictée vocale. Joignables de partout via un réseau privé.
 
@@ -65,6 +80,9 @@ Hey Jarvis, ouvre Chrome
 Hey Jarvis, mets Arte sur la télé du bas
 Hey Jarvis, mets Stranger Things sur Netflix sur la télé du bas
 Hey Jarvis, cherche sur internet qui a gagné hier soir
+Hey Jarvis, fais-moi une image très soignée d'un phare dans la tempête
+Hey Jarvis, compose une chanson douce à la guitare
+Hey Jarvis, monte un clip avec mes vidéos de xénomorphe
 Hey Jarvis, mode maman
 Hey Jarvis, éteins le PC
 ```
@@ -90,6 +108,46 @@ Les intégrations reposent sur ce que les services exposent réellement, relevé
 en observant leur trafic plutôt qu'en devinant. Les notes de ces relevés sont
 dans `recettes/` — le catalogue de myCANAL par EpgId, la recherche GraphQL de
 Netflix, la page de lecture de Prime.
+
+## Fabriquer des images, du son, des vidéos
+
+Cette partie ne s'installe pas avec le reste et ne s'y substitue pas : ce sont
+quatre moteurs séparés, que Jarvis démarre et arrête lui-même selon les
+besoins. Comptez une quarantaine de giga-octets de modèles et une carte
+NVIDIA de 12 Go. Sans eux, tout le reste fonctionne — les commandes
+correspondantes sont simplement absentes.
+
+| Ce qu'on demande | Moteur | Sur une RTX 3060 |
+|---|---|---|
+| Une image | Stable Diffusion (SDXL) | 15 à 30 s |
+| Une image très soignée | Flux, quantifié | 45 s ; 7 min en qualité maximale |
+| Un morceau chanté | ACE-Step 1.5 | 45 s de musique en 3 min |
+| Une vidéo | Wan 2.2 image-vers-vidéo | 5 s de vidéo en 7 min |
+| Un montage de clip | ffmpeg | quelques secondes |
+
+**Une seule chose à la fois.** Douze giga-octets ne suffisent pas à deux
+modèles, et deux modèles qui se disputent la carte ne sont pas deux fois plus
+lents mais dix fois. Un arbitre décharge donc ce qui ne sert plus avant de
+charger ce qui va servir, et une file d'attente empêche deux demandes de se
+marcher dessus. Une demande qui doit patienter le dit.
+
+**Les mains et les visages sont repris automatiquement.** C'est le défaut le
+plus visible des images générées ; une passe de correction ciblée le règle
+pour une quinzaine de secondes.
+
+**Flux plutôt que SDXL quand ça compte.** Il tient le texte écrit dans l'image
+et les scènes où beaucoup d'éléments doivent s'accorder, là où SDXL invente. Il
+coûte plus cher, donc on le demande explicitement : « une image très soignée ».
+
+**Un visage se travaille en gros plan.** Transposer un visage sur l'image
+entière ne marche que si ce visage occupe déjà le cadre : redimensionnée, une
+tête qui tient dans deux pour cent de l'image ne conserve pas assez de pixels
+pour être reconnaissable. On découpe donc autour du visage, on travaille en
+gros plan, et on recolle — en n'empruntant que la peau, d'après les points de
+contour, pour que les cheveux de la photo restent devant. Le raccord se fond
+par équation de Poisson, et la netteté comme le grain sont alignés sur ceux de
+la photo d'accueil. Sans ces trois accords, le résultat ressemble à un
+autocollant.
 
 ## Ce que ça ne fait pas
 

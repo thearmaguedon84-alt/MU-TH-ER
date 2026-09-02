@@ -34,6 +34,9 @@ fully **offline local mode** (Ollama + Piper) — your choice, one line of confi
 - 🎭 **Personalities** — sarcastic butler, neutral, concise — switch by voice
 - 🏠 **Presence** — pings your phone, triggers scenes when you leave/return
 - 🌤️ **Utilities** — weather, timers, time/date
+- 🎨 **Local generation** — images (SDXL, and Flux for the demanding ones), sung music (ACE-Step), image-to-video (Wan 2.2), all on your own GPU
+- 🧑 **Face work** — put someone into an invented scene from a reference photo, or transpose a face onto an existing image; the likeness is measured (face-embedding cosine), not guessed
+- 🎞️ **Clip editing** — images or video cut over a generated track, matched to its length, cross-faded
 - 🔌 **MCP server** — exposes home/PC tools to any MCP client (Claude Desktop, Hermes…)
 
 ## 🎬 Demo

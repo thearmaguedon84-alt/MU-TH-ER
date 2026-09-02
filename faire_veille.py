@@ -16,7 +16,10 @@ Deux contraintes de telephone ont dicte la forme :
 import json
 from pathlib import Path
 
-RACINE = Path(r"C:\Users\thear\Documents\jarvis-assistant-vocal")
+# Le dossier du projet se deduit de l emplacement de ce fichier : un chemin
+# ecrit en dur ne marche que sur une machine, et publie le nom de son
+# proprietaire.
+RACINE = Path(__file__).resolve().parent
 
 releves = json.loads((RACINE / "specimens.json").read_text(encoding="utf-8"))
 DONNEES = json.dumps(releves, separators=(",", ":"))
