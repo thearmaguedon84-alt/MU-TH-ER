@@ -742,3 +742,90 @@ def envoyer_video_ecran(ecran: str) -> str:
     except Exception as e:
         return f"L envoi a echoue : {str(e)[:60]}"
     return f"Ca passe sur {appareil.cast_info.friendly_name}."
+
+
+# Vingt-cinq mégaoctets est la limite de la plupart des messageries. On
+# s arrête un peu avant : l encodage en base64 des pièces jointes ajoute un
+# tiers au poids du fichier.
+POIDS_MAX = 18 * 2**20
+
+
+@outil(
+    nom="envoyer_video_mail",
+    description=(
+        "Envoie la derniere video par courriel, a soi-meme ou a quelqu un. "
+        "Pour 'envoie-moi la video par mail', 'envoie la sequence a Paul'."
+    ),
+    parametres={
+        "type": "object",
+        "properties": {
+            "destinataire": {"type": "string",
+                             "description": "Adresse. Vide = a soi-meme."},
+            "fichier": {"type": "string",
+                        "description": "Nom de la video. Vide = la derniere."},
+        },
+        "required": [],
+    },
+    lent=True,
+    phrase_attente="J envoie la video par mail.",
+)
+def envoyer_video_mail(destinataire: str = "", fichier: str = "") -> str:
+    from tools import mail as messagerie
+
+    if not messagerie._mail_configure():
+        return "La messagerie n est pas configuree, je ne l ai pas envoyee."
+
+    chemin = None
+    if fichier:
+        from tools.clip import _resoudre
+        chemin = _resoudre(fichier, [dossier("videos"), dossier("clips"),
+                                     Path.home() / "Videos"],
+                           {"mp4", "webm", "mov", "mkv"})
+        if chemin is None:
+            return f"Je ne trouve pas de video nommee « {fichier} »."
+    else:
+        d = _DERNIERE.get("chemin")
+        if d and Path(d).exists():
+            chemin = Path(d)
+        else:
+            lot = sorted(dossier("videos").glob("*.mp4"),
+                         key=lambda p: -p.stat().st_mtime)
+            chemin = lot[0] if lot else None
+    if chemin is None or not Path(chemin).exists():
+        return "Je n ai pas de video sous la main."
+
+    poids = chemin.stat().st_size
+    if poids > POIDS_MAX:
+        return (f"La video pese {poids / 2**20:.0f} Mo, c est trop pour un "
+                f"courriel. Elle est dans {chemin.parent}.")
+
+    adresse = (destinataire or "").strip() or messagerie.MAIL_ADRESSE
+    sujet = " ".join(_DERNIERE.get("demande", "").split())[:70] or chemin.stem[:70]
+
+    try:
+        import smtplib
+        from email.message import EmailMessage
+
+        msg = EmailMessage()
+        msg["From"] = messagerie.MAIL_ADRESSE
+        msg["To"] = adresse
+        msg["Subject"] = sujet
+        msg.set_content(
+            "Sequence fabriquee en local par Jarvis.\n\n"
+            "Demande : %s\n"
+            "Fichier : %s (%.1f Mo)\n"
+            % (_DERNIERE.get("demande") or "(non precisee)", chemin.name,
+               poids / 2**20))
+        msg.add_attachment(chemin.read_bytes(), maintype="video",
+                           subtype=chemin.suffix.lower().lstrip(".") or "mp4",
+                           filename=chemin.name)
+        with smtplib.SMTP_SSL(messagerie.SMTP_SERVEUR,
+                              messagerie.SMTP_PORT) as smtp:
+            smtp.login(messagerie.MAIL_ADRESSE, messagerie._mail_mdp())
+            smtp.send_message(msg)
+    except Exception as e:
+        return f"L envoi par mail a echoue : {str(e)[:70]}"
+
+    if destinataire:
+        return f"Sequence envoyee a {adresse}."
+    return "Je te l ai envoyee par mail."

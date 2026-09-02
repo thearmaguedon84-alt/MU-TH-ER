@@ -1719,6 +1719,28 @@ def _portrait(t):
                                ressemblance_forte=forte)
 
 
+
+# « envoie-moi la video par mail ». Sans ce raccourci, la phrase part vers le
+# modele, qui hesite entre l envoi d image et l envoi sur une television.
+RE_VIDEO_MAIL = re.compile(
+    r"\b(?:envoie|envoyer|envoi|transmets|expedie)\b[^.]{0,40}?"
+    r"\b(?:videos?|sequences?|clips?|films?)\b[^.]{0,40}?"
+    r"\b(?:mail|courriel|e?mail)\b"
+    r"|\b(?:mail|courriel)\b[^.]{0,30}?\b(?:videos?|sequences?|clips?)\b")
+
+
+def _video_mail(t):
+    """« envoie-moi la derniere video par mail »."""
+    if not RE_VIDEO_MAIL.search(t):
+        return None
+    destinataire = ""
+    m = re.search(r"\b([\w.+-]+@[\w.-]+\.[a-z]{2,})\b", t)
+    if m:
+        destinataire = m.group(1)
+    from tools.video import envoyer_video_mail
+    return envoyer_video_mail(destinataire=destinataire)
+
+
 def _video(t):
     """« fais-moi une video de trois secondes d un chat, en portrait »."""
     if not RE_VIDEO.search(t):
@@ -2222,7 +2244,7 @@ def _au_ton_mere(reponse):
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
 ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
-          _spotify_appareil, _portrait, _clip, _video, _musique,
+          _spotify_appareil, _portrait, _video_mail, _clip, _video, _musique,
           _spotify, _youtube, _diffuser_service, _chaine_tv, _streaming,
           _plex, _plex_sans_ecran, _musique_sans_source, _ecran_lecture,
           _specimen, _refaire_image, _transposer_visage, _remplacer_zone,
