@@ -1851,6 +1851,46 @@ def _refaire_image(t):
 
 # Ce qui suit « clip avec mes ... » sans nommer un sujet : les mots de
 # quantite, et les noms des supports eux-memes.
+
+# Un fichier nomme dans une phrase parlee : l extension a perdu son point et
+# s est transformee en mot. C est elle qui sert d ancre, et elle dit aussi de
+# quelle sorte de fichier il s agit.
+RE_FICHIER_MEDIA = re.compile(
+    r"\b((?:[a-z0-9][a-z0-9]*)(?:\s+[a-z0-9]+){0,14})\s+"
+    r"(mp4|mov|webm|mkv|avi|mp3|wav|flac|m4a|ogg|png|jpe?g|webp)\b")
+
+_SON = {"mp3", "wav", "flac", "m4a", "ogg"}
+
+# Les mots qui amenent un nom de fichier sans en faire partie.
+_AVANT_MEDIA = re.compile(
+    r"^(?:et|puis|avec|sur|de|du|des|la|le|les|l|ma|mon|mes|une?|"
+    r"videos?|images?|photos?|musiques?|morceaux?|chansons?|sons?|"
+    r"fichiers?|clips?|sequences?|bande son|fait|fais|moi|monte|monter|"
+    r"assemble|assembler|cree|creer|genere|generer)\s+")
+
+
+def _fichiers_nommes(t):
+    """Les fichiers designes dans la phrase, separes en son et en images.
+
+    Rend (bande_son, matiere) : la premiere est une designation ou une chaine
+    vide, la seconde une liste de designations dans l ordre de la phrase.
+    """
+    son, matiere = "", []
+    for m in RE_FICHIER_MEDIA.finditer(t):
+        nom = m.group(1).strip()
+        precedent = None
+        while nom and nom != precedent:
+            precedent = nom
+            nom = _AVANT_MEDIA.sub("", nom).strip()
+        if len(nom) < 5:
+            continue
+        if m.group(2) in _SON:
+            son = son or nom
+        else:
+            matiere.append(nom)
+    return son, matiere
+
+
 _HORS_THEME = {"derniere", "dernier", "dernieres", "derniers", "musique",
                "morceau", "chanson", "recentes", "recents", "generees",
                "generes", "toutes", "quelques", "plusieurs", "videos",
@@ -1898,9 +1938,15 @@ def _clip(t):
         # suit n est jamais examine.
         ou = m.start(1)
 
+    # Un fichier nomme prime sur tout le reste : c est la designation la plus
+    # precise possible, et l ignorer donnait un montage-surprise.
+    son, matiere = _fichiers_nommes(t)
+    if matiere:
+        theme = ""
+
     from tools.clip import monter_clip
-    return monter_clip(sources=sources, combien=combien, theme=theme,
-                       ecran=ecran)
+    return monter_clip(musique=son, sources=sources, combien=combien,
+                       theme=theme, fichiers=",".join(matiere), ecran=ecran)
 
 
 def _musique(t):

@@ -61,8 +61,15 @@ def _developper(texte):
     return texte
 
 
+# On y nomme ce qu on a vu echouer, pas des defauts generiques : sur les
+# segments tardifs, le crane s allongeait, la tete se dedoublait et des membres
+# apparaissaient. Un modele video n a pas de squelette de reference pour une
+# creature inventee ; il faut le lui interdire explicitement.
 NEGATIF = ("blurry, low quality, distorted, deformed, flickering, jittery, "
-           "morphing, watermark, text, static image, overexposed")
+           "morphing, watermark, text, static image, overexposed, "
+           "extra head, two heads, duplicated head, detached head, "
+           "elongated skull, stretched body, extra limbs, extra arms, "
+           "melting, dissolving, body horror, anatomical errors")
 
 _DERNIERE = {"chemin": None, "demande": None}
 
@@ -376,28 +383,78 @@ def _derniere_image(video, vers):
         return None
 
 
-def _bout_a_bout(morceaux, cible):
-    """Colle les segments sans fondu : ils sont deja continus."""
+def _bout_a_bout(morceaux, cible, fondu=0.3):
+    """Assemble les segments en fondant les jointures.
+
+    Meme enchaines, deux segments ne se raccordent pas parfaitement : le modele
+    repart d une image fixe et met quelques images a retrouver le mouvement. Un
+    fondu de trois dixiemes de seconde couvre cette hesitation. Sans lui, on
+    voit la coupe.
+    """
     import subprocess
+
     import imageio_ffmpeg
     exe = imageio_ffmpeg.get_ffmpeg_exe()
+
+    if len(morceaux) == 1:
+        import shutil
+        shutil.copy(str(morceaux[0]), str(cible))
+        return cible if cible.exists() else None
+
+    duree = _duree_video(morceaux[0])
+    if duree <= 0:
+        duree = SEGMENT
+
+    entrees, filtres = [], []
+    for i, m in enumerate(morceaux):
+        entrees += ["-i", str(m)]
+        # xfade exige une cadence declaree constante des deux cotes.
+        filtres.append("[%d:v]fps=24,format=yuv420p,setsar=1[v%d]" % (i, i))
+    courant = "[v0]"
+    for i in range(1, len(morceaux)):
+        decalage = i * (duree - fondu)
+        sortie = "[x%d]" % i if i < len(morceaux) - 1 else "[vf]"
+        filtres.append("%s[v%d]xfade=transition=fade:duration=%s:offset=%.2f%s"
+                       % (courant, i, fondu, decalage, sortie))
+        courant = sortie
+
+    args = entrees + ["-filter_complex", ";".join(filtres), "-map", "[vf]",
+                      "-c:v", "libx264", "-preset", "medium", "-crf", "19",
+                      "-pix_fmt", "yuv420p"]
+    subprocess.run([exe, "-y"] + args + [str(cible)], capture_output=True,
+                   timeout=1800)
+    if cible.exists():
+        return cible
+
+    # Le fondu a echoue : mieux vaut une jointure franche que rien du tout.
     liste = cible.with_suffix(".txt")
     liste.write_text("".join("file '%s'\n" % str(m).replace("\\", "/")
                              for m in morceaux), encoding="utf-8")
-    r = subprocess.run([exe, "-y", "-f", "concat", "-safe", "0",
-                        "-i", str(liste), "-c", "copy", str(cible)],
-                       capture_output=True, timeout=900)
-    if not cible.exists():
-        # Les segments peuvent differer d un rien : on reencode alors.
-        subprocess.run([exe, "-y", "-f", "concat", "-safe", "0",
-                        "-i", str(liste), "-c:v", "libx264", "-preset",
-                        "medium", "-crf", "20", "-pix_fmt", "yuv420p",
-                        str(cible)], capture_output=True, timeout=1800)
+    subprocess.run([exe, "-y", "-f", "concat", "-safe", "0", "-i", str(liste),
+                    "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                    "-pix_fmt", "yuv420p", str(cible)],
+                   capture_output=True, timeout=1800)
     try:
         liste.unlink()
     except Exception:
         pass
     return cible if cible.exists() else None
+
+
+def _duree_video(fichier):
+    """Duree en secondes, lue dans ce que ffmpeg raconte du fichier."""
+    import re as _re
+    import subprocess
+
+    import imageio_ffmpeg
+    r = subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-i", str(fichier)],
+                       capture_output=True, text=True, errors="replace")
+    m = _re.search(r"Duration:\s*(\d+):(\d+):(\d+\.?\d*)", r.stderr or "")
+    if not m:
+        return 0.0
+    h, mi, s = m.groups()
+    return int(h) * 3600 + int(mi) * 60 + float(s)
+
 
 
 @outil(
@@ -477,7 +534,7 @@ def generer_video(description: str, image: str = "", duree: int = 5,
     # derniere image d un segment devient la premiere du suivant.
     if duree > SEGMENT:
         return _enchainer(description, duree, largeur, hauteur, depart,
-                          ecran)
+                          ecran, image)
 
     graine = int(time.time()) % 2**31
     montage = _montage(description, largeur, hauteur, images, graine, depart,
@@ -524,7 +581,8 @@ def generer_video(description: str, image: str = "", duree: int = 5,
     return f"Voila ta video de {duree} secondes{depuis}."
 
 
-def _enchainer(description, duree, largeur, hauteur, depart, ecran):
+def _enchainer(description, duree, largeur, hauteur, depart, ecran,
+               image=""):
     """Fabrique une longue sequence par segments qui se relaient."""
     import httpx
 
@@ -542,10 +600,20 @@ def _enchainer(description, duree, largeur, hauteur, depart, ecran):
     travail.mkdir(parents=True, exist_ok=True)
     morceaux = []
     amorce = depart
-    # Une image fournie par l utilisateur est le sujet, pas un point de
-    # depart : chaque segment y revient, quitte a perdre le raccord du
-    # mouvement. Deux relais suffisaient a ne plus reconnaitre sa photo.
-    fournie = depart is not None
+    # Revenir a l image de depart a chaque segment n a de sens que si cette
+    # image porte une identite a preserver — le visage d une personne, qui se
+    # deforme en deux relais. Une image que nous venons de generer n en porte
+    # aucune : y revenir toutes les cinq secondes se voit comme un raccord
+    # rate, et c est precisement ce qu il a constate.
+    fournie = False
+    if depart is not None and image:
+        try:
+            from core.dossiers import est_une_creation
+            from tools.modifier_image import _trouver
+            source = _trouver(image)
+            fournie = not (source and est_une_creation(source))
+        except Exception:
+            fournie = True
     # Les images de relais ne servent qu au chainage : on ne les garde pas.
     a_effacer = []
     # La toute premiere image sert d etalon : couleur et personnage.
@@ -595,7 +663,7 @@ def _enchainer(description, duree, largeur, hauteur, depart, ecran):
                 except Exception:
                     reference = None
                 a_effacer.append(reference) if reference else None
-            elif (i + 1) % RAPPEL == 0:
+            elif fournie and (i + 1) % RAPPEL == 0:
                 # On revient a l etalon : on perd le raccord du mouvement,
                 # on garde le personnage. C est le meilleur des deux maux.
                 try:

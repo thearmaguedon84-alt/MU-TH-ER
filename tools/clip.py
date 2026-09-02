@@ -57,6 +57,42 @@ def _duree(fichier):
 
 
 
+
+def _reduire(texte):
+    """Ne garder que lettres et chiffres : la ponctuation ne doit pas compter.
+
+    La phrase arrive aplatie — « 20260902-162943-ou-le » y devient
+    « 20260902 162943 ou le ». Comparer les deux formes telles quelles echoue
+    toujours ; comparer leurs seuls caracteres utiles reussit toujours.
+    """
+    return re.sub(r"[^a-z0-9]+", "", (texte or "").lower())
+
+
+def _resoudre(designation, dossiers, extensions):
+    """Le fichier que cette designation nomme, ou None.
+
+    On accepte le nom complet comme le debut du nom : personne ne dicte
+    quarante caracteres sans en oublier.
+    """
+    cle = _reduire(designation)
+    if len(cle) < 6:
+        return None
+    candidats = []
+    for d in dossiers:
+        if d and Path(d).is_dir():
+            for f in Path(d).iterdir():
+                if f.is_file() and f.suffix.lower().lstrip(".") in extensions:
+                    candidats.append(f)
+    for f in candidats:
+        if _reduire(f.stem) == cle:
+            return f
+    for f in sorted(candidats, key=lambda x: -x.stat().st_mtime):
+        r = _reduire(f.stem)
+        if cle in r or r.startswith(cle[:24]):
+            return f
+    return None
+
+
 def _porte(nom, mot):
     """Ce nom de fichier parle-t-il de ce sujet ?
 
@@ -115,11 +151,11 @@ def _trouver_musique(nom):
         d = M._DERNIERE.get("chemin")
         if d and Path(d).exists():
             return Path(d)
-    if nom and len(nom) >= 3 and M.DOSSIER.is_dir():
-        cle = nom.lower().strip()
-        for p in M.DOSSIER.glob("*"):
-            if cle in p.stem.lower():
-                return p
+    if nom and len(nom) >= 3:
+        trouve = _resoudre(nom, [M.DOSSIER, Path.home() / "Music"],
+                           {"mp3", "wav", "flac", "m4a", "ogg"})
+        if trouve is not None:
+            return trouve
     lot = _choisir(M.DOSSIER, ["*.mp3", "*.wav"], 1)
     return lot[0] if lot else None
 
@@ -140,6 +176,8 @@ def _trouver_musique(nom):
                         "description": "'videos', 'images' ou 'photos'. Ce qu il faut monter."},
             "theme": {"type": "string",
                       "description": "Mot present dans le nom des fichiers a retenir, par exemple 'xenomorphe'."},
+            "fichiers": {"type": "string",
+                         "description": "Fichiers precis a monter, separes par des virgules. Prioritaire sur le sujet."},
             "combien": {"type": "integer",
                         "description": "Nombre de sequences a enchainer. 4 par defaut."},
             "ecran": {"type": "string", "description": "Nom d un ecran."},
@@ -151,7 +189,7 @@ def _trouver_musique(nom):
 )
 @enfile("clip", "musique")
 def monter_clip(musique: str = "", sources: str = "", theme: str = "",
-                combien: int = 4, ecran: str = "") -> str:
+                fichiers: str = "", combien: int = 4, ecran: str = "") -> str:
     exe = _ffmpeg()
     if not exe:
         return "ffmpeg est introuvable, je ne peux pas monter."
@@ -164,6 +202,30 @@ def monter_clip(musique: str = "", sources: str = "", theme: str = "",
         return "Je n arrive pas a lire la duree du morceau."
 
     combien = max(1, min(int(combien or 4), 12))
+
+    # Des fichiers nommes priment sur tout le reste : c est la designation la
+    # plus precise que l utilisateur puisse donner. En prendre d autres est le
+    # pire des comportements — il croit avoir ete entendu.
+    if fichiers:
+        images = {"png", "jpg", "jpeg", "webp", "bmp"}
+        videos_ext = {"mp4", "webm", "mov", "mkv", "avi"}
+        from tools.image import DOSSIER as IM_DOSSIER
+        choisis, absents = [], []
+        for d in [x.strip() for x in fichiers.split(",") if x.strip()]:
+            f = _resoudre(d, [dossier("videos"), IM_DOSSIER,
+                              Path.home() / "Videos", Path.home() / "Pictures"],
+                          videos_ext | images)
+            (choisis if f else absents).append(f or d)
+        if absents:
+            return ("Je ne trouve pas %s. Verifie le nom."
+                    % ", ".join("« %s »" % a for a in absents))
+        if choisis:
+            films = [f for f in choisis
+                     if f.suffix.lower().lstrip(".") in videos_ext]
+            if films:
+                return _montage_videos(exe, films, piste, duree, ecran)
+            return _montage_photos(exe, choisis, piste, duree, ecran)
+
     veut_images = bool(re.search(r"image|photo", (sources or "").lower()))
     veut_videos = bool(re.search(r"video|sequence|film", (sources or "").lower()))
 
