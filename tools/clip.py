@@ -56,6 +56,25 @@ def _duree(fichier):
     return int(h) * 3600 + int(mi) * 60 + float(s)
 
 
+
+def _porte(nom, mot):
+    """Ce nom de fichier parle-t-il de ce sujet ?
+
+    On compare sur un radical plutot que sur le mot entier : il dit
+    « xenomorphe », le fichier porte « xenomorph ». Le « e » final suffisait a
+    tout faire echouer, et le meme piege attend « guitare » contre « guitar »
+    ou n importe quel pluriel.
+    """
+    nom, mot = nom.lower(), mot.lower()
+    if mot in nom:
+        return True
+    # Les trois dernieres lettres sont celles qui varient d une langue et d un
+    # nombre a l autre ; en deca de cinq lettres on ne coupe plus, sous peine
+    # de rapprocher des mots sans rapport.
+    radical = mot[:max(5, len(mot) - 3)]
+    return len(radical) >= 5 and radical in nom
+
+
 def _choisir(dossier_source, motifs, combien, theme=""):
     """Les fichiers a monter, du plus recent au plus ancien.
 
@@ -74,12 +93,16 @@ def _choisir(dossier_source, motifs, combien, theme=""):
             if len(m) >= 4]
     if mots:
         vises = [p for p in lot
-                 if all(m in p.stem.lower() for m in mots)]
+                 if all(_porte(p.stem, m) for m in mots)]
         if vises:
             return vises[:combien]
-        vises = [p for p in lot if any(m in p.stem.lower() for m in mots)]
+        vises = [p for p in lot if any(_porte(p.stem, m) for m in mots)]
         if vises:
             return vises[:combien]
+        # Un sujet demande et introuvable : on ne remplace pas en silence par
+        # autre chose. C est ce qui donnait un chaton dans un clip de
+        # xenomorphes, sans un mot d explication.
+        return []
     propres = [p for p in lot if not _REBUTS.search(p.stem)]
     return (propres or lot)[:combien]
 
@@ -151,10 +174,16 @@ def monter_clip(musique: str = "", sources: str = "", theme: str = "",
         if videos:
             return _montage_videos(exe, videos, piste, duree, ecran)
         if veut_videos:
-            return "Je n ai pas de video qui corresponde."
+            return (f"Je n ai pas de video qui parle de « {theme} »."
+                    if theme else "Je n ai pas de video a monter.")
 
     photos = _choisir(IMAGES, ["*.png", "*.jpg"], combien, theme)
     if not photos:
+        if theme:
+            return (f"Je ne trouve rien qui parle de « {theme} ». Les fichiers "
+                    f"portent le nom de la demande qui les a produits : "
+                    f"essaie un autre mot, ou demande un clip sans preciser "
+                    f"de sujet.")
         return "Je n ai ni video ni image a monter."
     return _montage_photos(exe, photos, piste, duree, ecran)
 
