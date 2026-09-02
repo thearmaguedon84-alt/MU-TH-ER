@@ -94,6 +94,55 @@ def _chercher_partout(mots, dossiers, profondeur=3, plafond=40000):
     return trouves
 
 
+
+def _reduire(texte):
+    """Ne garder que lettres et chiffres.
+
+    La ponctuation ne survit pas au passage par la voix : « 20260902-145323 »
+    devient « 20260902 145323 ». Comparer les deux formes telles quelles echoue
+    toujours, comparer leurs seuls caracteres utiles reussit toujours.
+    """
+    return re.sub(r"[^a-z0-9]+", "", (texte or "").lower())
+
+
+def _par_le_nom(designation):
+    """Le fichier dont le nom correspond exactement, ou None.
+
+    On accepte aussi le debut du nom : personne ne dicte soixante caracteres
+    sans en perdre en route. Mais on n accepte rien de moins qu un debut, pour
+    ne jamais rendre autre chose que ce qui a ete demande.
+    """
+    from tools.image import DOSSIER
+
+    cle = _reduire(designation)
+    if len(cle) < 8:
+        return None
+    # On retire une extension prononcee, devenue un mot comme un autre.
+    cle = re.sub(r"(?:jpe?g|png|webp|bmp|mp4)$", "", cle)
+    if len(cle) < 8:
+        return None
+
+    lot = []
+    for base in [DOSSIER] + _dossiers_images():
+        if not base.is_dir():
+            continue
+        try:
+            for f in base.iterdir():
+                if f.is_file() and f.suffix.lower() in _EXTENSIONS:
+                    lot.append(f)
+        except Exception:
+            continue
+    for f in lot:
+        if _reduire(f.stem) == cle:
+            return f
+    debuts = [f for f in lot if _reduire(f.stem).startswith(cle)]
+    if len(debuts) == 1:
+        return debuts[0]
+    if debuts:
+        return max(debuts, key=lambda x: x.stat().st_mtime)
+    return None
+
+
 def _trouver(designation):
     """Retrouve l'image visee par une designation parlee ou un chemin."""
     from tools.image import DOSSIER, _DERNIERE
@@ -104,10 +153,24 @@ def _trouver(designation):
         return Path(d)
 
     bas = d.lower()
-    if not d or re.search(r"derniere?\s+(?:image|generation|creation)|celle"
-                          r"|que\s+tu\s+viens\s+de|cette\s+image"
-                          r"|^l\s*image$|^image$",
-                          bas):
+
+    # Le nom exact d abord. C est la designation la plus precise que l on
+    # puisse recevoir ; la traiter apres des heuristiques revenait a preferer
+    # une devinette a une certitude.
+    exact = _par_le_nom(d)
+    if exact is not None:
+        return exact
+
+    # Une designation qui porte un horodatage est un nom de fichier, pas une
+    # facon de parler : les tournures vagues ne la concernent pas. Sans cette
+    # garde, « ...realistic-photo-of-a-xenomorph... » declenchait la branche
+    # « photo » et rendait la derniere photo personnelle.
+    nomme = bool(re.search(r"\d{6,}", bas))
+
+    if not nomme and (not d or re.search(
+            r"derniere?\s+(?:image|generation|creation)|celle"
+            r"|que\s+tu\s+viens\s+de|cette\s+image"
+            r"|^l\s*image$|^image$", bas)):
         if _DERNIERE.get("chemin") and Path(_DERNIERE["chemin"]).exists():
             return Path(_DERNIERE["chemin"])
         faites = sorted(DOSSIER.glob("*.png"), key=lambda p: -p.stat().st_mtime) \
@@ -115,7 +178,8 @@ def _trouver(designation):
         if faites:
             return faites[0]
 
-    if re.search(r"\bphoto\b|\bma derniere\b|\bmes images\b|\btelechargee?\b", bas):
+    if not nomme and re.search(
+            r"\bphoto\b|\bma derniere\b|\bmes images\b|\btelechargee?\b", bas):
         return _image_recente()
 
     # Un nom partiel : on cherche partout, sous-dossiers compris. Les photos
