@@ -32,3 +32,28 @@ mic_test_out.txt
 
 # Genere par l installateur, contient des chemins propres a la machine.
 lancer_jarvis.bat
+telecharger_modele.py
+images/
+
+# Jeton de la file d attente : etat local, jamais partage
+.gpu_travail.json
+
+# Fichiers d essai laisses par les mises au point : scripts jetables lances
+# en arriere-plan et leurs sorties. Ils ne servent qu une fois et portent des
+# chemins personnels.
+*.out
+*.log
+bout.py
+cl.py
+fl.py
+fl2.py
+fx.py
+rp.py
+sr.py
+tc.py
+tl.py
+b2.py
+vg.py
+tmp_out.txt
+py_test.txt
+mic2_out.txt

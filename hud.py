@@ -22,6 +22,7 @@ voir le rendu sans le reste de l'assistant.
 """
 
 import json
+import os
 import queue
 import socket
 import threading
@@ -151,6 +152,20 @@ def niveau(valeur):
 # Derniere parole prononcee, mise a disposition des interfaces. Une seule est
 # gardee : ce qui vient d'etre dit interesse, ce qui l'a ete avant, non.
 _VOIX = {"numero": 0, "donnees": None}
+
+
+def publier_specimen(duree=24):
+    """Demande aux interfaces de tracer le specimen tout de suite.
+
+    Le dessin se declenche normalement apres une demi-minute d inactivite.
+    Cet ordre permet de l appeler quand on veut, sans attendre la veille.
+    """
+    _diffuser({"t": "specimen", "duree": int(duree)})
+
+
+def publier_image(url, description=""):
+    """Signale une image fraiche aux interfaces, qui l afficheront."""
+    _diffuser({"t": "image", "url": url, "texte": str(description)[:120]})
 
 
 def publier_voix(donnees_wav):
@@ -329,6 +344,50 @@ class _Poignee(BaseHTTPRequestHandler):
             # Page de diagnostic : verifie si un televiseur accepte de jouer
             # un son sans geste prealable.
             self._page(Path(__file__).parent / "essai_son.html")
+        elif self.path.startswith("/image/"):
+            # Les images fabriquees, servies a l interface et aux televiseurs.
+            nom = os.path.basename(self.path)
+            from core.dossiers import dossier
+            fichier = dossier("images") / nom
+            if fichier.exists() and fichier.suffix.lower() == ".png":
+                self._brut(fichier.read_bytes(), "image/png")
+            else:
+                self.send_error(404)
+        elif self.path.startswith("/musique/"):
+            # Les morceaux composes, pour les enceintes et les televiseurs.
+            nom = os.path.basename(self.path)
+            from core.dossiers import dossier
+            fichier = dossier("musiques") / nom
+            if fichier.exists() and fichier.suffix.lower() in (".mp3", ".wav"):
+                self._brut(fichier.read_bytes(),
+                           "audio/mpeg" if fichier.suffix.lower() == ".mp3"
+                           else "audio/wav")
+            else:
+                self.send_error(404)
+        elif self.path.startswith("/clip/") or self.path.startswith("/video/"):
+            # Clips montes et sequences video, pour les televiseurs.
+            nom = os.path.basename(self.path)
+            sous = "clips" if self.path.startswith("/clip/") else "videos"
+            from core.dossiers import dossier
+            fichier = dossier(sous) / nom
+            if fichier.exists() and fichier.suffix.lower() in (".mp4", ".webm"):
+                self._brut(fichier.read_bytes(),
+                           "video/mp4" if fichier.suffix.lower() == ".mp4"
+                           else "video/webm")
+            else:
+                self.send_error(404)
+        elif self.path in ("/veille", "/veille.html", "/tel/veille",
+                           "/economiseur"):
+            # L economiseur autonome : un seul fichier, qui n a besoin de rien.
+            self._page(Path(__file__).parent / "veille.html")
+        elif self.path == "/specimens.json":
+            # Les quatre releves complets. Trop lourds pour etre inscrits
+            # dans la page, servis a part et mis en cache par le navigateur.
+            try:
+                with open(Path(__file__).parent / "specimens.json", "rb") as f:
+                    self._brut(f.read(), "application/json")
+            except Exception:
+                self.send_error(404)
         elif self.path == "/specimen.json":
             # Servi a part : les deux interfaces y puisent, aucune n en garde
             # une copie.

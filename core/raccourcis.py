@@ -1138,6 +1138,998 @@ def _web(t):
     return chercher_web(question=question)
 
 
+
+# « et envoie-la moi par mail » se greffe sur n importe quelle demande d image.
+# La mention doit etre retiree du texte avant qu il ne devienne la description,
+# sans quoi le moteur dessinerait consciencieusement une enveloppe.
+RE_PAR_MAIL = re.compile(r"\b(?:par|via)\s+(?:mail|e-?mail|courriel|mel)\b")
+
+
+def _sans_mention_mail(t):
+    t = RE_PAR_MAIL.sub(" ", t)
+    # Les pronoms s empilent : « envoie-la-moi ». Il faut tous les manger,
+    # sinon un « moi » orphelin finit dans la description de l image.
+    t = re.sub(r"\bet\s+(?:tu\s+m\s*)?(?:envoie|envoies|envoi|envoyer|"
+               r"transmets|transmet)(?:\s+(?:moi|la|le|les|ca|nous))*\b",
+               " ", t)
+    t = re.sub(r"\b(?:envoie|envoies|envoyer)(?:\s+(?:moi|la|le|les|ca))*\s*$",
+               " ", t)
+    return " ".join(t.split()).strip(" ,.")
+
+
+RE_SANS_RETOUCHE = re.compile(
+    r"\bsans retouche\b|\bvite fait\b|\bsans corriger\b|\bbrut\b")
+
+
+RE_IMAGE = re.compile(
+    r"\b(?:fais|fait|fabrique|genere|generer|cree|creer|dessine|dessiner|"
+    r"montre|produis|sors)\b[^.]{0,26}?"
+    r"\b(?:images?|dessins?|illustrations?|photos?|visuels?|rendus?)\b"
+    r"|\b(?:une?\s+|l\s*)?(?:image|illustration|dessin|visuel)\s+(?:de|d|du|des|avec)\b"
+    r"|\bdessine[- ]moi\b|\ben image\b"
+    r"|\bmontre[- ]moi\s+a\s+quoi\s+ressemble\b")
+
+# Questions sur la capacite elle-meme : le modele repondait de memoire, sans
+# regarder ses outils, et niait savoir faire ce qu il sait faire.
+RE_SAIT_IMAGE = re.compile(
+    r"\b(?:tu sais|sais tu|tu peux|peux tu|est ce que tu (?:sais|peux))\b"
+    r"[^.?]{0,34}\b(?:images?|dessins?|illustrations?)\b")
+
+
+
+# Les mots par lesquels on demande du soin plutot que de la vitesse. « avec
+# flux » y figure parce que c est ainsi qu on finit par le nommer une fois
+# qu on sait qu il existe.
+RE_SOIGNEE = re.compile(
+    r"\b(?:tres\s+)?(?:soignees?|soignes?|peaufinees?|lechees?|"
+    r"haute\s+qualite|meilleure\s+qualite|qualite\s+maximale|"
+    r"tres\s+belle|superbe|impeccable|detaillee?s?)\b"
+    r"|\b(?:avec|en|sous|via)\s+flux\b")
+
+# Quand on accepte d attendre sept minutes plutot qu une.
+RE_PATIENT = re.compile(
+    r"\bprends?\s+ton\s+temps\b|\bau\s+maximum\b|\bqualite\s+maximale\b"
+    r"|\ble\s+mieux\s+possible\b|\bmeme\s+si\s+c\s+est\s+long\b"
+    r"|\bsans\s+te\s+presser\b")
+
+# Ce qui, malgre le mot « soigne », ne demande pas une image neuve : la
+# retouche d une partie de ce qui existe deja.
+RE_SOIN_RETOUCHE = re.compile(
+    r"\bsoigne\w*\s+(?:les?\s+|la\s+|ses\s+|mes\s+)?"
+    r"(?:mains?|doigts?|visages?|yeux|dents|details?)\b")
+
+def _image(t):
+    """« fais-moi une image d un alien en maillot de bain ».
+
+    La traduction vers l anglais se fait dans l outil : passer par le modele
+    ici couterait un aller-retour de plus pour le meme resultat.
+    """
+    if RE_SAIT_IMAGE.search(t):
+        return ("Oui. Je fabrique des images en local, sans rien envoyer "
+                "dehors. Dis-moi ce que tu veux voir : « fais-moi une image "
+                "d un alien a la plage ». Je peux aussi l envoyer sur une "
+                "television.")
+
+    if not RE_IMAGE.search(t):
+        return None
+
+    par_mail = bool(RE_PAR_MAIL.search(t))
+    if par_mail:
+        t = _sans_mention_mail(t)
+
+    # La correction des mains coute une quinzaine de secondes : on laisse la
+    # possibilite de s en passer.
+    soigner = not RE_SANS_RETOUCHE.search(t)
+    if not soigner:
+        t = RE_SANS_RETOUCHE.sub(" ", t)
+
+    sujet = re.split(r"\b(?:image|dessin|illustration|photo|visuel|rendu)\b", t, 1)
+    sujet = sujet[-1] if len(sujet) > 1 else t
+    # « dessine » ne contient pas « dessin » au sens des limites de mots : le
+    # verbe survivait au decoupage et se retrouvait dans la description.
+    sujet = re.sub(r"^\s*(?:fais|fabrique|genere|generer|cree|creer|dessine|"
+                   r"dessiner|montre)\b\s*(?:moi\s+)?", "", sujet.strip(),
+                   flags=re.I)
+    sujet = re.sub(r"^\s*(?:une?|le|la|les|de|d|du|des|avec|representant|"
+                   r"montrant|qui)\b\s*", "", sujet.strip(), flags=re.I)
+
+    ecran = ""
+    if _contient(t, ECRANS):
+        # Le point de coupe est le DERNIER « sur » : sans le prefixe gourmand,
+        # « un chat sur un skateboard sur la tele » perdait le skateboard.
+        m = re.search(r"^.*\b(sur)\s+(?:la|le|l|mon|ma)?\s*([^,]+)$", sujet)
+        if m:
+            propre = re.sub(r"\b(ecran|television|tele|tv|chromecast)\b", " ",
+                            m.group(2))
+            propre = _nettoyer_cible(propre)
+            from tools.cast import _choisir
+            if propre and _choisir(propre) is not None:
+                ecran = propre
+                sujet = sujet[:m.start(1)]
+        if not ecran:
+            ecran = _premier_ecran()
+            sujet = re.sub(r"^(.*)\bsur\s+(?:la|le|l|mon|ma)?\s*[^,]+$", r"\1", sujet)
+
+    format_voulu = ""
+    if re.search(r"\bportrait\b|\bvertical\b", sujet):
+        format_voulu = "portrait"
+    elif re.search(r"\bpaysage\b|\bhorizontal\b", sujet):
+        format_voulu = "paysage"
+
+    if format_voulu:
+        # Le mot de format a servi, il n a plus rien a faire dans la demande.
+        sujet = re.sub(r"\b(?:en\s+)?(?:portrait|paysage|vertical|horizontal)\b",
+                       " ", sujet)
+
+    sujet = re.sub(r"^\s*(?:de|d|du|des|moi)\b\s*", "", sujet.strip())
+    sujet = " ".join(sujet.split()).strip(" ,.")
+    if len(sujet) < 3:
+        return None
+
+    # « fais-moi une photo de X, et remplace sa tete par Y » : on cree, puis
+    # on remplace sur le resultat. La consigne de remplacement ne doit pas
+    # se retrouver dans la description, sinon le moteur dessine les deux.
+    zone_apres = _zone_demandee(t)
+    if zone_apres:
+        sujet = re.split(r"\b(?:je veux que tu|enleve|enlever|retire|remplace|"
+                         r"remplacer|et mets?|puis mets?)\b", sujet)[0]
+        sujet = " ".join(sujet.split()).strip(" ,.")
+        if len(sujet) < 3:
+            sujet = "a person, full body, photograph"
+
+    # « une image tres soignee » : c est Flux qu on veut. Il est bien plus
+    # lent, donc on ne le choisit que sur demande explicite — et jamais quand
+    # il faudra ensuite remplacer une zone, ce que seul SDXL sait faire.
+    if RE_SOIGNEE.search(t) and not RE_SOIN_RETOUCHE.search(t) and not zone_apres:
+        sujet_soigne = " ".join(RE_SOIGNEE.sub(" ", sujet).split()).strip(" ,.")
+        from tools.flux import image_soignee
+        return image_soignee(description=sujet_soigne or sujet,
+                             format=format_voulu,
+                             patient=bool(RE_PATIENT.search(t)),
+                             ecran=ecran, par_mail=par_mail)
+
+    from tools.image import generer_image
+    faite = generer_image(description=sujet, format=format_voulu, ecran=ecran,
+                          par_mail=par_mail and not zone_apres,
+                          soigner=soigner)
+    if not zone_apres:
+        return faite
+
+    from tools.zone import remplacer_zone
+    return remplacer_zone(par=zone_apres["par"], zone=zone_apres["zone"],
+                          image="la derniere image", ecran=ecran,
+                          par_mail=par_mail)
+
+
+
+# Le refus explicite de reprendre une image existante. Sans lui, une demande
+# de creation reformulee retombait indefiniment sur le meme fichier.
+RE_PAS_REPRENDRE = re.compile(
+    r"\bne repren\w+\b|\barrete de repren\w+\b|\bpas repren\w+\b"
+    r"|\bnouvelle image\b|\bgener\w+ une nouvelle\b|\bune nouvelle\b"
+    r"|\bdepuis le (?:prompt|texte)\b|\ba partir du (?:prompt|texte)\b")
+
+
+RE_MODIF_IMAGE = re.compile(
+    r"\b(?:modifie?|modifier|transforme|transformer|retouche|retoucher|"
+    r"refais|refaire|reprends?|rempr?ends?|reprendre|change|changer|"
+    r"remplace|remplacer|enleve|enlever|ajoute|ajouter)\b[^.]{0,40}?"
+    r"\b(?:image|photo|dessin|illustration|visuel)\b")
+
+# Les facons de designer l image a reprendre. On les retire du texte : ce qui
+# reste est la consigne.
+# Un nom de fichier dit a voix haute ou tape : « ma photo vacances 21-04-07
+# 058.jpg ». Il prime sur toute designation vague, puisqu il est precis.
+# Attention : la phrase arrive DEJA aplatie — sans accents, sans ponctuation.
+# « vacances 21-04-07 058.jpg » y devient « vacances 21 04 07 058 jpg ». Une
+# expression qui attend un point ne peut donc jamais correspondre. On cherche
+# les mots qui precedent l extension, devenue un mot comme un autre.
+RE_NOM_FICHIER = re.compile(
+    r"\b([a-z0-9][a-z0-9]*(?:\s+[a-z0-9]+){0,6})\s+(jpe?g|png|webp|bmp)\b")
+
+# « ma photo X », « la photo qui s appelle X » : le nom suit le mot photo.
+RE_PHOTO_NOMMEE = re.compile(
+    r"\b(?:photos?|images?|fichiers?)\s+(?:qui\s+s\s*appelle\s+|"
+    r"nommee?\s+|intitulee?\s+)?([\w\-]+(?:[ _\-][\w\-]+){0,4})",
+    re.I)
+
+
+
+# Un nom de fichier survit mal a l aplatissement : « vacances 21-04-07 058.jpg »
+# devient « vacances 21 04 07 058 jpg », et sans extension il ne reste que des
+# mots. On s appuie donc sur ce qui distingue un nom de fichier d une phrase :
+# de longues suites de chiffres, que le francais courant ne contient pas.
+# Les mots qui, en francais, articulent une phrase et ne peuvent donc pas
+# se trouver au milieu d un nom de fichier.
+_ARRET = (r"(?!(?:par|celui|celle|ceux|celles|comme|et|puis|pour|avec|"
+          r"sur|dans|mais|donc|reference|remplace|remplacer|mets|met|mettre|"
+          r"prends|prend|prendre|utilise|utiliser|applique|appliquer|"
+          r"transpose|transposer|colle|coller|pose|poser|ajoute|greffe|"
+          r"incruste|recupere|extrais|copie|reprends|reprend|montre|affiche|"
+          r"anime|genere|image|images|photo|photos|fichier|fichiers)\b)")
+
+RE_NOM_SANS_EXTENSION = re.compile(
+    r"\b((?:" + _ARRET + r"[a-z]{3,}\s+)?(?:\d{4,}(?:\s+\d+)*|\d{2,}(?:\s+\d{2,}){1,6})"
+    r"(?:\s+" + _ARRET + r"[a-z0-9]{2,}){0,8})")
+
+# Les mots qui introduisent une image, et qui ne font pas partie du nom.
+_AVANT_NOM = (r"^(?:et|puis|sur|dans|de|du|la|le|les|l|ma|mon|mes|une?|"
+              r"photos?|images?|fichiers?|partir|depuis|prends?|prend|"
+              r"remplace|mets?|avec|comme|anime|animer|transforme|modifie?|"
+              r"retouche|genere|generer|fais|fait|montre|reprends?)\s+")
+
+
+_LIAISON = (r"(?:comme|et|puis|pour|sur|dans|avec|afin|ensuite|remplace|"
+            r"mets?|mettre|reference|en|de|du|des|par|celui|celle)")
+
+
+def _elaguer(nom, garder="debut"):
+    """Retire les mots de liaison colles au nom du fichier."""
+    nom = (nom or "").strip()
+    precedent = None
+    while nom and nom != precedent:
+        precedent = nom
+        nom = re.sub(_AVANT_NOM, "", nom).strip()
+    # Une extension prononcee ne fait pas partie du nom.
+    nom = re.sub(r"\s+(jpe?g|png|webp|bmp)\b.*$", "", nom)
+    # Les mots de liaison decoupent la phrase. Selon ce qui a servi d ancre,
+    # le nom est avant ou apres : les chiffres ancrent le debut, l extension
+    # ancre la fin. « ... sur humain avant png » : le nom est le dernier bout.
+    morceaux = re.split(r"\s+%s\b\s*" % _LIAISON, nom)
+    morceaux = [m for m in morceaux if m.strip()]
+    if not morceaux:
+        return ""
+    retenu = (morceaux[-1] if garder == "fin" else morceaux[0]).strip()
+    # Le bout retenu porte souvent encore ses articles : « la photo portrait
+    # 3 ». On relance l elagage dessus, sinon le nom ne se resout pas.
+    precedent = None
+    while retenu and retenu != precedent:
+        precedent = retenu
+        retenu = re.sub(_AVANT_NOM, "", retenu).strip()
+    return retenu
+
+
+# Trois familles de verbes, qui ne rangent pas leurs complements pareil.
+_PRISE = (r"prends?|prendre|utilise\w*|utiliser|reprends?|recupere\w*|"
+          r"extrais?|extraire|copie\w*")
+# Remplacer : le complement direct disparait, le complement en « par » arrive.
+_REMPLACE = r"remplace\w*|remplacer|change\w*|changer|echange\w*|substitue\w*"
+# Poser : le complement direct arrive, le complement en « sur » recoit.
+_POSE = (r"mets?|mettre|colle\w*|coller|applique\w*|appliquer|transpose\w*|"
+         r"transposer|pose\w*|poser|incruste\w*|greffe\w*|ajoute\w*")
+
+_VERBES = re.compile(r"\b(%s|%s|%s)\b" % (_PRISE, _REMPLACE, _POSE))
+
+
+def _famille(verbe):
+    if re.fullmatch(_PRISE, verbe):
+        return "prise"
+    if re.fullmatch(_REMPLACE, verbe):
+        return "remplace"
+    return "pose"
+
+
+# « le visage de », « celui de la photo » : la designation qui suit possede le
+# visage. Vrai avec les verbes de pose, faux avec remplacer.
+_POSSESSIF = re.compile(
+    r"\b(?:visages?|tetes?|tronches?|figures?|celui|celle)\s+"
+    r"(?:de\s+|du\s+|d\s+)?(?:la\s+|le\s+|les\s+|ma\s+|mon\s+|mes\s+)?"
+    r"(?:photos?\s+|images?\s+|fichiers?\s+)?$")
+
+
+def _role(avant, depuis_le_debut):
+    """« reference » ou « cible » pour la designation qui suit ce bout.
+
+    On cherche le dernier verbe qui la gouverne, puis on lit ce qui separe ce
+    verbe de la designation : c est la que se joue le sens.
+    """
+    verbes = list(_VERBES.finditer(avant))
+    reste = avant
+    if verbes:
+        famille = _famille(verbes[-1].group(1))
+        reste = avant[verbes[-1].end():]
+    else:
+        # Rien devant : le verbe qui commande est le dernier rencontre.
+        tous = list(_VERBES.finditer(depuis_le_debut))
+        if not tous:
+            return ""
+        famille = _famille(tous[-1].group(1))
+
+    # « par celui de Y » : ce qui vient apres « par » est toujours ce qui
+    # arrive, donc la reference. C est vrai pour toutes les familles.
+    if re.search(r"\bpar\b", reste):
+        return "reference"
+
+    if famille == "prise":
+        return "reference"
+    if famille == "remplace":
+        # Le complement direct de remplacer est ce qui disparait.
+        return "cible"
+    # Poser : le visage « de » quelqu un est la source ; « sur » quelque chose
+    # est la destination.
+    if _POSSESSIF.search(reste):
+        return "reference"
+    return "cible"
+
+
+def _place(t, nom, defaut):
+    """Ou commence vraiment le nom retenu, une fois les mots de liaison otes.
+
+    Le motif attrape souvent un mot de trop devant — « sur 20260901... ». En
+    gardant sa position, la fenetre d analyse s arrete avant ce mot, et l on
+    perd justement le mot qui dit le role.
+    """
+    ou = t.find(nom, defaut)
+    return ou if ou >= 0 else defaut
+
+
+def images_situees(t):
+    """Les images nommees, avec leur place dans la phrase."""
+    vues = []
+    for m in RE_NOM_FICHIER.finditer(t):
+        n = _elaguer(m.group(1), garder="fin")
+        if len(n) >= 3:
+            vues.append((_place(t, n, m.start()), m.end(), n))
+    for m in RE_NOM_SANS_EXTENSION.finditer(t):
+        n = _elaguer(m.group(1))
+        if len(n) < 4:
+            continue
+        if any(abs(d - m.start()) < 8 for d, _, _ in vues):
+            continue
+        vues.append((_place(t, n, m.start()), m.end(), n))
+    vues.sort()
+    sortie, deja = [], []
+    for debut, fin, n in vues:
+        if any(n in d or d in n for d in deja):
+            continue
+        deja.append(n)
+        sortie.append((debut, fin, n))
+    return sortie
+
+
+def visage_et_cible(t):
+    """Quelle image donne le visage, quelle image le recoit.
+
+    Rend un couple, chaque membre pouvant etre vide. Se fier au rang etait
+    l erreur : « remplace le visage sur B par celui de A » range la cible en
+    premier, « prends le visage sur A et mets-le sur B » la range en second.
+    """
+    situees = images_situees(t)
+    if not situees:
+        return "", ""
+    roles = []
+    precedent = 0
+    for debut, fin, nom in situees:
+        roles.append((_role(t[precedent:debut], t[:debut]), nom))
+        precedent = fin
+
+    reference = next((n for r, n in roles if r == "reference"), "")
+    cible = next((n for r, n in roles if r == "cible"), "")
+    # Aucun indice : on retombe sur l ordre d apparition, qui reste le cas le
+    # plus frequent.
+    if not reference and not cible:
+        reference = roles[0][1]
+        cible = roles[1][1] if len(roles) > 1 else ""
+    elif not reference:
+        reference = next((n for r, n in roles if n != cible), "")
+    elif not cible:
+        cible = next((n for r, n in roles if n != reference), "")
+    return reference, cible
+
+
+def images_designees(t):
+    """Toutes les images nommees dans la phrase, dans l ordre.
+
+    On rend des designations, pas des chemins : c est a _trouver de les
+    resoudre, lui seul sachant ou chercher.
+    """
+    vues = []
+    for m in RE_NOM_FICHIER.finditer(t):
+        n = _elaguer(m.group(1), garder="fin")
+        if len(n) >= 3:
+            vues.append((m.start(), n))
+    for m in RE_NOM_SANS_EXTENSION.finditer(t):
+        n = _elaguer(m.group(1))
+        if len(n) < 4:
+            continue
+        if any(abs(p - m.start()) < 8 for p, _ in vues):
+            continue
+        vues.append((m.start(), n))
+    vues.sort()
+    sortie = []
+    for _, n in vues:
+        if not any(n in d or d in n for d in sortie):
+            sortie.append(n)
+    return sortie
+
+RE_DESIGNE_IMAGE = re.compile(
+    r"\b(?:l\s*)?(?:image|photo)\s+que\s+tu\s+(?:viens\s+de\s+\w+|as\s+\w+)"
+    r"|\bla\s+derniere\s+(?:image|photo|creation|generation)\b"
+    r"|\bta\s+derniere\s+(?:image|creation)\b"
+    r"|\bma\s+derniere\s+(?:photo|image)\b"
+    r"|\bcette\s+(?:image|photo)\b"
+    r"|\bl\s*(?:image|photo)\b|\bma\s+photo\b")
+
+
+# « remplace la tete par une tete de poule » : une zone precise, pas toute
+# l image. Le detourage donne un resultat propre la ou la reprise globale
+# refaisait le decor et laissait l ancienne tete en transparence.
+RE_ZONE = re.compile(
+    r"\b(?:remplace|remplacer|mets?|mettre|change|changer|colle|coller)\b"
+    r"[^.]{0,45}?\b(tetes?|visages?|figures?|faces?|mains?)\b"
+    r"|\b(tetes?|visages?|mains?)\b[^.]{0,25}\ba la place\b")
+
+
+# « fais-moi une chanson sur ... ». Distinguer une demande de composition
+# d une demande de lecture est le point delicat : « mets de la musique » veut
+# dire Spotify, « compose une musique » veut dire le moteur.
+RE_MUSIQUE = re.compile(
+    r"\b(?:compose|composer|invente|inventer|ecris|ecrire|fabrique|fais|fait|"
+    r"genere|generer|cree|creer)\b[^.]{0,30}?"
+    r"\b(?:chansons?|musiques?|morceaux?|melodies?|airs?|instrumentaux?|"
+    r"instrumental|jingles?)\b")
+
+RE_SAIT_MUSIQUE = re.compile(
+    r"\b(?:tu sais|sais tu|tu peux|peux tu)\b[^.?]{0,34}"
+    r"\b(?:musiques?|chansons?|morceaux?)\b")
+
+
+# « fais-moi un clip avec la musique » : le montage, pas la composition.
+RE_CLIP = re.compile(
+    r"\b(?:monte|monter|assemble|assembler|fais|fait|cree|creer|genere)\b"
+    r"[^.]{0,30}?\bclips?\b"
+    r"|\bclips?\b[^.]{0,30}?\b(?:avec|sur)\b[^.]{0,30}?"
+    r"\b(?:musique|morceau|chanson)\b")
+
+
+# « refais-la » : relancer le meme tirage est souvent la bonne reponse a une
+# image ratee, plus efficace que de reformuler la demande.
+RE_REFAIRE = re.compile(
+    r"\b(?:refais|refaire|recommence|recommencer|relance|relancer|reessaye|"
+    r"reessayer)\b[^.]{0,20}?\b(?:la|le|ca|une autre|image|dessin)\b"
+    r"|\bune autre (?:version|image|fois)\b|\bencore une\b"
+    r"|\bpas terrible\b|\bratee?\b|\bloupee?\b")
+
+
+# « montre le specimen » : le dessin de veille, mais a la demande.
+RE_SPECIMEN = re.compile(
+    r"\b(?:montre|affiche|dessine|trace|lance|fais)\b[^.]{0,24}?"
+    r"\b(?:specimen|xenomorphe|creature|alien|bestiole|dessin de veille)\b"
+    r"|\ble specimen\b|\bimage de veille\b|\becran de veille\b")
+
+
+# « fais-moi une video de », « anime cette photo ». Le mot « clip » est
+# reserve au montage : ici on fabrique une sequence, on ne l assemble pas.
+RE_VIDEO = re.compile(
+    r"\b(?:fais|fait|fabrique|genere|generer|cree|creer|filme|filmer)\b"
+    r"[^.]{0,26}?\b(?:videos?|sequences?|animations?|films?)\b"
+    r"|(?<!dessin )\b(?:anime|animer|fais bouger|met en mouvement)\b"
+    r"|\bvideos?\s+(?:de|d|du|des|avec)\b")
+
+
+# « mets-moi en cosmonaute », « mets Paul en chevalier ». Le visage vient
+# d une photo de reference, la scene est inventee autour.
+RE_PORTRAIT = re.compile(
+    r"\b(?:mets?|mettre|met|transforme|deguise|habille|imagine|dessine)\b"
+    r"\s*(?:moi|nous|le|la|les)?\s*"
+    r"(?:\b[a-z]+\b\s+)?\ben\b\s+(.+)")
+
+# Qui : « mets-moi », ou un prenom juste apres le verbe.
+RE_QUI = re.compile(
+    r"\b(?:mets?|mettre|met|transforme|deguise|habille)\b\s+(?:moi|nous)\b"
+    r"|\b(?:mets?|mettre|met|transforme|deguise|habille)\b\s+([a-z]{3,})\s+en\b")
+
+
+# « mets le visage de Paul sur cette image » : deux images dans la phrase,
+# la premiere donne l identite, la seconde recoit.
+# La cible peut etre nommee sans le mot « image » : « ... sur humain-AVANT.png ».
+# On n exige donc plus ce mot, et l on verifie ensuite qu une cible existe.
+RE_TRANSPOSER = re.compile(
+    r"\b(?:visages?|tetes?|tronches?)\b[^.]{0,60}?\b(?:sur|dans)\b"
+    r"|\bremplace\w*\s+(?:le\s+)?visage\b"
+    r"|\btranspose\w*\b[^.]{0,30}\bvisage\b"
+    # « remplace la tete de X par celui de Y » : ni « sur » ni « dans », et le
+    # mot est « tete », pas « visage ». C est pourtant la meme demande, et
+    # elle partait vers le modele, qui peignait le nom du fichier.
+    r"|\b(?:remplace|change|echange)\w*\s+(?:la\s+|le\s+|les\s+|sa\s+|"
+    r"son\s+|ma\s+|mon\s+)?(?:tetes?|visages?|figures?)\b[^.]{0,80}?\bpar\b")
+
+
+def _transposer_visage(t):
+    """« prends le visage de Paul et mets-le sur cette image »."""
+    if not RE_TRANSPOSER.search(t):
+        return None
+
+    # Qui : un nom enregistre cite dans la phrase, sinon la premiere image
+    # nommee sert de reference.
+    from tools.portrait import visages_connus
+    qui = ""
+    for nom in visages_connus():
+        if re.search(r"\b%s\b" % re.escape(nom), t):
+            qui = nom
+            break
+
+    reference, sur = visage_et_cible(t)
+    if qui:
+        # Le nom enregistre a servi : la photo qui le porte ne doit pas etre
+        # prise pour la cible.
+        if sur and qui in sur:
+            sur = reference if reference and qui not in reference else ""
+    else:
+        if not reference:
+            # « remplace la tete par une tete de poule » tombe ici : aucune
+            # photo de reference n est nommee, donc ce n est pas une
+            # transposition mais une description a peindre. On rend la main
+            # au remplacement de zone plutot que de reclamer un nom.
+            return None
+        qui = reference
+    if not sur:
+        d = RE_DESIGNE_IMAGE.search(t)
+        sur = d.group(0) if d else "la derniere image"
+
+    force = ""
+    if re.search(r"\blegerement\b|\bun peu\b", t):
+        force = "legere"
+    elif re.search(r"\bfortement\b|\bvraiment\b|\bcompletement\b", t):
+        force = "forte"
+
+    from tools.portrait import transposer_visage
+    return transposer_visage(visage=qui, sur=sur, force=force)
+
+def _portrait(t):
+    """« mets-moi en highlander sur une falaise »."""
+    if not RE_PORTRAIT.search(t):
+        return None
+    # « mets la musique », « mets en pause » : ce ne sont pas des portraits.
+    if re.search(r"\ben pause\b|\bla musique\b|\ben route\b|\ben marche\b"
+                 r"|\ben veille\b|\ben mode\b", t):
+        return None
+
+    m = RE_PORTRAIT.search(t)
+    scene = " ".join(m.group(1).split()).strip(" ,.")
+    if len(scene) < 3:
+        return None
+
+    qui = ""
+    q = RE_QUI.search(t)
+    if q and q.group(1):
+        qui = q.group(1)
+        # Le prenom ne fait pas partie de la scene.
+        scene = re.sub(r"^%s\s+" % re.escape(qui), "", scene)
+
+    forte = bool(re.search(r"\bressemblance forte\b|\bplus ressemblant\b"
+                           r"|\bvraiment moi\b", t))
+    format_voulu = ""
+    if re.search(r"\bpaysage\b|\bhorizontal\b", t):
+        format_voulu = "paysage"
+    elif re.search(r"\bcarree?\b", t):
+        format_voulu = "carre"
+
+    # Les mots de reglage ont servi : ils n ont rien a faire dans la scene,
+    # sinon le moteur dessinerait un pompier « ressemblance forte ».
+    scene = re.sub(r"\bressemblance forte\b|\bplus ressemblant\b"
+                   r"|\bvraiment moi\b|\ben paysage\b|\ben carree?\b"
+                   r"|\bhorizontal\b|\bvertical\b", " ", scene)
+    scene = " ".join(scene.split()).strip(" ,.")
+    if len(scene) < 3:
+        return None
+
+    from tools.portrait import portrait_dans_scene
+    return portrait_dans_scene(scene=scene, qui=qui, format=format_voulu,
+                               ressemblance_forte=forte)
+
+
+def _video(t):
+    """« fais-moi une video de trois secondes d un chat, en portrait »."""
+    if not RE_VIDEO.search(t):
+        return None
+
+    # Duree : « de cinq secondes », ou en toutes lettres pour les petits
+    # nombres, que la reconnaissance vocale ecrit souvent ainsi.
+    duree = 5
+    m = re.search(r"(\d{1,2})\s*(?:secondes?|s)\b", t)
+    if m:
+        duree = int(m.group(1))
+    else:
+        mots = {"deux": 2, "trois": 3, "quatre": 4, "cinq": 5, "six": 6,
+                "sept": 7, "huit": 8, "neuf": 9, "dix": 10,
+                "quinze": 15, "vingt": 20, "trente": 30, "quarante": 40,
+                "cinquante": 50, "soixante": 60}
+        m = re.search(r"\b(%s)\s+secondes?\b" % "|".join(mots), t)
+        if m:
+            duree = mots[m.group(1)]
+
+    format_voulu = ""
+    if re.search(r"\bportrait\b|\bvertical\b|\bdebout\b", t):
+        format_voulu = "portrait"
+    elif re.search(r"\bcarree?\b", t):
+        format_voulu = "carre"
+    elif re.search(r"\bpaysage\b|\bhorizontal\b", t):
+        format_voulu = "paysage"
+
+    # Animer une image existante plutot que de partir de rien. Un nom de
+    # fichier l emporte sur une designation vague : il est plus precis.
+    image = ""
+    designees = images_designees(t)
+    image = designees[0] if designees else ""
+    m_nom = None if designees else RE_NOM_FICHIER.search(t)
+    if m_nom:
+        # L expression remonte gloutonnement les mots qui precedent le nom :
+        # « anime ma photo portrait-3.jpg » capturait le verbe avec. On rogne
+        # ce qui n appartient pas au nom du fichier.
+        image = re.sub(r"^(?:anime|animer|prends?|prend|photos?|images?|"
+                       r"fichiers?|ma|mon|mes|la|le|les|de|du|des|d|"
+                       r"partir|depuis|avec|sur)\s+", " ",
+                       m_nom.group(1), flags=re.I)
+        while True:
+            court = re.sub(r"^(?:anime|animer|prends?|prend|photos?|images?|"
+                           r"fichiers?|ma|mon|mes|la|le|les|de|du|des|d|"
+                           r"partir|depuis|avec|sur)\s+", " ", image.strip(),
+                           flags=re.I)
+            if court.strip() == image.strip():
+                break
+            image = court
+        image = image.strip()
+    if not image:
+        d = RE_DESIGNE_IMAGE.search(t)
+        if d:
+            image = d.group(0)
+
+    ecran = _premier_ecran() if _contient(t, ECRANS) else ""
+
+    # Ce qui reste apres le verbe et les reglages decrit la scene.
+    sujet = re.split(r"\b(?:videos?|sequences?|animations?|films?)\b", t, 1)
+    sujet = sujet[-1] if len(sujet) > 1 else t
+    sujet = re.sub(r"\b(?:anime|animer|fais bouger|met en mouvement)\b",
+                   " ", sujet)
+    sujet = RE_NOM_FICHIER.sub(" ", sujet)
+    sujet = RE_DESIGNE_IMAGE.sub(" ", sujet)
+    sujet = re.sub(r"\ba partir de\b|\bdepuis\b|\bavec ma\b", " ", sujet)
+    # La duree a servi : elle ne doit plus figurer dans la scene, en chiffres
+    # comme en toutes lettres, ni le « pendant » qui l introduisait.
+    sujet = re.sub(r"\b(?:pendant|durant|de|d)?\s*\d{1,2}\s*"
+                   r"(?:secondes?|s)\b", " ", sujet)
+    sujet = re.sub(r"\b(?:pendant|durant|de|d)?\s*(?:deux|trois|quatre|cinq|"
+                   r"six|sept|huit|neuf|dix|quinze|vingt|trente|"
+                   r"quarante|cinquante|soixante)\s+secondes?\b", " ", sujet)
+    sujet = re.sub(r"^\s*(?:pendant|durant)\b\s*", " ", sujet.strip())
+    sujet = re.sub(r"\b(?:en\s+)?(?:portrait|paysage|carree?|vertical|"
+                   r"horizontal)\b", " ", sujet)
+    if ecran:
+        sujet = re.sub(r"\bsur\s+(?:la|le|l|mon|ma)?\s*[^,]+$", " ", sujet)
+    sujet = re.sub(r"^\s*(?:moi|de|d|du|des|une?|le|la|les|avec|qui)\b\s*",
+                   " ", sujet.strip())
+    sujet = " ".join(sujet.split()).strip(" ,.")
+
+    if len(sujet) < 3 and not image:
+        return None
+    if len(sujet) < 3:
+        # On anime la photo sans autre consigne : un mouvement discret.
+        sujet = "subtle natural motion, slow camera push in"
+
+    from tools.video import generer_video
+    return generer_video(description=sujet, image=image, duree=duree,
+                         format=format_voulu, ecran=ecran)
+
+
+def _specimen(t):
+    """« montre-moi le specimen », « affiche l image de veille »."""
+    if not RE_SPECIMEN.search(t):
+        return None
+    # « fais-moi une image d un alien » reste une demande de generation. Mais
+    # « affiche l image de veille » n en est pas une, bien qu elle contienne
+    # le mot image : le mot « veille » ou « specimen » tranche.
+    explicite = re.search(r"\bspecimen\b|\bxenomorphe\b|\bveille\b", t)
+    if RE_IMAGE.search(t) and not explicite:
+        return None
+    duree = 24
+    m = re.search(r"(\d{1,3})\s*secondes?", t)
+    if m:
+        duree = max(6, min(int(m.group(1)), 120))
+    try:
+        import hud
+        hud.publier_specimen(duree)
+    except Exception:
+        return "L interface ne repond pas."
+    return "Specimen affiche."
+
+
+def _refaire_image(t):
+    """« refais-la », « une autre version », « genere-en une nouvelle »."""
+    if not (RE_REFAIRE.search(t) or RE_PAS_REPRENDRE.search(t)):
+        return None
+    # « fais-moi une image de X » reste une creation neuve, pas une relance.
+    if RE_IMAGE.search(t):
+        return None
+    # On ne relance que si une image a bien ete faite juste avant.
+    from tools.image import _DERNIERE, refaire_image
+    if not _DERNIERE.get("demande"):
+        return None
+    ecran = _premier_ecran() if _contient(t, ECRANS) else ""
+    return refaire_image(ecran=ecran)
+
+
+# Ce qui suit « clip avec mes ... » sans nommer un sujet : les mots de
+# quantite, et les noms des supports eux-memes.
+_HORS_THEME = {"derniere", "dernier", "dernieres", "derniers", "musique",
+               "morceau", "chanson", "recentes", "recents", "generees",
+               "generes", "toutes", "quelques", "plusieurs", "videos",
+               "video", "images", "image", "photos", "photo", "sequences",
+               "sequence", "clips", "films"}
+
+
+def _clip(t):
+    """« monte un clip avec la derniere musique et mes images »."""
+    if not RE_CLIP.search(t):
+        return None
+    sources = ""
+    if re.search(r"\b(?:images?|photos?)\b", t):
+        sources = "images"
+    elif re.search(r"\bvideos?\b|\bsequences?\b", t):
+        sources = "videos"
+
+    combien = 4
+    m = re.search(r"(\d{1,2})\s*(?:images?|photos?|videos?|sequences?)", t)
+    if m:
+        combien = int(m.group(1))
+
+    ecran = ""
+    if _contient(t, ECRANS):
+        ecran = _premier_ecran()
+
+    # « un clip avec mes videos de xenomorphe » : le mot qui suit designe la
+    # serie voulue. Les fichiers portent leur demande d origine dans leur nom,
+    # donc chercher ce mot dedans suffit a retrouver la bonne matiere.
+    theme = ""
+    motif = re.compile(r"\b(?:images?|photos?|videos?|sequences?|clips?)\s+"
+                       r"(?:de\s+|du\s+|des\s+|sur\s+|avec\s+)?"
+                       r"(?:la\s+|le\s+|les\s+|un\s+|une\s+|mes\s+|"
+                       r"mon\s+|ma\s+)?([a-z]{5,})")
+    ou = 0
+    while True:
+        m = motif.search(t, ou)
+        if not m:
+            break
+        if m.group(1) not in _HORS_THEME:
+            theme = m.group(1)
+            break
+        # « clip avec mes videos de xenomorphe » : le mot ecarte est lui-meme
+        # un support. On repart de lui, pas apres lui, sinon le sujet qui le
+        # suit n est jamais examine.
+        ou = m.start(1)
+
+    from tools.clip import monter_clip
+    return monter_clip(sources=sources, combien=combien, theme=theme,
+                       ecran=ecran)
+
+
+def _musique(t):
+    """« compose une chanson douce a la guitare sur l automne »."""
+    if RE_SAIT_MUSIQUE.search(t):
+        return ("Oui. Je compose des morceaux en local, avec ou sans paroles. "
+                "Dis-moi le style : « compose une chanson douce a la guitare ».")
+    if not RE_MUSIQUE.search(t):
+        return None
+
+    # Ce qui suit le mot « chanson » (ou son equivalent) est le style voulu.
+    coupe = re.split(r"\b(?:chansons?|musiques?|morceaux?|melodies?|airs?|"
+                     r"instrumentaux?|instrumental|jingles?)\b", t, maxsplit=1)
+    style = coupe[1] if len(coupe) > 1 else ""
+    style = re.sub(r"^\s*(?:de|d|du|des|sur|avec|dans|en|qui|pour|le|la|les|"
+                   r"un|une)\b\s*", " ", style.strip())
+
+    duree = 60
+    m = re.search(r"(\d{1,3})\s*(?:secondes?|s)\b", t)
+    if m:
+        duree = int(m.group(1))
+    else:
+        m = re.search(r"(\d{1,2})\s*(?:minutes?|min)\b", t)
+        if m:
+            duree = int(m.group(1)) * 60
+
+    ecran = ""
+    if _contient(t, ECRANS):
+        ecran = _premier_ecran()
+        style = re.sub(r"\bsur\s+(?:la|le|l|mon|ma)?\s*[^,]+$", " ", style)
+
+    style = " ".join(style.split()).strip(" ,.")
+    if len(style) < 3:
+        style = "pleasant instrumental music"
+
+    from tools.musique import generer_musique
+    return generer_musique(style=style, duree=duree, ecran=ecran)
+
+
+def _zone_demandee(t):
+    """Ce que la phrase demande de remplacer, ou None.
+
+    Extrait a part pour que la generation puisse l enchainer : creer l image,
+    puis y remplacer la zone.
+    """
+    if not RE_ZONE.search(t):
+        return None
+    # Le garde-fou demandait qu un support soit nomme. Mais « remplace la tete
+    # par une tete de poule » ne nomme rien et ne veut pourtant rien dire
+    # d autre que : sur la derniere image. La construction elle-meme suffit a
+    # lever le doute — un verbe de remplacement, une partie du corps, un
+    # complement en « par ».
+    explicite = re.search(r"\b(?:remplace|change|echange|mets?)\w*\s+"
+                          r"(?:la\s+|le\s+|les\s+|sa\s+|son\s+|ses\s+|"
+                          r"mes\s+)?(?:tetes?|visages?|figures?|mains?)\b"
+                          # « tete de lit », « tete d affiche » : la tete y est
+                          # une figure de style, pas une partie du corps.
+                          r"(?!\s+(?:de\s+lit|de\s+pont|d\s+affiche|"
+                          r"de\s+serie|de\s+liste))"
+                          r"[^.]{0,40}?\bpar\b", t)
+    if not explicite and not re.search(
+            r"\b(?:image|photo|dessin|illustration|visuel|dame|"
+            r"femme|homme|personnage|elle|lui)\b", t):
+        return None
+
+    zone = "tete"
+    if re.search(r"\bmains?\b", t):
+        zone = "mains"
+    elif re.search(r"\bvisages?|figures?\b", t):
+        zone = "visage"
+
+    m = re.search(r"\bpar\s+(.+?)(?:\s+a la place|$)", t)
+    if not m:
+        m = re.search(r"\b(?:mets?|mettre|colle)\s+(.+?)\s+a la place", t)
+    if not m:
+        return None
+    par = " ".join(m.group(1).split()).strip(" ,.")
+    par = RE_DESIGNE_IMAGE.sub(" ", par)
+    par = re.sub(r"\b(?:sur|dans|de)\s*$", " ", par.strip())
+    par = re.sub(r"^(?:une?|le|la|les|des|du|de)\s+", "", par.strip())
+    # Les consignes de style appartiennent a la creation, pas au decoupage.
+    par = re.sub(r"\ble tout en\b.*|\bfais attention\b.*|\ben photo"
+                 r"[- ]?realis\w*\b", " ", par)
+    par = " ".join(par.split()).strip(" ,.")
+    if len(par) < 3:
+        return None
+    return {"par": par, "zone": zone}
+
+
+def _remplacer_zone(t):
+    """« remplace la tete de la dame par une tete de poule »."""
+    # Si la phrase demande de CREER une image, c est la creation qui mene ;
+    # elle enchainera le remplacement elle-meme. Sans cette porte, une
+    # demande de creation retombait indefiniment sur la derniere image.
+    if RE_IMAGE.search(t) and not RE_DESIGNE_IMAGE.search(t):
+        return None
+    if re.search(r"\bnouvelle\b|\bdepuis le (?:prompt|texte)\b|"
+                 r"\bne repren\w+\b|\barrete de repren\w+\b", t):
+        return None
+
+    demande = _zone_demandee(t)
+    if demande is None:
+        return None
+
+    image = ""
+    d = RE_DESIGNE_IMAGE.search(t)
+    if d:
+        image = d.group(0)
+
+    par_mail = bool(RE_PAR_MAIL.search(t))
+    from tools.zone import remplacer_zone
+    return remplacer_zone(par=demande["par"], zone=demande["zone"],
+                          image=image, par_mail=par_mail)
+
+
+def _modifier_image(t):
+    """« transforme ma derniere photo en dessin anime ».
+
+    On separe ce qui designe l image de ce qu elle doit devenir : le mot
+    « en » marque presque toujours la frontiere entre les deux.
+    """
+    if not RE_MODIF_IMAGE.search(t):
+        return None
+    # Meme regle que pour le remplacement de zone : creer l emporte sur
+    # reprendre. « Fais-moi une photo et transforme-la en... » doit fabriquer.
+    if RE_IMAGE.search(t) and not RE_DESIGNE_IMAGE.search(t):
+        return None
+    if RE_PAS_REPRENDRE.search(t):
+        return None
+
+    par_mail = bool(RE_PAR_MAIL.search(t))
+    if par_mail:
+        t = _sans_mention_mail(t)
+
+    m = re.search(r"\b(?:modifie?|modifier|transforme|transformer|retouche|"
+                  r"retoucher|refais|refaire|reprends?|rempr?ends?|reprendre|"
+                  r"change|changer|remplace|remplacer)\b\s*(?:moi\s+)?(.+)", t)
+    if not m:
+        # « enleve la tete de l image et mets... » : le verbe porte sur le
+        # contenu, pas sur l image. Toute la phrase est alors la consigne.
+        m = re.search(r"\b(?:enleve|enlever|ajoute|ajouter)\b.*", t)
+        if not m:
+            return None
+        reste = m.group(0)
+    else:
+        reste = m.group(1)
+
+    # On cherche d abord comment l image est designee. C est plus sur que de
+    # decouper sur « en », qui manque des que la consigne n en contient pas.
+    # Un nom de fichier precis l emporte sur toute designation vague.
+    nommees = images_designees(t)
+    d = RE_DESIGNE_IMAGE.search(reste)
+    if nommees:
+        quelle = nommees[0]
+        voulu = reste
+        for nom in nommees:
+            voulu = voulu.replace(nom, " ")
+        voulu = RE_DESIGNE_IMAGE.sub(" ", voulu)
+        voulu = re.sub(r"\ben\s+", " ", voulu, count=1)
+    elif d:
+        quelle = d.group(0)
+        voulu = (reste[:d.start()] + " " + reste[d.end():])
+        voulu = re.sub(r"^\s*(?:et|,)\s*", " ", voulu)
+    else:
+        coupe = re.split(r"\ben\s+", reste, maxsplit=1)
+        quelle = coupe[0]
+        voulu = coupe[1] if len(coupe) > 1 else ""
+
+    # Les adverbes d intensite servent a la force, pas a decrire l image.
+    intensite = r"\b(?:legerement|leger|un peu|completement|fortement|" \
+                r"beaucoup|vraiment)\b"
+    quelle = re.sub(intensite, " ", quelle)
+    voulu = re.sub(intensite, " ", voulu)
+    # Le « en » de « en aquarelle » a servi de separateur : il ne fait plus
+    # partie de la description. Et retirer la designation laisse parfois une
+    # preposition orpheline.
+    voulu = re.sub(r"^\s*(?:en|vers|dans|comme)\s+", " ", voulu)
+    voulu = re.sub(r"\s+(?:de|du|des|d)\s+(?=et\b|$)", " ", voulu)
+    voulu = re.sub(r"\s+(?:de|du|des|d)\s*$", " ", voulu)
+    quelle = " ".join(quelle.split()).strip(" ,.")
+    voulu = " ".join(voulu.split()).strip(" ,.")
+
+    force = ""
+    if re.search(r"\blegerement\b|\bun peu\b|\bleger\b", t):
+        force = "legere"
+    elif re.search(r"\bcompletement\b|\bfortement\b|\bbeaucoup\b", t):
+        force = "forte"
+
+    ecran = ""
+    if _contient(t, ECRANS):
+        ecran = _premier_ecran()
+        voulu = re.sub(r"\bsur\s+(?:la|le|l|mon|ma)?\s*[^,]+$", "", voulu)
+
+    voulu = " ".join(voulu.split()).strip(" ,.")
+    if len(voulu) < 3:
+        return None
+
+    from tools.modifier_image import modifier_image
+    return modifier_image(description=voulu, image=quelle, force=force,
+                          ecran=ecran, par_mail=par_mail)
+
+
+# « envoie-la moi par mail » : le pronom remplace le nom, et aucun raccourci
+# ne reconnaissait la phrase. Le modele choisissait alors un outil au hasard.
+RE_ENVOI_PRONOM = re.compile(
+    r"\benvoie?[- ]?(?:moi|la|le|les)\b|\benvoie?[- ]?(?:moi)\s+(?:la|le)\b")
+
+
+def _image_mail(t):
+    """« envoie-moi la derniere image par mail ».
+
+    Place apres les raccourcis de generation : une demande qui fabrique ET
+    envoie doit d abord fabriquer.
+    """
+    if not RE_PAR_MAIL.search(t) or "@" in t:
+        return None
+    if not re.search(r"\benvoi", t):
+        return None
+    # Soit le nom est dit, soit un pronom y renvoie : « envoie-la moi ».
+    if not (re.search(r"\b(?:image|photo|dessin|illustration|visuel)\b", t)
+            or RE_ENVOI_PRONOM.search(t)):
+        return None
+    from tools.image import _DERNIERE, envoyer_derniere_a_soi
+    if not _DERNIERE.get("chemin"):
+        return None
+    return envoyer_derniere_a_soi()
+
+
+
 # --------------------------------------------------------------- ton MU-TH-UR
 
 # Les raccourcis renvoient des phrases toutes faites, ecrites pour Jarvis.
@@ -1184,11 +2176,26 @@ def _au_ton_mere(reponse):
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
 ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
-          _spotify_appareil,
-          _spotify, _youtube, _diffuser_service, _chaine_tv,
-          _streaming, _plex, _plex_sans_ecran, _musique_sans_source,
-          _ecran_lecture, _media, _courrier, _application, _film,
-          _heure, _meteo, _minuteur, _stats, _capture, _web)
+          _spotify_appareil, _portrait, _clip, _video, _musique,
+          _spotify, _youtube, _diffuser_service, _chaine_tv, _streaming,
+          _plex, _plex_sans_ecran, _musique_sans_source, _ecran_lecture,
+          _specimen, _refaire_image, _transposer_visage, _remplacer_zone,
+          _modifier_image, _media, _courrier, _application, _film,
+          _heure, _meteo, _minuteur, _stats, _capture, _web, _image,
+          _image_mail)
+
+
+
+def _tracer(quoi, detail=""):
+    """Une ligne dans le journal, sans jamais faire echouer la demande."""
+    try:
+        # Passer par le journal maison : le logger n a de destination que si
+        # obtenir() l a configure, et un logger muet ne se remarque pas.
+        from core.journal import obtenir
+        obtenir().info("raccourci %s%s", quoi,
+                       (" : " + detail) if detail else "")
+    except Exception:
+        pass
 
 
 def essayer(question):
@@ -1202,10 +2209,25 @@ def essayer(question):
     for etape in ETAPES:
         try:
             reponse = etape(t)
-        except Exception:
-            # Un raccourci qui casse ne doit jamais bloquer Jarvis :
-            # on laisse simplement le LLM prendre le relais.
+        except LookupError as absente:
+            # Un nom d image donne mais introuvable : on le dit, plutot que
+            # de laisser le modele improviser sur autre chose.
+            return _au_ton_mere(
+                "Je ne trouve pas d image nommee « %s ». "
+                "Verifie le nom, ou dis-moi dans quel dossier elle est."
+                % str(absente))
+        except Exception as panne:
+            # Un raccourci qui casse ne doit jamais bloquer Jarvis : on laisse
+            # le modele prendre le relais. Mais on le dit — sans cette trace,
+            # une panne ici ressemble a une phrase mal comprise, et l on
+            # cherche des heures du mauvais cote.
+            _tracer("panne dans %s" % getattr(etape, "__name__", "?"),
+                    "%s: %s" % (type(panne).__name__, str(panne)[:120]))
             continue
         if reponse:
+            _tracer(getattr(etape, "__name__", "?"), t[:160])
             return _au_ton_mere(reponse)
+    # Aucun raccourci : la demande part vers le modele, qui devra deviner les
+    # arguments. C est la que naissent les « ecran = vacances 21-04-07 058.jpg ».
+    _tracer("aucun, le modele prend la main", t[:160])
     return None
