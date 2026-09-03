@@ -1845,7 +1845,19 @@ def _video(t):
                    r"horizontal)\b", " ", sujet)
     if ecran:
         sujet = re.sub(r"\bsur\s+(?:la|le|l|mon|ma)?\s*[^,]+$", " ", sujet)
-    sujet = re.sub(r"^\s*(?:moi|de|d|du|des|une?|le|la|les|avec|qui)\b\s*",
+    # Tout ce qui s adresse a Jarvis plutot qu au moteur doit disparaitre :
+    # une consigne n est pas une description. Sans cela, « une fois realisee
+    # tu me l envoies par mail » partait au modele, qui essayait de la
+    # dessiner.
+    sujet = re.split(
+        r"\b(?:une\s+foi\w*|quand\s+(?:c\s*est|tu\s+as|ce\s+sera)|des\s+que|"
+        r"puis\s+tu\s+m|et\s+tu\s+m|tu\s+me\s+l|envoie\s*(?:s|z)?\s*(?:moi|la|le)|"
+        r"envoi\s*(?:s|z)?\s*(?:moi|la|le))\b", sujet, 1)[0]
+    sujet = re.sub(r"\bdurees?\b[^0-9]{0,16}\d{1,3}[a-z ]{0,12}", " ", sujet)
+    sujet = re.sub(r"\b(?:par|sur)\s+(?:mail|courriel|e?mail)\b", " ", sujet)
+    sujet = re.sub(r"\b(?:merci|stp|s\s*il\s*te\s*plait)\b", " ", sujet)
+
+    sujet = re.sub(r"^\s*(?:moi|de|d|du|des|une?|le|la|les|avec|qui|ou)\b\s*",
                    " ", sujet.strip())
     sujet = " ".join(sujet.split()).strip(" ,.")
 

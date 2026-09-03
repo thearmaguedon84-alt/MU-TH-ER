@@ -605,13 +605,23 @@ def _enchainer(description, duree, largeur, hauteur, depart, ecran,
     # deforme en deux relais. Une image que nous venons de generer n en porte
     # aucune : y revenir toutes les cinq secondes se voit comme un raccord
     # rate, et c est precisement ce qu il a constate.
+    # Ce qui decide n est pas d ou vient l image, c est ce qu elle contient.
+    # Un visage humain se reconnait, donc se perd : au deuxieme relais, ce
+    # n est plus la meme personne. Un decor, lui, peut deriver sans que
+    # personne ne s en aperçoive. On rappelle donc l original quand il y a
+    # quelqu un dedans, creation de Jarvis ou photo de famille.
     fournie = False
     if depart is not None and image:
         try:
-            from core.dossiers import est_une_creation
             from tools.modifier_image import _trouver
             source = _trouver(image)
-            fournie = not (source and est_une_creation(source))
+            if source:
+                from tools.portrait import _visages_dans
+                combien, part, _, _ = _visages_dans(source)
+                fournie = bool(combien)
+                if not combien:
+                    from core.dossiers import est_une_creation
+                    fournie = not est_une_creation(source)
         except Exception:
             fournie = True
     # Les images de relais ne servent qu au chainage : on ne les garde pas.
@@ -657,8 +667,10 @@ def _enchainer(description, duree, largeur, hauteur, depart, ecran,
             vue = travail / f"relais-{i:02d}.png"
             if _derniere_image(bout, vue) is None:
                 break
-            if fournie:
-                # On repart toujours de l original, jamais de sa copie.
+            if fournie and (i + 1) % RAPPEL == 0:
+                # On revient a l original : on perd le raccord du mouvement,
+                # on garde le visage. Toutes les RAPPEL reprises seulement,
+                # sinon la sequence recommence sans cesse au meme endroit.
                 amorce = depart
                 continue
             if reference is None:
