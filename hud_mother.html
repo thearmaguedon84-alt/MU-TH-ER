@@ -203,6 +203,11 @@
   #specimen canvas { position: absolute; left: 4%; top: 50%;
     transform: translateY(-54%); width: min(60vw, 104vh);
     image-rendering: pixelated; }
+    /* Seconde toile, pour le niveau du chargeur. Superposee a la premiere :
+       le trace s anime sur la sienne et n a pas a etre refait a chaque point
+       de pourcentage. */
+    #specimen #spec-niveau { position: absolute; pointer-events: none; }
+
 
   /* Au-dessus du bouton de son, pas par-dessus : ils se recouvraient, et on
      cliquait l un en croyant cliquer l autre. */
@@ -332,6 +337,7 @@
   <div class="haut">***** MU/TH/UR 6000 *********<span class="droite"
        id="spec-date"></span></div>
   <canvas id="spec-toile" width="300" height="190"></canvas>
+  <canvas id="spec-niveau" width="300" height="190"></canvas>
   <div class="fiche" id="spec-fiche"></div>
   <div class="travail jaugep">
     <div class="etiquette" id="jp-etiquette">NIVEAU D AVANCEMENT</div>
@@ -1179,7 +1185,14 @@ if (zoneImage) {
       if (!specimen.classList.contains("travail")) {
         const fiche = document.getElementById("spec-fiche");
         ficheDuReleve = fiche ? fiche.textContent : "";
+        // L arme de bord porte un chargeur : c est elle qui sert d ecran de
+        // travail. Les autres releves restent pour les temps morts.
+        const arme = RELEVES.findIndex((r) => r.cle === "m41a");
+        if (arme >= 0) {
+          indiceReleve = (arme - 1 + RELEVES.length) % RELEVES.length;
+        }
         avancerReleve();
+        reservoirCourant = (RELEVES[indiceReleve] || {}).reservoir || null;
         tracerProgressif(5);
         specimen.classList.add("travail");
         specimen.classList.add("visible");
@@ -1192,6 +1205,7 @@ if (zoneImage) {
       blocs.forEach((b, i) => b.classList.toggle("plein", i < pleins));
       const pc = document.getElementById("jp-pourcent");
       if (pc) pc.textContent = pourcent + "%";
+      majReservoir(pourcent);
       const et = document.getElementById("jp-etiquette");
       if (et) et.textContent = (ev.nom || "TRAVAIL").toUpperCase() +
         (ev.etape ? " · SEGMENT " + ev.etape : "");
@@ -1202,9 +1216,49 @@ if (zoneImage) {
     function replierTravail() {
       if (!specimen || !specimen.classList.contains("travail")) return;
       specimen.classList.remove("travail", "visible", "estime");
+      reservoirCourant = null;
+      majReservoir(0);
       const fiche = document.getElementById("spec-fiche");
       if (fiche && ficheDuReleve) fiche.textContent = ficheDuReleve;
       travailEnCours = null;
+    }
+
+    /* --- Niveau du chargeur ---------------------------------------------
+       Le releve porte la forme de son reservoir ; on la remplit par le bas,
+       proportionnellement a l avancement. Sur une toile a part, pour ne pas
+       interrompre le trace. */
+    let reservoirCourant = null;
+
+    function placerToileNiveau() {
+      const toile = document.getElementById("spec-toile");
+      const niveau = document.getElementById("spec-niveau");
+      if (!toile || !niveau) return;
+      const s = getComputedStyle(toile);
+      ["left", "top", "width", "height", "transform"].forEach(
+        (p) => { niveau.style[p] = s[p]; });
+    }
+
+    function majReservoir(pourcent) {
+      const niveau = document.getElementById("spec-niveau");
+      if (!niveau) return;
+      const c = niveau.getContext("2d");
+      c.clearRect(0, 0, niveau.width, niveau.height);
+      if (!reservoirCourant || !reservoirCourant.length) return;
+      placerToileNiveau();
+
+      const ys = reservoirCourant.map((p) => p[1]);
+      const haut = Math.min(...ys), bas = Math.max(...ys);
+      const rempli = (bas - haut) * Math.max(0, Math.min(100, pourcent)) / 100;
+
+      c.save();
+      c.beginPath();
+      reservoirCourant.forEach((p, i) =>
+        i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]));
+      c.closePath();
+      c.clip();
+      c.fillStyle = "rgba(53, 255, 106, .55)";
+      c.fillRect(0, bas - rempli, niveau.width, rempli);
+      c.restore();
     }
 </script>
 
