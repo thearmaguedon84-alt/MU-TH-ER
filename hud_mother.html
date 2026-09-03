@@ -267,6 +267,9 @@
       opacity: 0; transition: opacity .35s; pointer-events: none; z-index: 60;
     }
     #jauge.visible { opacity: 1; }
+    /* Deux jauges pour le meme chiffre, c est une de trop : quand le plein
+       ecran est affiche, la barre du bas s efface. */
+    #specimen.travail.visible ~ #jauge { opacity: 0; }
     #jauge .titre {
       display: flex; justify-content: space-between;
       font-size: 12px; margin-bottom: 6px; text-transform: uppercase;
@@ -293,8 +296,11 @@
     #specimen .travail { display: none; }
     #specimen.travail .travail { display: block; }
     #specimen .jaugep {
-      position: absolute; left: 3.5%; width: 62%; bottom: 22%;
+      position: absolute; left: 3.5%; width: 62%; bottom: 18%;
       border: 1px dashed rgba(53, 255, 106, .5); padding: 10px 14px 8px;
+      /* Fond plein : sans lui, la bretelle de l arme traverse la barre et
+         l on ne lit plus ni l une ni l autre. */
+      background: #000;
     }
     #specimen .jaugep .etiquette {
       text-align: center; font-size: 13px; letter-spacing: 2px;
@@ -745,6 +751,9 @@ function tracerProgressif(secondes) {
 }
 
 function montrerSpecimen(secondes) {
+  // Pendant un travail, l ecran appartient au travail : la rotation des
+  // releves changeait le dessin sous nos yeux et remplacait l arme.
+  if (specimen.classList.contains("travail")) return;
   const d = new Date();
   const deuxChiffres = (n) => String(n).padStart(2, "0");
   document.getElementById("spec-date").textContent =
@@ -1097,15 +1106,17 @@ if (zoneImage) {
     // Les blocs sont crees une fois : en recreer vingt a chaque message ferait
     // clignoter la barre a chaque point de pourcentage.
     const JAUGE_BLOCS = 20;
-    (function preparerJauge() {
-      const hote = document.getElementById("jauge-blocs");
-      if (!hote) return;
-      for (let i = 0; i < JAUGE_BLOCS; i++) {
+    // Les blocs se creent au premier affichage, pas au chargement : selon la
+    // page, ce script s execute avant que la balise existe, et l on se
+    // retrouvait avec une barre vide sans le moindre message d erreur.
+    function preparerJauge(hote, combien) {
+      if (!hote || hote.children.length) return;
+      for (let i = 0; i < combien; i++) {
         const b = document.createElement("div");
         b.className = "bloc";
         hote.appendChild(b);
       }
-    })();
+    }
 
     let jaugeEffacement = null;
     function majJauge(ev) {
@@ -1117,6 +1128,7 @@ if (zoneImage) {
       }
       clearTimeout(jaugeEffacement);
       const pourcent = Math.max(0, Math.min(100, ev.v | 0));
+      preparerJauge(document.getElementById("jauge-blocs"), JAUGE_BLOCS);
       const blocs = boite.querySelectorAll(".bloc");
       const pleins = Math.round((pourcent / 100) * blocs.length);
       blocs.forEach((b, i) => b.classList.toggle("plein", i < pleins));
@@ -1137,15 +1149,6 @@ if (zoneImage) {
        remplace sa fiche par l etat du travail. Quand l equipage parle, tout
        se replie — c est lui qui decide de ce que l ecran montre. */
     const JP_BLOCS = 22;
-    (function preparerJaugePleine() {
-      const hote = document.getElementById("jp-blocs");
-      if (!hote) return;
-      for (let i = 0; i < JP_BLOCS; i++) {
-        const b = document.createElement("div");
-        b.className = "bloc";
-        hote.appendChild(b);
-      }
-    })();
 
     let travailEnCours = null;
     let ficheDuReleve = "";
@@ -1200,6 +1203,7 @@ if (zoneImage) {
       }
       specimen.classList.toggle("estime", !ev.sur);
       const pourcent = Math.max(0, Math.min(100, ev.v | 0));
+      preparerJauge(document.getElementById("jp-blocs"), JP_BLOCS);
       const blocs = specimen.querySelectorAll(".jaugep .bloc");
       const pleins = Math.round((pourcent / 100) * blocs.length);
       blocs.forEach((b, i) => b.classList.toggle("plein", i < pleins));
