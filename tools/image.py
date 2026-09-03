@@ -85,6 +85,51 @@ _FRANCAIS = re.compile(
     re.I)
 
 
+
+# Ce que l on dit au photographe, et qui n a rien a faire dans une legende.
+_ADRESSE = re.compile(
+    r"\b(?:et\s+)?(?:je\s+(?:dois|doit|veux|voudrais|souhaite)|on\s+(?:doit|"
+    r"veut)|il\s+faut(?:\s+que|\s+qu\s*on)?|tu\s+(?:dois|doit))\s+"
+    r"(?:pouvoir\s+)?(?:le|la|les|l\s*)?\s*(?:voir|apercevoir|distinguer)?"
+    r"\s*,?\s*", re.I)
+
+# Le cadrage, dit comme un photographe le dirait.
+_CADRAGES = [
+    (r"de\s+la\s+t[eê]tes?\s+au[x]?\s+pieds?", "full body shot, head to toe, entire body visible"),
+    (r"\ben\s+entier\b|\bcorps\s+entier\b|\ben\s+pied\b|\ben\s+entiere?\b",
+     "full body shot, entire body visible"),
+    (r"\bplan\s+large\b|\bvue\s+d\s*ensemble\b", "wide shot"),
+    (r"\bgros\s+plan\b|\bplan\s+rapproch[eé]\b", "close-up shot"),
+    (r"\bde\s+face\b|\bvu\s+de\s+face\b", "front view, facing the viewer"),
+    (r"\bde\s+profil\b", "side view, profile"),
+    (r"\bde\s+dos\b", "seen from behind, back view"),
+    (r"\bde\s+haut\b|\bvue\s+de\s+dessus\b", "top-down view"),
+    (r"\bde\s+bas\b|\bcontre\s*-?\s*plong[eé]e\b", "low angle view"),
+]
+
+
+def _cadrage(texte):
+    """Sort le cadrage de la phrase et le redit en termes de photographe.
+
+    Rend la description nettoyee et les mentions techniques a mettre en fin
+    de legende, la ou le moteur les attend.
+    """
+    reste, mentions = texte or "", []
+    for motif, terme in _CADRAGES:
+        if re.search(motif, reste, re.I):
+            reste = re.sub(motif, " ", reste, flags=re.I)
+            if terme not in mentions and not (
+                    terme.startswith('full body')
+                    and any(m.startswith('full body') for m in mentions)):
+                mentions.append(terme)
+    reste = _ADRESSE.sub(" ", reste)
+    # Un decor est un lieu ; le dire ainsi evite que le moteur peigne le decor
+    # et oublie le sujet.
+    reste = re.sub(r"\bdans\s+un\s+d[eé]cor[dt]?\s+d(?:e|u|es|\s*un\s*)\s*",
+                   "inside a ", reste, flags=re.I)
+    reste = re.sub(r"\s{2,}", " ", reste).strip(" ,;.")
+    return reste, mentions
+
 def _en_anglais(texte):
     """Traduit une demande en anglais si elle ne l est pas deja.
 
@@ -324,7 +369,10 @@ def generer_image(description: str, format: str = "", ecran: str = "",
     if not description:
         return "Que veux-tu que je represente ?"
 
+    description, mentions = _cadrage(description)
     description = _en_anglais(description)
+    if mentions:
+        description = description + ", " + ", ".join(mentions)
 
     if not _demarrer_moteur():
         return ("Le moteur d images ne repond pas. Verifie qu il est installe "

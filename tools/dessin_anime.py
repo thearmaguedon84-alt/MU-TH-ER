@@ -331,13 +331,66 @@ def _detourer(source, cible):
     return cible
 
 
-def _bouche(decoupage):
-    """Ou se trouve la bouche, en fraction de la hauteur du decoupage.
+def _yeux(alpha, rgb, H, L):
+    """Les deux ovales clairs du visage : le repere le plus sur du dessin.
 
-    Le visage est la plus grande tache claire du haut ; la bouche se tient aux
-    trois quarts de sa hauteur, au milieu. Mesure sur le dessin plutot que
-    supposition : d un personnage a l autre, la tete n est pas a la meme
-    hauteur.
+    On ne cherche pas une couleur mais un rang. Le haut d un personnage est
+    fait de deux grands tons — sa peau, et le blanc de ses yeux — et le
+    second est toujours le plus clair des deux. Le seuil se regle ainsi sur
+    chaque dessin : le creme de Cartman est plus sombre que la peau d Annie,
+    et aucune valeur fixe ne pouvait les servir tous les deux.
+    """
+    import numpy as np
+    from scipy import ndimage
+
+    dedans = (alpha > 0)
+    dedans[int(H * 0.62):, :] = False
+    clairs = dedans & (rgb.min(axis=2) > 110)
+    if clairs.sum() < 40:
+        return None
+
+    # Les tons dominants du visage, comptes a la grosse.
+    gros = (rgb[clairs] // 24 * 24).astype(np.int16)
+    vus, combien = np.unique(gros, axis=0, return_counts=True)
+    ordre = np.argsort(-combien)
+    tons = [(vus[i], int(combien[i])) for i in ordre[:6]
+            if combien[i] > clairs.sum() * 0.04]
+    if not tons:
+        return None
+    # Le plus clair de ces tons est le blanc des yeux ; le plus repandu, la
+    # peau. Quand il n y en a qu un, le visage n a pas d yeux visibles.
+    ton = max(tons, key=lambda t: int(t[0].min()))[0]
+    if len(tons) > 1 and int(ton.min()) <= int(tons[0][0].min()):
+        return None
+
+    blanc = clairs & (np.abs(rgb - ton).max(axis=2) < 34)
+    marques, n = ndimage.label(blanc)
+    if not n:
+        return None
+    boites = []
+    for i, (fy, fx) in enumerate(ndimage.find_objects(marques), start=1):
+        aire = int((marques[fy, fx] == i).sum())
+        if aire < max(20, H * L * 0.0012):
+            continue
+        boites.append((aire, fy.start, fy.stop, fx.start, fx.stop))
+    if not boites:
+        return None
+    boites.sort(reverse=True)
+    garde = [boites[0]]
+    milieu = (boites[0][1] + boites[0][2]) / 2
+    for b in boites[1:3]:
+        if abs((b[1] + b[2]) / 2 - milieu) < (boites[0][2] - boites[0][1]):
+            garde.append(b)
+    return (min(b[1] for b in garde), max(b[2] for b in garde),
+            min(b[3] for b in garde), max(b[4] for b in garde))
+
+def _bouche(decoupage):
+    """Ou se trouve la bouche, en fraction du decoupage.
+
+    On part des yeux — deux ovales blancs, sans equivoque — et l on ne
+    cherche la bouche que dans la bande posee juste dessous, a leur largeur.
+    Ailleurs, un dessin est plein de taches sombres qui n en sont pas : un nez,
+    un col, des mains, un lettrage sur une veste.
     """
     try:
         import numpy as np
@@ -347,23 +400,26 @@ def _bouche(decoupage):
         a = np.asarray(Image.open(decoupage).convert("RGBA"))
         alpha, rgb = a[..., 3], a[..., :3].astype(np.int16)
         H, L = alpha.shape
-        clair = ((alpha > 0) & (rgb.min(axis=2) > 165)
-                 & (abs(rgb[..., 0] - rgb[..., 2]) < 80))
-        clair[int(H * 0.55):, :] = False
-        etiquettes, combien = ndimage.label(clair)
-        if not combien:
+
+        oeil = _yeux(alpha, rgb, H, L)
+        if oeil is None:
             return None
-        tailles = ndimage.sum(clair, etiquettes, range(1, combien + 1))
-        ys, xs = np.where(etiquettes == int(np.argmax(tailles)) + 1)
-        hauteur = ys.max() - ys.min()
-        if hauteur < H * 0.08:
+        oy1, oy2, ox1, ox2 = oeil
+        haut, large = max(1, oy2 - oy1), max(1, ox2 - ox1)
+
+        # Une veste blanche n est pas un oeil : si la tache est aussi haute
+        # qu un tiers du dessin, ce n est pas un visage qu on a trouve.
+        if haut > H * 0.35 or large > L * 0.75:
             return None
-        return {"x": float((xs.min() + xs.max()) / 2 / L),
-                "y": float((ys.min() + hauteur * 0.74) / H),
-                "l": float((xs.max() - xs.min()) * 0.30 / L)}
+
+        # La bouche se tient juste sous les yeux, dans leur largeur. Mesure
+        # sur les six visages ou elle est dessinee : un tiers de la hauteur
+        # des yeux plus bas, et jamais plus.
+        return {"x": float((ox1 + ox2) / 2 / L),
+                "y": float((oy2 + haut * 0.35) / H),
+                "l": float(large * 0.34 / L)}
     except Exception:
         return None
-
 
 def _cutout(nom, description=""):
     """Le decoupage d un personnage, fabrique une fois puis conserve."""
@@ -692,14 +748,27 @@ def _plan_papier(exe, decor, distribution, repliques, sons, cible):
     # Les personnages, poses au sol, repartis sur la largeur.
     poses = []
     noms = list(distribution.keys())
+    ouverts = [Image.open(distribution[n][0]).convert("RGBA") for n in noms]
+
+    # Une hauteur commune, mais reduite tant que la bande deborde : a cinq
+    # personnages, la taille d un seul les faisait se chevaucher et sortir du
+    # cadre. On les veut alignes et entiers, pas empiles.
+    haut = int(H * 0.55)
+    while haut > H * 0.20:
+        large = sum(max(1, int(o.width * haut / o.height)) for o in ouverts)
+        if large <= L * 0.88:
+            break
+        haut -= 6
+
+    tailles = [(max(1, int(o.width * haut / o.height)), haut) for o in ouverts]
+    total = sum(w for w, _ in tailles)
+    ecart = (L - total) / (len(noms) + 1)
+    curseur = ecart
     for i, nom in enumerate(noms):
-        decoupage, repere = distribution[nom]
-        img = Image.open(decoupage).convert("RGBA")
-        haut = int(H * 0.58)
-        img = img.resize((max(1, int(img.width * haut / img.height)), haut),
-                         Image.LANCZOS)
-        x = int(L * (i + 1) / (len(noms) + 1) - img.width / 2)
-        poses.append((nom, img, x, H - haut - int(H * 0.06), repere))
+        img = ouverts[i].resize(tailles[i], Image.LANCZOS)
+        poses.append((nom, img, int(curseur),
+                      H - img.height - int(H * 0.08), distribution[nom][1]))
+        curseur += img.width + ecart
 
     travail = cible.parent / (cible.stem + "-images")
     travail.mkdir(parents=True, exist_ok=True)
