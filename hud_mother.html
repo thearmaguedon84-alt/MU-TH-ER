@@ -1192,7 +1192,7 @@ if (zoneImage) {
           indiceReleve = (arme - 1 + RELEVES.length) % RELEVES.length;
         }
         avancerReleve();
-        reservoirCourant = (RELEVES[indiceReleve] || {}).reservoir || null;
+        compteurCourant = (RELEVES[indiceReleve] || {}).compteur || null;
         tracerProgressif(5);
         specimen.classList.add("travail");
         specimen.classList.add("visible");
@@ -1205,7 +1205,7 @@ if (zoneImage) {
       blocs.forEach((b, i) => b.classList.toggle("plein", i < pleins));
       const pc = document.getElementById("jp-pourcent");
       if (pc) pc.textContent = pourcent + "%";
-      majReservoir(pourcent);
+      majCompteur(pourcent);
       const et = document.getElementById("jp-etiquette");
       if (et) et.textContent = (ev.nom || "TRAVAIL").toUpperCase() +
         (ev.etape ? " · SEGMENT " + ev.etape : "");
@@ -1216,18 +1216,19 @@ if (zoneImage) {
     function replierTravail() {
       if (!specimen || !specimen.classList.contains("travail")) return;
       specimen.classList.remove("travail", "visible", "estime");
-      reservoirCourant = null;
-      majReservoir(0);
+      compteurCourant = null;
+      majCompteur(0);
       const fiche = document.getElementById("spec-fiche");
       if (fiche && ficheDuReleve) fiche.textContent = ficheDuReleve;
       travailEnCours = null;
     }
 
-    /* --- Niveau du chargeur ---------------------------------------------
-       Le releve porte la forme de son reservoir ; on la remplit par le bas,
-       proportionnellement a l avancement. Sur une toile a part, pour ne pas
-       interrompre le trace. */
-    let reservoirCourant = null;
+    /* --- Compteur de l arme ---------------------------------------------
+       Le petit afficheur pose sur le flanc, celui qui compte les munitions.
+       Il monte avec l avancement, comme la barre du bas. Dessine sur la toile
+       superposee : sinon il faudrait refaire tout le trace a chaque point de
+       pourcentage. */
+    let compteurCourant = null;
 
     function placerToileNiveau() {
       const toile = document.getElementById("spec-toile");
@@ -1238,28 +1239,33 @@ if (zoneImage) {
         (p) => { niveau.style[p] = s[p]; });
     }
 
-    function majReservoir(pourcent) {
+    function majCompteur(pourcent) {
       const niveau = document.getElementById("spec-niveau");
       if (!niveau) return;
       const c = niveau.getContext("2d");
       c.clearRect(0, 0, niveau.width, niveau.height);
-      if (!reservoirCourant || !reservoirCourant.length) return;
+      if (!compteurCourant) return;
       placerToileNiveau();
 
-      const ys = reservoirCourant.map((p) => p[1]);
-      const haut = Math.min(...ys), bas = Math.max(...ys);
-      const rempli = (bas - haut) * Math.max(0, Math.min(100, pourcent)) / 100;
+      const z = compteurCourant;
+      const v = Math.max(0, Math.min(100, Math.round(pourcent)));
 
+      // Le cadre de l afficheur, puis le nombre dedans.
       c.save();
-      c.beginPath();
-      reservoirCourant.forEach((p, i) =>
-        i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]));
-      c.closePath();
-      c.clip();
-      c.fillStyle = "rgba(53, 255, 106, .55)";
-      c.fillRect(0, bas - rempli, niveau.width, rempli);
+      c.fillStyle = "rgba(0, 0, 0, .85)";
+      c.fillRect(z.x, z.y, z.l, z.h);
+      c.strokeStyle = "#35ff6a";
+      c.lineWidth = 1;
+      c.strokeRect(z.x + 0.5, z.y + 0.5, z.l - 1, z.h - 1);
+      c.fillStyle = "#35ff6a";
+      c.font = "bold " + Math.round(z.h * 0.72) + 'px "Courier New", monospace';
+      c.textAlign = "center";
+      c.textBaseline = "middle";
+      c.fillText(String(v).padStart(2, "0"),
+                 z.x + z.l / 2, z.y + z.h / 2 + 1);
       c.restore();
     }
+
 </script>
 
   <div id="jauge">
