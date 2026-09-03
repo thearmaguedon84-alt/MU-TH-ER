@@ -55,6 +55,21 @@ def en_cours():
     return d
 
 
+
+def morceau(fait, total):
+    """Note qu on en est au morceau `fait` sur `total`.
+
+    Un rendu long est fait de segments, et le moteur ne connait que celui qu il
+    calcule : sans cette note, la jauge repartirait de zero a chaque segment.
+    """
+    try:
+        d = json.loads(JETON.read_text(encoding="utf-8"))
+        d["fait"], d["total"] = int(fait), int(total)
+        JETON.write_text(json.dumps(d), encoding="utf-8")
+    except Exception:
+        pass
+
+
 def libelle(d=None):
     """Une phrase disant ce qui tourne, pour l annoncer."""
     d = d or en_cours()

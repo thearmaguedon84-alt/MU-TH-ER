@@ -214,6 +214,23 @@
   #image-faite img { max-width: 88vw; max-height: 76vh; border: 1px solid #12452a; }
   #image-faite .legende { font: 400 13px/1.5 "Courier New", monospace;
     color: #35ff6a; max-width: 80vw; text-align: center; }
+
+    /* Jauge d avancement : meme principe que sur MU-TH-UR, aux couleurs d ici. */
+    #jauge {
+      position: fixed; left: 50%; transform: translateX(-50%);
+      bottom: 16px; width: min(560px, 86vw);
+      padding: 8px 12px; border-radius: 10px;
+      background: rgba(12, 14, 20, .88); border: 1px solid rgba(255,255,255,.12);
+      color: #e8ecf5; font-size: 12px;
+      opacity: 0; transition: opacity .35s; pointer-events: none; z-index: 60;
+    }
+    #jauge.visible { opacity: 1; }
+    #jauge .titre { display: flex; justify-content: space-between; margin-bottom: 6px;
+                    opacity: .8; }
+    #jauge .blocs { display: flex; gap: 2px; height: 10px; }
+    #jauge .bloc { flex: 1; border-radius: 2px; background: rgba(255,255,255,.10); }
+    #jauge .bloc.plein { background: #6ea8fe; }
+    #jauge.estime .bloc.plein { background: rgba(110,168,254,.42); }
 </style>
 </head>
 <body>
@@ -539,6 +556,7 @@ function appliquer(ev) {
         location.href = "/mother";
       }
       break;
+    case "avancement": majJauge(ev); break;
     case "outil":
       ajouterLigne(
         `⚙ <b>${echap(ev.nom)}</b>${ev.detail ? " · " + echap(ev.detail) : ""}`,
@@ -709,6 +727,51 @@ if (zoneImage) {
   zoneImage.addEventListener("click", () => zoneImage.classList.remove("visible"));
 }
 
+
+    // --- Jauge d avancement -------------------------------------------------
+    // Les blocs sont crees une fois : en recreer vingt a chaque message ferait
+    // clignoter la barre a chaque point de pourcentage.
+    const JAUGE_BLOCS = 20;
+    (function preparerJauge() {
+      const hote = document.getElementById("jauge-blocs");
+      if (!hote) return;
+      for (let i = 0; i < JAUGE_BLOCS; i++) {
+        const b = document.createElement("div");
+        b.className = "bloc";
+        hote.appendChild(b);
+      }
+    })();
+
+    let jaugeEffacement = null;
+    function majJauge(ev) {
+      const boite = document.getElementById("jauge");
+      if (!boite) return;
+      if (ev.v === null || ev.v === undefined) {
+        boite.classList.remove("visible");
+        return;
+      }
+      clearTimeout(jaugeEffacement);
+      const pourcent = Math.max(0, Math.min(100, ev.v | 0));
+      const blocs = boite.querySelectorAll(".bloc");
+      const pleins = Math.round((pourcent / 100) * blocs.length);
+      blocs.forEach((b, i) => b.classList.toggle("plein", i < pleins));
+      const quoi = document.getElementById("jauge-quoi");
+      if (quoi) quoi.textContent = ev.nom || "TRAVAIL";
+      const etape = document.getElementById("jauge-etape");
+      if (etape) etape.textContent = ev.etape ? "SEGMENT " + ev.etape : (ev.detail || "");
+      const pc = document.getElementById("jauge-pourcent");
+      if (pc) pc.textContent = pourcent + "%";
+      boite.classList.toggle("estime", !ev.sur);
+      boite.classList.add("visible");
+      // Filet de securite : si plus rien n arrive, la jauge s efface seule.
+      jaugeEffacement = setTimeout(() => boite.classList.remove("visible"), 90000);
+    }
 </script>
+
+  <div id="jauge">
+    <div class="titre"><span id="jauge-quoi">Travail</span>
+      <span><span id="jauge-etape"></span> <span id="jauge-pourcent">0%</span></span></div>
+    <div class="blocs" id="jauge-blocs"></div>
+  </div>
 </body>
 </html>

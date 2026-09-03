@@ -121,6 +121,37 @@
     background: transparent; color: #2ee0ff; border: 1px solid #17384c;
     border-radius: 20px; font-size: 13px; padding: 7px 13px;
     white-space: nowrap; font-family: "Courier New", monospace; }
+
+    /* Jauge d avancement, sur le modele de la barre de munitions du terminal.
+       Elle n apparait que pendant un travail long : une jauge a zero en
+       permanence n est plus qu un meuble. */
+    #jauge {
+      position: fixed; left: 50%; transform: translateX(-50%);
+      bottom: 18px; width: min(680px, 88vw);
+      border: 1px dashed rgba(74, 246, 38, .55);
+      padding: 8px 12px 6px; background: rgba(0, 0, 0, .82);
+      font-family: inherit; color: #4af626; letter-spacing: .06em;
+      opacity: 0; transition: opacity .35s; pointer-events: none; z-index: 60;
+    }
+    #jauge.visible { opacity: 1; }
+    #jauge .titre {
+      display: flex; justify-content: space-between;
+      font-size: 12px; margin-bottom: 6px; text-transform: uppercase;
+    }
+    #jauge .blocs { display: flex; gap: 3px; align-items: stretch; height: 20px; }
+    #jauge .bloc {
+      flex: 1; border: 1px solid rgba(74, 246, 38, .5); background: transparent;
+    }
+    #jauge .bloc.plein { background: #2f9e1c; border-color: #4af626; }
+    /* Creux : le moteur ne rend pas compte de lui-meme, on estime. */
+    #jauge.estime .bloc.plein { background: transparent; border-color: #4af626; }
+    #jauge .bas {
+      display: flex; justify-content: space-between;
+      font-size: 10px; opacity: .65; margin-top: 3px;
+    }
+    #jauge .pourcent { font-size: 20px; margin-left: 10px; min-width: 62px;
+                       text-align: right; }
+    #jauge .ligne { display: flex; align-items: center; }
 </style>
 </head>
 <body>
@@ -450,6 +481,7 @@ function connecter() {
     try { ev = JSON.parse(e.data); } catch (err) { return; }
     if (ev.t === "vous") ajouter("VOUS", ev.texte, "vous");
     else if (ev.t === "jarvis") { ajouter("JARVIS", ev.texte, "jarvis"); lire(ev.texte); }
+    else if (ev.t === "avancement") majJauge(ev);
     else if (ev.t === "outil") ajouter("OUTIL", ev.nom + (ev.detail ? " · " + ev.detail : ""), "outil");
     else if (ev.t === "etat") {
       if (ev.v && ev.v !== "veille") activite();
@@ -563,6 +595,55 @@ for (const ev of ["pointerdown", "keydown", "touchstart", "wheel"]) {
 reveiller();
 
 
+
+    // --- Jauge d avancement -------------------------------------------------
+    // Les blocs sont crees une fois : en recreer vingt a chaque message ferait
+    // clignoter la barre a chaque point de pourcentage.
+    const JAUGE_BLOCS = 20;
+    (function preparerJauge() {
+      const hote = document.getElementById("jauge-blocs");
+      if (!hote) return;
+      for (let i = 0; i < JAUGE_BLOCS; i++) {
+        const b = document.createElement("div");
+        b.className = "bloc";
+        hote.appendChild(b);
+      }
+    })();
+
+    let jaugeEffacement = null;
+    function majJauge(ev) {
+      const boite = document.getElementById("jauge");
+      if (!boite) return;
+      if (ev.v === null || ev.v === undefined) {
+        boite.classList.remove("visible");
+        return;
+      }
+      clearTimeout(jaugeEffacement);
+      const pourcent = Math.max(0, Math.min(100, ev.v | 0));
+      const blocs = boite.querySelectorAll(".bloc");
+      const pleins = Math.round((pourcent / 100) * blocs.length);
+      blocs.forEach((b, i) => b.classList.toggle("plein", i < pleins));
+      const quoi = document.getElementById("jauge-quoi");
+      if (quoi) quoi.textContent = ev.nom || "TRAVAIL";
+      const etape = document.getElementById("jauge-etape");
+      if (etape) etape.textContent = ev.etape ? "SEGMENT " + ev.etape : (ev.detail || "");
+      const pc = document.getElementById("jauge-pourcent");
+      if (pc) pc.textContent = pourcent + "%";
+      boite.classList.toggle("estime", !ev.sur);
+      boite.classList.add("visible");
+      // Filet de securite : si plus rien n arrive, la jauge s efface seule.
+      jaugeEffacement = setTimeout(() => boite.classList.remove("visible"), 90000);
+    }
 </script>
+
+  <div id="jauge">
+    <div class="titre"><span id="jauge-quoi">TRAVAIL</span>
+      <span id="jauge-etape"></span></div>
+    <div class="ligne">
+      <div class="blocs" id="jauge-blocs"></div>
+      <div class="pourcent" id="jauge-pourcent">0%</div>
+    </div>
+    <div class="bas"><span>0%</span><span>50%</span><span>100%</span></div>
+  </div>
 </body>
 </html>

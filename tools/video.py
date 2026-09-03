@@ -620,6 +620,13 @@ def _enchainer(description, duree, largeur, hauteur, depart, ecran,
     reference = None
 
     for i in range(nombre):
+        # La jauge des interfaces a besoin de savoir combien de morceaux
+        # restent : le moteur, lui, ne connait que celui qu il calcule.
+        try:
+            from core.file_gpu import morceau
+            morceau(i, nombre)
+        except Exception:
+            pass
         images = SEGMENT * 24
         images = images - (images % 4) + 1
         graine = (int(time.time()) + i * 7919) % 2**31

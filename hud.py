@@ -163,6 +163,61 @@ def publier_specimen(duree=24):
     _diffuser({"t": "specimen", "duree": int(duree)})
 
 
+
+def avancement(etat_courant):
+    """Publie l'avancement d'un travail long. None efface la jauge."""
+    if etat_courant is None:
+        _diffuser({"t": "avancement", "v": None})
+        return
+    _diffuser({"t": "avancement",
+               "v": etat_courant.get("pourcent", 0),
+               "nom": etat_courant.get("nom", ""),
+               "detail": etat_courant.get("detail", ""),
+               "etape": etat_courant.get("etape", ""),
+               "sur": bool(etat_courant.get("sur"))})
+
+
+def _veilleur_avancement():
+    """Regarde ou en est le travail en cours, et ne parle qu'au changement.
+
+    Une seconde suffit largement : une etape de diffusion en dure plusieurs, et
+    l oeil ne distingue pas mieux. Parler plus souvent ne remplirait que le
+    reseau.
+    """
+    import time
+
+    from core import avancement as suivi
+
+    suivi.demarrer_ecoute()
+    precedent = None
+    fini_le = 0.0
+    while True:
+        time.sleep(1.0)
+        try:
+            etat_courant = suivi.etat()
+        except Exception:
+            etat_courant = None
+
+        if etat_courant is None:
+            # Le travail vient de finir : on le montre acheve avant d effacer,
+            # sinon la jauge disparait a quatre-vingt-dix et laisse un doute.
+            if precedent is not None:
+                avancement({**precedent, "pourcent": 100})
+                fini_le = time.time()
+                precedent = None
+            elif fini_le and time.time() - fini_le > 1.5:
+                avancement(None)
+                fini_le = 0.0
+            continue
+
+        signature = (etat_courant["quoi"], etat_courant["pourcent"],
+                     etat_courant["etape"])
+        if precedent is None or signature != (
+                precedent["quoi"], precedent["pourcent"], precedent["etape"]):
+            avancement(etat_courant)
+        precedent = etat_courant
+
+
 def publier_image(url, description=""):
     """Signale une image fraiche aux interfaces, qui l afficheront."""
     _diffuser({"t": "image", "url": url, "texte": str(description)[:120]})
@@ -823,6 +878,11 @@ def demarrer(ouvrir=True):
 
     thread = threading.Thread(target=_SERVEUR.serve_forever, daemon=True)
     thread.start()
+
+    # Le veilleur d avancement : il regarde ou en est le travail en cours et
+    # ne parle qu au changement. En thread daemon, donc il ne retient jamais
+    # l arret de Jarvis.
+    threading.Thread(target=_veilleur_avancement, daemon=True).start()
 
     print(f"HUD sur http://127.0.0.1:{PORT}/" + ("  (visible sur le reseau)" if HOTE == "0.0.0.0" else ""))
     print(f"     MU-TH-UR sur http://127.0.0.1:{PORT}/mother")
