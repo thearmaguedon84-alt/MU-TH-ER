@@ -376,22 +376,299 @@ def _cutout(nom, description=""):
     if decoupage.exists() and fiche.exists():
         return decoupage, json.loads(fiche.read_text(encoding="utf-8"))
 
-    demande = "%s, a character named %s%s, standing, full body, facing the " \
-              "viewer, isolated on a %s" % (
-                  STYLE_PAPIER, nom.title(),
-                  (", " + description) if description else "", FOND_UNI)
-    from tools.flux import image_soignee
-    image_soignee.__wrapped__(description=demande, format="carre")
-    from tools.image import _DERNIERE
-    brut = _DERNIERE.get("chemin")
-    if not brut or not Path(brut).exists():
-        return None, None
-    if _detourer(brut, decoupage) is None:
-        return None, None
-    repere = _bouche(decoupage) or {"x": 0.5, "y": 0.28, "l": 0.12}
-    fiche.write_text(json.dumps(repere), encoding="utf-8")
+    # On n invente plus un personnage absent. Fabriquer d office donnait des
+    # enfants sans rapport avec ce qu il avait en tete, et le film partait de
+    # travers sans que rien ne le signale.
+    return None, None
+
+
+
+def _fond_dominant(a):
+    """La couleur du fond : la plus repandue de l image.
+
+    Prendre celle des bords semblait plus sur ; c est faux. Sur sa planche le
+    bord vaut 223 et l interieur 216 — sept points d ecart, assez pour que la
+    moitie du fond passe pour du dessin. La couleur la plus frequente, elle,
+    est le fond par definition : c est lui qui occupe le plus de place.
+    """
+    import numpy as np
+    grossier = (a.reshape(-1, 3) // 8 * 8).astype(np.int16)
+    vues, comptes = np.unique(grossier, axis=0, return_counts=True)
+    return vues[int(np.argmax(comptes))].astype(np.int16) + 4
+
+
+def _enregistrer(nom, morceau, alpha):
+    """Range un decoupage sous son nom, avec le repere de sa bouche."""
+    import json
+
+    import numpy as np
+    from PIL import Image
+
+    propre = re.sub(r"[^a-z0-9]+", "-", (nom or "").lower()).strip("-")
+    if not propre:
+        return None
+    PERSONNAGES.mkdir(parents=True, exist_ok=True)
+    decoupage = PERSONNAGES / (propre + ".png")
+    Image.fromarray(np.dstack([morceau, alpha]), "RGBA").save(decoupage)
+    repere = _bouche(decoupage) or {"x": 0.5, "y": 0.30, "l": 0.14}
+    (PERSONNAGES / (propre + ".json")).write_text(json.dumps(repere),
+                                                  encoding="utf-8")
     return decoupage, repere
 
+
+def _bandes(profil, seuil=0, creux_mini=3):
+    """Les segments pleins d un profil, avec leurs bornes.
+
+    Un creux d une ou deux lignes n est pas une separation : c est un trait
+    fin ou un defaut de compression. On exige donc un blanc franc.
+    """
+    segments, debut, vide = [], None, 0
+    for i, v in enumerate(profil):
+        if v > seuil:
+            if debut is None:
+                debut = i
+            vide = 0
+        else:
+            if debut is not None:
+                vide += 1
+                if vide >= creux_mini:
+                    segments.append((debut, i - vide + 1))
+                    debut, vide = None, 0
+    if debut is not None:
+        segments.append((debut, len(profil)))
+    return segments
+
+
+def _grille(combien, largeur, hauteur, elancement=1.7):
+    """Colonnes et rangees, deduites du nombre de personnages.
+
+    On essaie tous les arrangements et l on garde celui qui donne des cases a
+    la forme d une personne debout : plus hautes que larges.
+    """
+    meilleur, ecart_mini = (combien, 1), None
+    for colonnes in range(1, combien + 1):
+        rangees = -(-combien // colonnes)
+        if colonnes * rangees > combien + colonnes - 1:
+            continue          # trop de cases vides
+        forme = (hauteur / rangees) / max(1.0, largeur / colonnes)
+        ecart = abs(forme - elancement)
+        if ecart_mini is None or ecart < ecart_mini:
+            meilleur, ecart_mini = (colonnes, rangees), ecart
+    return meilleur
+
+
+def _taches(masque, finesse=3):
+    """Les taches de dessin, avec leur taille et leur centre.
+
+    On erode d abord : les noms ecrits sous les personnages sont faits de
+    traits fins et disparaissent, tandis qu un personnage ne perd que sa
+    bordure. Sans cela le nom sert de pont entre deux rangees et deux
+    personnages ne comptent que pour un.
+    """
+    import numpy as np
+    from scipy import ndimage
+
+    # Un blanc enferme dans un contour est du dessin : le tablier blanc d un
+    # personnage sur une planche blanche, le blanc d un oeil. Seul le fond, qui
+    # touche le bord de l image, n est enferme nulle part.
+    plein = ndimage.binary_fill_holes(masque)
+    noyaux = ndimage.binary_opening(plein, structure=np.ones((finesse,
+                                                              finesse)))
+    etiquettes, combien = ndimage.label(noyaux)
+    if not combien:
+        return etiquettes, []
+    rangs = range(1, combien + 1)
+    tailles = ndimage.sum(noyaux, etiquettes, rangs)
+    centres = ndimage.center_of_mass(noyaux, etiquettes, rangs)
+    _taches.plein = plein
+    return etiquettes, [(int(t), c[0], c[1], i)
+                        for i, (t, c) in enumerate(zip(tailles, centres), 1)]
+
+
+def _silhouette(etiquettes, graines, masque, epaisseur=2):
+    """Le contour du personnage, a partir de ses taches erodees.
+
+    D un seul morceau, on rend a la tache l epaisseur que l erosion lui a
+    prise. En plusieurs morceaux, c est que le dessin ne trace pas la
+    silhouette — une veste blanche sur un fond blanc n a pas de flancs. On
+    tend alors une enveloppe autour des morceaux : elle deborde un peu, mais
+    elle rend l homme entier.
+    """
+    import numpy as np
+    from scipy import ndimage
+
+    depart = np.isin(etiquettes, list(graines))
+    zone = ndimage.binary_dilation(depart, structure=np.ones((3, 3)),
+                                   iterations=epaisseur) & masque
+    # Le titre de la planche frole le pompon de Stan et s y accroche. Mais
+    # c est une tache a part, que la grille n a donnee a personne : ce qui
+    # appartient a une autre tache n est pas a lui.
+    zone &= ~((etiquettes > 0) & ~depart)
+    zone = ndimage.binary_fill_holes(zone)
+    if len(graines) < 2:
+        return _sans_miettes(zone)
+
+    from skimage.morphology import convex_hull_image
+    ys, xs = np.where(zone)
+    y1, y2 = int(ys.min()), int(ys.max()) + 1
+    x1, x2 = int(xs.min()), int(xs.max()) + 1
+    tendue = np.zeros_like(zone)
+    tendue[y1:y2, x1:x2] = convex_hull_image(zone[y1:y2, x1:x2])
+    return tendue
+
+
+def _corps_principal(zone):
+    """La plus grosse piece d un decoupage."""
+    import numpy as np
+    from scipy import ndimage
+
+    pieces, combien = ndimage.label(zone)
+    if combien < 2:
+        return zone
+    tailles = ndimage.sum(zone, pieces, range(1, combien + 1))
+    return pieces == int(np.argmax(tailles)) + 1
+
+
+def _sans_miettes(zone, fil=5):
+    """Ne garde que le corps : le reste vient de la planche.
+
+    Ce qui flotte a cote part de soi. Ce qui ne tient que par un fil — le
+    titre de la planche accroche au pompon d un bonnet — demande de rompre
+    le fil : on amincit, et si deux corps apparaissent la ou l on en voulait
+    un, le petit etait un intrus.
+    """
+    import numpy as np
+    from scipy import ndimage
+
+    zone = _corps_principal(zone)
+    noyau = ndimage.binary_opening(zone, structure=np.ones((fil, fil)))
+    _, combien = ndimage.label(noyau)
+    if combien < 2:
+        return zone
+    garde = _corps_principal(noyau)
+    return ndimage.binary_dilation(garde, structure=np.ones((3, 3)),
+                                   iterations=fil // 2) & zone
+
+
+def decouper_planche(planche, noms, tolerance=24, colonnes=0):
+    """Decoupe une planche en un fichier par personnage.
+
+    La grille sert a savoir qui habite ou ; le contour, lui, est pris sur le
+    dessin. Un personnage qui deborde de sa case reste entier, et la legende de
+    la case voisine ne peut plus entrer dans le cadre.
+    """
+    import numpy as np
+    from PIL import Image
+
+    a = np.asarray(Image.open(planche).convert("RGB")).astype(np.int16)
+    masque = np.abs(a - _fond_dominant(a)).max(axis=2) > tolerance
+    H, L = masque.shape
+    etiquettes, taches = _taches(masque)
+    if not taches:
+        return []
+
+    n = len(noms)
+    if colonnes:
+        cols, rangees = colonnes, -(-n // colonnes)
+    else:
+        cols, rangees = _grille(n, L, H)
+
+    retenus, pris = [], set()
+    for indice, nom in enumerate(noms):
+        ligne, colonne = divmod(indice, cols)
+        y1, y2 = H * ligne / rangees, H * (ligne + 1) / rangees
+        x1, x2 = L * colonne / cols, L * (colonne + 1) / cols
+
+        chez_lui = [t for t in taches
+                    if t[3] not in pris and y1 <= t[1] < y2 and x1 <= t[2] < x2]
+        if not chez_lui:
+            continue
+        # Un personnage peut se briser en plusieurs taches : le blanc de sa
+        # veste sur un fond blanc coupe le lien. Toutes celles de la case qui
+        # comptent sont a lui.
+        gros = max(t[0] for t in chez_lui)
+        graines = {t[3] for t in chez_lui if t[0] >= max(150, gros * 0.10)}
+        if not graines:
+            continue
+        pris |= graines
+
+        zone = _silhouette(etiquettes, graines, masque)
+        ys, xs = np.where(zone)
+        yb1, yb2 = int(ys.min()), int(ys.max()) + 1
+        xb1, xb2 = int(xs.min()), int(xs.max()) + 1
+        fait = _enregistrer(nom, a[yb1:yb2, xb1:xb2].astype("uint8"),
+                            np.where(zone[yb1:yb2, xb1:xb2],
+                                     255, 0).astype("uint8"))
+        if fait:
+            retenus.append(nom)
+    return retenus
+
+
+def detourer_personnage(image, nom, tolerance=24):
+    """Un seul personnage dans un fichier : on retire son fond."""
+    import numpy as np
+    from PIL import Image
+
+    a = np.asarray(Image.open(image).convert("RGB")).astype(np.int16)
+    masque = np.abs(a - _fond_dominant(a)).max(axis=2) > tolerance
+    etiquettes, taches = _taches(masque)
+    if not taches:
+        return None
+    gros = max(t[0] for t in taches)
+    graines = {t[3] for t in taches if t[0] >= gros * 0.10}
+    zone = _silhouette(etiquettes, graines, masque)
+    ys, xs = np.where(zone)
+    if len(xs) < 150:
+        return None
+    y1, y2 = int(ys.min()), int(ys.max()) + 1
+    x1, x2 = int(xs.min()), int(xs.max()) + 1
+    return _enregistrer(nom, a[y1:y2, x1:x2].astype("uint8"),
+                        np.where(zone[y1:y2, x1:x2], 255, 0).astype("uint8"))
+
+
+@outil(
+    nom="importer_personnages",
+    description=(
+        "Prepare des personnages dessines pour l animation : une planche "
+        "entiere avec ses noms, ou un dessin par personnage. Pour 'importe "
+        "les personnages de cette planche', 'ajoute ce personnage'."
+    ),
+    parametres={
+        "type": "object",
+        "properties": {
+            "image": {"type": "string",
+                      "description": "Nom du fichier de la planche ou du dessin."},
+            "noms": {"type": "string",
+                     "description": "Les noms, separes par des virgules, dans l ordre de lecture. Un seul nom pour un dessin unique."},
+        },
+        "required": ["image", "noms"],
+    },
+    lent=True,
+    phrase_attente="Je prepare les personnages.",
+)
+def importer_personnages(image: str, noms: str) -> str:
+    from tools.modifier_image import _par_le_nom
+
+    chemin = Path(image) if Path(image).is_file() else _par_le_nom(image)
+    if chemin is None or not Path(chemin).exists():
+        return f"Je ne trouve pas l image « {image} »."
+
+    liste = [n.strip() for n in re.split(r"[,;]", noms or "") if n.strip()]
+    if not liste:
+        return "Donne-moi les noms des personnages, dans l ordre de lecture."
+
+    if len(liste) == 1:
+        fait = detourer_personnage(chemin, liste[0])
+        if not fait:
+            return "Je n ai pas su detourer ce dessin."
+        retenus = liste
+    else:
+        retenus = decouper_planche(chemin, liste)
+    if not retenus:
+        return "Je n ai reconnu aucun personnage sur cette image."
+    return ("%d personnage(s) prepare(s) : %s. Ils sont dans %s et serviront "
+            "tels quels dans les films."
+            % (len(retenus), ", ".join(retenus), PERSONNAGES))
 
 def _plan_papier(exe, decor, distribution, repliques, sons, cible):
     """Un plan joue par des marionnettes : elles se balancent et parlent.
@@ -544,6 +821,12 @@ def dessin_anime(script: str, titre: str = "", papier: bool = True,
                     decoupage, repere = _cutout(qui)
                     if decoupage:
                         distribution[qui] = (decoupage, repere)
+                manquants = [q for q, _ in plan["repliques"]
+                             if q not in distribution]
+                if manquants:
+                    return ("Je n ai pas de dessin pour %s. Depose-les dans "
+                            "%s, ou donne-moi une planche a decouper."
+                            % (", ".join(sorted(set(manquants))), PERSONNAGES))
                 if not distribution:
                     continue
                 if _plan_papier(exe, image, distribution, plan["repliques"],
