@@ -1542,11 +1542,17 @@ def images_designees(t):
             sortie.append(n)
     return sortie
 
+# « derniere » tel que la dictee l ecrit vraiment. La confusion rn -> m est
+# la plus banale des erreurs de transcription, et elle passait inapercue :
+# la designation n etant pas reconnue, la video partait de rien.
+# « ni? » voulait dire « n suivi d un i facultatif » : le n restait exige, et
+# « demiere » n en a pas. Les deux lettres sont facultatives.
+_DERNIERE_DITE = r"(?:d(?:er|em)n?i?eres?|d(?:er|em)n?i?ers?)"
+
 RE_DESIGNE_IMAGE = re.compile(
     r"\b(?:l\s*)?(?:image|photo)\s+que\s+tu\s+(?:viens\s+de\s+\w+|as\s+\w+)"
-    r"|\bla\s+derniere\s+(?:image|photo|creation|generation)\b"
-    r"|\bta\s+derniere\s+(?:image|creation)\b"
-    r"|\bma\s+derniere\s+(?:photo|image)\b"
+    r"|\b(?:la|cette|ma|ta|sa|de\s+la|de\s+cette)\s+" + _DERNIERE_DITE +
+    r"\s+(?:image|photo|creation|generation|video)?\b"
     r"|\bcette\s+(?:image|photo)\b"
     r"|\bl\s*(?:image|photo)\b|\bma\s+photo\b")
 
@@ -1733,6 +1739,10 @@ def _video_mail(t):
     """« envoie-moi la derniere video par mail »."""
     if not RE_VIDEO_MAIL.search(t):
         return None
+    # « fais une video ... et envoie-la par mail » demande d abord une video :
+    # c est la generation qui repond, et elle enverra elle-meme a la fin.
+    if RE_VIDEO.search(t):
+        return None
     destinataire = ""
     m = re.search(r"\b([\w.+-]+@[\w.-]+\.[a-z]{2,})\b", t)
     if m:
@@ -1749,7 +1759,15 @@ def _video(t):
     # Duree : « de cinq secondes », ou en toutes lettres pour les petits
     # nombres, que la reconnaissance vocale ecrit souvent ainsi.
     duree = 5
-    m = re.search(r"(\d{1,2})\s*(?:secondes?|s)\b", t)
+    # « secondes » se transcrit mal — il a dicte « szcinde ». Le mot « duree »,
+    # lui, passe bien : on lit donc aussi le nombre qui le suit.
+    m = re.search(r"\bdurees?\b[^0-9]{0,16}(\d{1,3})", t)
+    if not m:
+        m = re.search(r"(\d{1,2})\s*(?:secondes?|secondes|s)\b", t)
+    if not m:
+        # Un « secondes » abime garde son debut et sa longueur : on l accepte
+        # plutot que d ignorer une duree pourtant clairement donnee.
+        m = re.search(r"(\d{1,2})\s*s[a-z]{2,8}\b", t)
     if m:
         duree = int(m.group(1))
     else:
@@ -1799,6 +1817,14 @@ def _video(t):
 
     ecran = _premier_ecran() if _contient(t, ECRANS) else ""
 
+    # « une fois realisee tu me l envoie par mail » : la demande d envoi arrive
+    # detachee, en fin de phrase. L exiger collee au mot « video » revenait a
+    # ne jamais la reconnaitre telle qu on la dit.
+    par_mail = bool(re.search(
+        r"\b(?:envoi[es]?|envoie|envoyer|transmets|expedie)\b[^.]{0,40}"
+        r"\b(?:mail|courriel|e?mail)\b"
+        r"|\bpar\s+(?:mail|courriel)\b", t))
+
     # Ce qui reste apres le verbe et les reglages decrit la scene.
     sujet = re.split(r"\b(?:videos?|sequences?|animations?|films?)\b", t, 1)
     sujet = sujet[-1] if len(sujet) > 1 else t
@@ -1830,8 +1856,12 @@ def _video(t):
         sujet = "subtle natural motion, slow camera push in"
 
     from tools.video import generer_video
-    return generer_video(description=sujet, image=image, duree=duree,
+    faite = generer_video(description=sujet, image=image, duree=duree,
                          format=format_voulu, ecran=ecran)
+    if not par_mail:
+        return faite
+    from tools.video import envoyer_video_mail
+    return "%s %s" % (faite, envoyer_video_mail(destinataire=""))
 
 
 def _specimen(t):
