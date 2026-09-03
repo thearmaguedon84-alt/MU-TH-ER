@@ -1751,6 +1751,43 @@ def _video_mail(t):
     return envoyer_video_mail(destinataire=destinataire)
 
 
+
+# « fais-moi un dessin anime avec le script bus.txt ». Le mot « anime » seul
+# appartient a la video ; c est « dessin anime » qui designe ceci.
+RE_DESSIN_ANIME = re.compile(
+    r"\bdessins?\s+animes?\b|\bdessin\s+anime\b"
+    r"|\banime\w*\s+(?:ce|le|mon|ce\s+petit)?\s*(?:script|dialogue|scenario)\b"
+    r"|\b(?:script|scenario)\b[^.]{0,30}\b(?:anime|animation|film)\b")
+
+
+def _dessin_anime(t):
+    """« fais-moi un dessin anime avec le script bus.txt »."""
+    if not RE_DESSIN_ANIME.search(t):
+        return None
+
+    # Le nom du fichier, reconnu comme ailleurs par son extension devenue mot.
+    script = ""
+    m = re.search(r"\b((?:[a-z0-9][a-z0-9]*)(?:\s+[a-z0-9]+){0,10})\s+"
+                  r"(?:txt|md|text)\b", t)
+    if m:
+        script = re.sub(r"^(?:.*?\b(?:script|scenario|fichier|avec|le|la|"
+                        r"du|de|mon|ma)\s+)", "", m.group(1)).strip()
+    if not script:
+        # Sans fichier nomme, on prend le plus recent des scripts ranges.
+        script = "dernier"
+
+    titre = ""
+    m = re.search(r"\b(?:intitule|appelle|titre)\s+(.{3,40})$", t)
+    if m:
+        titre = m.group(1).strip()
+
+    from tools.dessin_anime import dessin_anime
+    return dessin_anime(script=script, titre=titre,
+                        anime=bool(re.search(r"\bvraie?\s+animation\b|"
+                                             r"\bvraiment\s+anime\b", t)),
+                        ecran=_premier_ecran() if _contient(t, ECRANS) else "")
+
+
 def _video(t):
     """« fais-moi une video de trois secondes d un chat, en portrait »."""
     if not RE_VIDEO.search(t):
@@ -2286,7 +2323,7 @@ def _au_ton_mere(reponse):
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
 ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
-          _spotify_appareil, _portrait, _video_mail, _clip, _video, _musique,
+          _spotify_appareil, _portrait, _video_mail, _dessin_anime, _clip, _video, _musique,
           _spotify, _youtube, _diffuser_service, _chaine_tv, _streaming,
           _plex, _plex_sans_ecran, _musique_sans_source, _ecran_lecture,
           _specimen, _refaire_image, _transposer_visage, _remplacer_zone,

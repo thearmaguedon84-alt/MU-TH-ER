@@ -42,6 +42,11 @@ visage est porté sur une scène inventée, ou transposé sur une image existant
 La ressemblance est *mesurée* et annoncée, pas laissée à l'appréciation : deux
 empreintes de visage, leur cosinus, et au-delà de 0,5 c'est la même personne.
 
+**Fabriquer un dessin anime** — a partir d un script ecrit dans un fichier :
+un decor par plan, une voix distincte par personnage, et les images calees sur
+la duree reelle de la parole plutot que sur un minutage decide d avance. Les
+sous-titres sortent a cote, en .srt.
+
 **Monter un clip** — des images ou des séquences vidéo assemblées sur un
 morceau, calées sur sa durée, enchaînées en fondu. Les séquences sont jouées
 puis rejouées à l'envers, ce qui comble sans laisser voir la reprise.
