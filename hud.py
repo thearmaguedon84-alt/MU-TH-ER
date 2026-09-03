@@ -191,6 +191,7 @@ def _veilleur_avancement():
     suivi.demarrer_ecoute()
     precedent = None
     fini_le = 0.0
+    dernier_envoi = 0.0
     while True:
         time.sleep(1.0)
         try:
@@ -212,9 +213,14 @@ def _veilleur_avancement():
 
         signature = (etat_courant["quoi"], etat_courant["pourcent"],
                      etat_courant["etape"])
-        if precedent is None or signature != (
-                precedent["quoi"], precedent["pourcent"], precedent["etape"]):
+        change = precedent is None or signature != (
+            precedent["quoi"], precedent["pourcent"], precedent["etape"])
+        # On repete meme sans changement : une interface ouverte en cours de
+        # route n a rien vu passer et resterait vide devant un travail qui
+        # tourne. Cinq secondes suffisent a la rattraper sans encombrer.
+        if change or time.time() - dernier_envoi > 5:
             avancement(etat_courant)
+            dernier_envoi = time.time()
         precedent = etat_courant
 
 

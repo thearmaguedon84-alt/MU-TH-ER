@@ -40,7 +40,13 @@ _FIL = None
 _VERROU = threading.Lock()
 
 
-def _ecouter_comfyui(adresse="ws://127.0.0.1:8188/ws?clientId=jauge"):
+# ComfyUI n adresse ses etapes qu au client qui a soumis le travail, pas a
+# tout le monde. Il faut donc se presenter sous le meme nom que celui employe
+# a l envoi, faute de quoi on n entend rien — et la jauge reste a zero.
+CLIENT = "jarvis"
+
+
+def _ecouter_comfyui(adresse="ws://127.0.0.1:8188/ws?clientId=" + CLIENT):
     """Suit les etapes annoncees par ComfyUI, en continu.
 
     La liaison tombe quand le moteur redemarre — ce qui arrive a chaque
