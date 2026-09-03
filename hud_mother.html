@@ -280,6 +280,40 @@
     #jauge .pourcent { font-size: 20px; margin-left: 10px; min-width: 62px;
                        text-align: right; }
     #jauge .ligne { display: flex; align-items: center; }
+
+    /* --- Jauge en plein ecran, dans l ecran de veille -------------------
+       Reprise de la barre de munitions du terminal : des blocs pleins, une
+       graduation, le pourcentage a droite. Elle n apparait que lorsqu un
+       travail tourne. */
+    #specimen .travail { display: none; }
+    #specimen.travail .travail { display: block; }
+    #specimen .jaugep {
+      position: absolute; left: 3.5%; width: 62%; bottom: 22%;
+      border: 1px dashed rgba(53, 255, 106, .5); padding: 10px 14px 8px;
+    }
+    #specimen .jaugep .etiquette {
+      text-align: center; font-size: 13px; letter-spacing: 2px;
+      margin-bottom: 8px;
+    }
+    #specimen .jaugep .ligne { display: flex; align-items: center; }
+    #specimen .jaugep .blocs {
+      display: flex; gap: 4px; height: 30px; flex: 1;
+    }
+    #specimen .jaugep .bloc {
+      flex: 1; border: 1px solid rgba(53, 255, 106, .45);
+    }
+    #specimen .jaugep .bloc.plein {
+      background: #2f9e1c; border-color: #35ff6a;
+    }
+    /* Creux : le moteur ne rend pas compte de lui-meme, on estime. */
+    #specimen.estime .jaugep .bloc.plein { background: transparent; }
+    #specimen .jaugep .pourcent {
+      font-size: 30px; margin-left: 16px; min-width: 100px; text-align: right;
+    }
+    #specimen .jaugep .graduation {
+      display: flex; justify-content: space-between;
+      font-size: 11px; opacity: .7; margin-top: 5px;
+    }
 </style>
 </head>
 <body>
@@ -299,6 +333,15 @@
        id="spec-date"></span></div>
   <canvas id="spec-toile" width="300" height="190"></canvas>
   <div class="fiche" id="spec-fiche"></div>
+  <div class="travail jaugep">
+    <div class="etiquette" id="jp-etiquette">NIVEAU D AVANCEMENT</div>
+    <div class="ligne">
+      <div class="blocs" id="jp-blocs"></div>
+      <div class="pourcent" id="jp-pourcent">0%</div>
+    </div>
+    <div class="graduation"><span>0%</span><span>25%</span><span>50%</span>
+      <span>75%</span><span>100%</span></div>
+  </div>
   <div class="bas">SUBJ: SPECIMEN 8    STATUS: SECURE
 RMKS: ORGANIC. CYCLIC STRUCTURE.
       ACID BLOOD.
@@ -751,6 +794,7 @@ reveiller();
    elle qui masquait le specimen des son apparition la premiere fois. */
 const _departPage = performance.now();
 function activite() {
+      replierTravail();
   if (performance.now() - _departPage < 3000) return;
   if (typeof reveiller === "function") reveiller();
 }
@@ -852,7 +896,13 @@ function appliquer(ev) {
       montrerSpecimen(ev.duree || 24);
       break;
 
-    case "avancement": majJauge(ev); break;
+    case "avancement":
+        majJauge(ev);
+        // Plein ecran seulement au repos : des qu on lui parle,
+        // l ecran appartient a la conversation.
+        if (ev.v === null || ev.v === undefined) replierTravail();
+        else if (S.etat === "veille") montrerTravail(ev);
+        break;
     case "outil":
       ajouter("SOUS-ROUTINE",
               auTon(ev.nom + (ev.detail ? " · " + ev.detail : "")),
@@ -1074,6 +1124,87 @@ if (zoneImage) {
       boite.classList.add("visible");
       // Filet de securite : si plus rien n arrive, la jauge s efface seule.
       jaugeEffacement = setTimeout(() => boite.classList.remove("visible"), 90000);
+    }
+
+    /* --- Plein ecran pendant le travail ---------------------------------
+       L ecran de veille sert de support : on lui ajoute la barre et l on
+       remplace sa fiche par l etat du travail. Quand l equipage parle, tout
+       se replie — c est lui qui decide de ce que l ecran montre. */
+    const JP_BLOCS = 22;
+    (function preparerJaugePleine() {
+      const hote = document.getElementById("jp-blocs");
+      if (!hote) return;
+      for (let i = 0; i < JP_BLOCS; i++) {
+        const b = document.createElement("div");
+        b.className = "bloc";
+        hote.appendChild(b);
+      }
+    })();
+
+    let travailEnCours = null;
+    let ficheDuReleve = "";
+
+    function duree(secondes) {
+      if (!isFinite(secondes) || secondes < 0) return "--";
+      const m = Math.floor(secondes / 60), s = Math.round(secondes % 60);
+      return m ? m + " MIN " + String(s).padStart(2, "0") : s + " S";
+    }
+
+    function ficheTravail(ev) {
+      /* Le temps restant se deduit de l avance reelle, pas d une duree
+         promise : sur vingt minutes, une estimation qui se corrige vaut mieux
+         qu une annonce qui se dement. */
+      const lignes = ["TACHE: " + (ev.nom || "TRAVAIL").toUpperCase()];
+      if (ev.etape) lignes.push("SEGMENT: " + ev.etape);
+      lignes.push("--------------------");
+      lignes.push("AVANCEMENT: " + (ev.v | 0) + "%");
+      lignes.push("ECOULE: " + duree(ev.ecoule));
+      if (ev.v > 3 && ev.ecoule > 5) {
+        lignes.push("RESTE ENV.: " + duree(ev.ecoule * (100 - ev.v) / ev.v));
+      }
+      lignes.push("MESURE: " + (ev.sur ? "MOTEUR" : "ESTIMEE"));
+      lignes.push("--------------------");
+      if (ev.detail) {
+        lignes.push("SUJET:");
+        lignes.push(String(ev.detail).toUpperCase().slice(0, 90));
+      }
+      return lignes.join("\n");
+    }
+
+    function montrerTravail(ev) {
+      if (!specimen) return;
+      travailEnCours = ev;
+      // Le dessin en cours ne se relance pas a chaque point de pourcentage :
+      // on ne le trace qu en arrivant.
+      if (!specimen.classList.contains("travail")) {
+        const fiche = document.getElementById("spec-fiche");
+        ficheDuReleve = fiche ? fiche.textContent : "";
+        avancerReleve();
+        tracerProgressif(5);
+        specimen.classList.add("travail");
+        specimen.classList.add("visible");
+        clearTimeout(montrerSpecimen.fin);
+      }
+      specimen.classList.toggle("estime", !ev.sur);
+      const pourcent = Math.max(0, Math.min(100, ev.v | 0));
+      const blocs = specimen.querySelectorAll(".jaugep .bloc");
+      const pleins = Math.round((pourcent / 100) * blocs.length);
+      blocs.forEach((b, i) => b.classList.toggle("plein", i < pleins));
+      const pc = document.getElementById("jp-pourcent");
+      if (pc) pc.textContent = pourcent + "%";
+      const et = document.getElementById("jp-etiquette");
+      if (et) et.textContent = (ev.nom || "TRAVAIL").toUpperCase() +
+        (ev.etape ? " · SEGMENT " + ev.etape : "");
+      const fiche = document.getElementById("spec-fiche");
+      if (fiche) fiche.textContent = ficheTravail(ev);
+    }
+
+    function replierTravail() {
+      if (!specimen || !specimen.classList.contains("travail")) return;
+      specimen.classList.remove("travail", "visible", "estime");
+      const fiche = document.getElementById("spec-fiche");
+      if (fiche && ficheDuReleve) fiche.textContent = ficheDuReleve;
+      travailEnCours = null;
     }
 </script>
 

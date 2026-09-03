@@ -174,7 +174,10 @@ def avancement(etat_courant):
                "nom": etat_courant.get("nom", ""),
                "detail": etat_courant.get("detail", ""),
                "etape": etat_courant.get("etape", ""),
-               "sur": bool(etat_courant.get("sur"))})
+               "sur": bool(etat_courant.get("sur")),
+               # Le plein ecran s en sert pour estimer le temps restant a
+               # partir de l avance reelle, plutot que d annoncer une duree.
+               "ecoule": int(etat_courant.get("ecoule") or 0)})
 
 
 def _veilleur_avancement():
