@@ -800,7 +800,10 @@ def envoyer_video_mail(destinataire: str = "", fichier: str = "") -> str:
                 f"courriel. Elle est dans {chemin.parent}.")
 
     adresse = (destinataire or "").strip() or messagerie.MAIL_ADRESSE
-    sujet = " ".join(_DERNIERE.get("demande", "").split())[:70] or chemin.stem[:70]
+    # get(cle, defaut) ne protege pas d une valeur nulle deja enregistree :
+    # la clef existe, sa valeur est None, et le defaut ne s applique pas.
+    sujet = " ".join((_DERNIERE.get("demande") or "").split())[:70]
+    sujet = sujet or chemin.stem[:70]
 
     try:
         import smtplib
