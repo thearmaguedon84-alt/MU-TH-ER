@@ -881,8 +881,27 @@ def dessin_anime(script: str, titre: str = "", papier: bool = True,
                 personnages.add(qui)
 
             # Les voix d abord : elles decident de la duree du plan.
+            # Celles qui sont clonees se demandent d un seul coup : charger le
+            # modele prend une demi-minute, le faire par replique couterait
+            # plus cher que tout le reste du film.
+            clonees = {}
+            try:
+                from tools import voix_clonee
+                lot = [(qui, texte,
+                        travail / ("p%02d-r%02d.wav" % (i, j)))
+                       for j, (qui, texte) in enumerate(plan["repliques"])]
+                clonees = voix_clonee.dire_tout(lot)
+            except Exception:
+                clonees = {}
+
             sons = []
             for j, (qui, texte) in enumerate(plan["repliques"]):
+                clone = travail / ("p%02d-r%02d.wav" % (i, j))
+                if str(clone) in clonees and clone.exists():
+                    sons.append(clone)
+                    continue
+                # Pas d extrait pour ce personnage : sa voix de synthese fait
+                # l affaire, et le film se fait quand meme.
                 voix, debit, hauteur = _voix_pour(qui)
                 f = travail / ("p%02d-r%02d.mp3" % (i, j))
                 if _dire(texte, voix, debit, hauteur, f):
