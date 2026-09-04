@@ -8,6 +8,7 @@ Deux modes, parce que la video coute cher : des planches animees d un lent
 mouvement de camera (une minute de film en trois minutes de calcul), ou une
 vraie animation plan par plan (sept minutes de calcul pour cinq secondes).
 """
+import math
 import re
 import shutil
 import subprocess
@@ -738,6 +739,25 @@ def importer_personnages(image: str, noms: str) -> str:
             "tels quels dans les films."
             % (len(retenus), ", ".join(retenus), PERSONNAGES))
 
+# Les inclinaisons possibles d une piece de carton qu on agite : assez fines
+# pour que le mouvement soit continu, assez peu nombreuses pour etre calculees
+# une seule fois par personnage.
+ANGLES = (-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0)
+
+# Les adultes depassent les enfants d une bonne tete. Une mesure automatique
+# serait plus elegante, mais le rapport tete-corps ne se lit proprement que
+# sur les visages ou la paire d yeux se detache, soit un tiers d entre eux :
+# une liste que l on complete vaut mieux qu une mesure qui se trompe.
+ADULTES = {"chef", "garrison", "randy", "gerald", "sharon", "liane",
+           "sheila", "mackey", "jimbo", "stephen", "linda", "maire"}
+GRANDEUR_ADULTE = 1.5
+
+
+def _plat(nom):
+    """Le nom reduit a ce qui compte pour le reconnaitre."""
+    return re.sub(r"[^a-z0-9]+", "-", (nom or "").lower()).strip("-")
+
+
 def _plan_papier(exe, decor, distribution, repliques, sons, cible):
     """Un plan joue par des marionnettes : elles se balancent et parlent.
 
@@ -765,21 +785,33 @@ def _plan_papier(exe, decor, distribution, repliques, sons, cible):
     # Une hauteur commune, mais reduite tant que la bande deborde : a cinq
     # personnages, la taille d un seul les faisait se chevaucher et sortir du
     # cadre. On les veut alignes et entiers, pas empiles.
+    grands = [GRANDEUR_ADULTE if _plat(n) in ADULTES else 1.0 for n in noms]
     haut = int(H * 0.55)
-    while haut > H * 0.20:
-        large = sum(max(1, int(o.width * haut / o.height)) for o in ouverts)
-        if large <= L * 0.88:
+    while haut > H * 0.18:
+        large = sum(max(1, int(o.width * haut * g / o.height))
+                    for o, g in zip(ouverts, grands))
+        plus_haut = haut * max(grands)
+        if large <= L * 0.88 and plus_haut <= H * 0.80:
             break
         haut -= 6
 
-    tailles = [(max(1, int(o.width * haut / o.height)), haut) for o in ouverts]
+    grandeurs = [GRANDEUR_ADULTE if _plat(n) in ADULTES else 1.0 for n in noms]
+    tailles = [(max(1, int(o.width * haut * g / o.height)), int(haut * g))
+               for o, g in zip(ouverts, grandeurs)]
     total = sum(w for w, _ in tailles)
     ecart = (L - total) / (len(noms) + 1)
     curseur = ecart
     for i, nom in enumerate(noms):
         img = ouverts[i].resize(tailles[i], Image.LANCZOS)
+        # Les inclinaisons sont calculees une fois : faire tourner un
+        # decoupage coute cher, et un plan de quatorze secondes compte trois
+        # cent cinquante images.
+        penchees = {a: (img if a == 0 else
+                        img.rotate(a, resample=Image.BICUBIC, expand=False))
+                    for a in ANGLES}
         poses.append((nom, img, int(curseur),
-                      H - img.height - int(H * 0.08), distribution[nom][1]))
+                      H - img.height - int(H * 0.08), distribution[nom][1],
+                      penchees))
         curseur += img.width + ecart
 
     travail = cible.parent / (cible.stem + "-images")
@@ -788,18 +820,38 @@ def _plan_papier(exe, decor, distribution, repliques, sons, cible):
     for n in range(total):
         t = n / FPS
         vue = fond.copy()
-        for j, (nom, img, x, y, repere) in enumerate(poses):
+        for j, (nom, img, x, y, repere, penchees) in enumerate(poses):
             parle = any(nom == repliques[k][0] and a <= t <= b
                         for k, (a, b) in enumerate(debut_par_replique))
-            # Le balancement : deux pixels. Plus, il saute ; moins, on ne voit
-            # rien.
-            saut = int(2 * abs((t * 6 + j) % 2 - 1)) if parle else 0
-            vue.paste(img, (x, y - saut), img)
-            # La bouche s ouvre et se ferme cinq fois par seconde : c est le
-            # rythme du procede, et il suffit a faire parler un dessin.
+
+            # Tout le monde respire, meme en silence : une scene ou seul
+            # celui qui parle bouge a l air d un photomontage. Chacun sur sa
+            # phase, sinon ils battent la mesure ensemble.
+            phase = j * 1.7
+            saut = 2.0 * math.sin(t * 1.6 + phase)
+            angle = 0.8 * math.sin(t * 1.1 + phase)
+            if parle:
+                # Celui qui parle est agite comme une marionnette qu on tient
+                # a la main pendant qu elle dit son texte.
+                saut += 5.0 * abs(math.sin(t * 5.5 + phase))
+                angle += 2.2 * math.sin(t * 4.0 + phase)
+
+            pris = min(ANGLES, key=lambda a: abs(a - angle))
+            piece = penchees[pris]
+            dy = int(round(saut))
+            vue.paste(piece, (x, y - dy), piece)
+
+            # La bouche est posee sur lui : elle penche avec lui. Sans cela
+            # elle glisserait hors du visage des qu il s incline.
             if parle and repere and int(t * 10) % 2 == 0:
-                bx = x + repere["x"] * img.width
-                by = y - saut + repere["y"] * img.height
+                cx, cy = img.width / 2.0, img.height / 2.0
+                px = repere["x"] * img.width - cx
+                py = repere["y"] * img.height - cy
+                rad = math.radians(pris)
+                rx = px * math.cos(rad) + py * math.sin(rad)
+                ry = -px * math.sin(rad) + py * math.cos(rad)
+                bx = x + cx + rx
+                by = y - dy + cy + ry
                 bl = max(4, repere["l"] * img.width)
                 ImageDraw.Draw(vue).ellipse(
                     [bx - bl / 2, by - bl * 0.42, bx + bl / 2, by + bl * 0.42],
