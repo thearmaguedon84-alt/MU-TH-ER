@@ -332,13 +332,16 @@ def _detourer(source, cible):
 
 
 def _yeux(alpha, rgb, H, L):
-    """Les deux ovales clairs du visage : le repere le plus sur du dessin.
+    """La paire d yeux du visage : le repere le plus sur du dessin.
 
-    On ne cherche pas une couleur mais un rang. Le haut d un personnage est
-    fait de deux grands tons — sa peau, et le blanc de ses yeux — et le
-    second est toujours le plus clair des deux. Le seuil se regle ainsi sur
-    chaque dessin : le creme de Cartman est plus sombre que la peau d Annie,
-    et aucune valeur fixe ne pouvait les servir tous les deux.
+    On ne cherche pas une couleur mais un rang : le haut d un personnage est
+    fait de deux grands tons — sa peau et le blanc de ses yeux — et le
+    second est le plus clair. Le creme de Cartman est plus sombre que la peau
+    d Annie, aucune valeur fixe ne pouvait les servir tous deux.
+
+    Puis l on verifie que c est bien une paire. Sur le grand dessin de Chef,
+    le ton le plus clair du haut du corps est son tablier : clair, oui, mais
+    seul, enorme, et au milieu du ventre.
     """
     import numpy as np
     from scipy import ndimage
@@ -349,7 +352,6 @@ def _yeux(alpha, rgb, H, L):
     if clairs.sum() < 40:
         return None
 
-    # Les tons dominants du visage, comptes a la grosse.
     gros = (rgb[clairs] // 24 * 24).astype(np.int16)
     vus, combien = np.unique(gros, axis=0, return_counts=True)
     ordre = np.argsort(-combien)
@@ -357,15 +359,13 @@ def _yeux(alpha, rgb, H, L):
             if combien[i] > clairs.sum() * 0.04]
     if not tons:
         return None
-    # Le plus clair de ces tons est le blanc des yeux ; le plus repandu, la
-    # peau. Quand il n y en a qu un, le visage n a pas d yeux visibles.
     ton = max(tons, key=lambda t: int(t[0].min()))[0]
     if len(tons) > 1 and int(ton.min()) <= int(tons[0][0].min()):
         return None
 
     blanc = clairs & (np.abs(rgb - ton).max(axis=2) < 34)
     marques, n = ndimage.label(blanc)
-    if not n:
+    if n < 2:
         return None
     boites = []
     for i, (fy, fx) in enumerate(ndimage.find_objects(marques), start=1):
@@ -373,16 +373,28 @@ def _yeux(alpha, rgb, H, L):
         if aire < max(20, H * L * 0.0012):
             continue
         boites.append((aire, fy.start, fy.stop, fx.start, fx.stop))
-    if not boites:
-        return None
     boites.sort(reverse=True)
-    garde = [boites[0]]
-    milieu = (boites[0][1] + boites[0][2]) / 2
-    for b in boites[1:3]:
-        if abs((b[1] + b[2]) / 2 - milieu) < (boites[0][2] - boites[0][1]):
-            garde.append(b)
-    return (min(b[1] for b in garde), max(b[2] for b in garde),
-            min(b[3] for b in garde), max(b[4] for b in garde))
+
+    # La paire : deux taches jumelles, a la meme hauteur, ecartees d environ
+    # leur propre largeur, dans le haut du dessin.
+    for i in range(min(4, len(boites))):
+        for j in range(i + 1, min(5, len(boites))):
+            a, b = boites[i], boites[j]
+            ha, hb = a[2] - a[1], b[2] - b[1]
+            la, lb = a[4] - a[3], b[4] - b[3]
+            if max(a[0], b[0]) > 3 * min(a[0], b[0]):
+                continue                      # pas jumelles
+            if abs((a[1] + a[2]) / 2 - (b[1] + b[2]) / 2) > max(ha, hb) * 0.6:
+                continue                      # pas a la meme hauteur
+            ecart = abs((a[3] + a[4]) / 2 - (b[3] + b[4]) / 2)
+            if not (max(la, lb) * 0.5 < ecart < max(la, lb) * 3.5):
+                continue                      # trop colles ou trop loin
+            haut, gauche = min(a[1], b[1]), min(a[3], b[3])
+            bas, droite = max(a[2], b[2]), max(a[4], b[4])
+            if (haut + bas) / 2 > H * 0.45 or (droite - gauche) > L * 0.7:
+                continue                      # trop bas, ou trop large
+            return (haut, bas, gauche, droite)
+    return None
 
 def _bouche(decoupage):
     """Ou se trouve la bouche, en fraction du decoupage.

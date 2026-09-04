@@ -140,7 +140,13 @@ def image_soignee(description: str, format: str = "",
     # perdues sur une image qui en demande une.
     # Flux comprend les phrases entieres mieux que les listes de mots-clefs :
     # on lui parle en anglais, mais on ne hache pas la demande.
+    # Le cadrage se dit en termes de photographe, ici comme ailleurs : ces
+    # moteurs lisent une legende, pas une consigne.
+    from tools.image import _cadrage
+    description, mentions = _cadrage(description)
     texte = _en_anglais(description)
+    if mentions:
+        texte = texte + ", " + ", ".join(mentions)
 
     try:
         from core.vram import liberer

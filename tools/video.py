@@ -503,6 +503,13 @@ def generer_video(description: str, image: str = "", duree: int = 5,
         return "Le moteur video ne repond pas."
     _rafraichir(45)
 
+    # Le cadrage se dit en termes de photographe. On le sort avant
+    # d enrichir la scene, pour qu il voyage avec elle au lieu d etre
+    # recolle a la fin d un texte deja remanie.
+    from tools.image import _cadrage
+    description, mentions = _cadrage(description)
+    if mentions:
+        description = description + ", " + ", ".join(mentions)
     description = _developper(_en_anglais(_developper(description)))
     duree = max(2, min(int(duree or 5), 60))
     # La longueur doit tomber sur un multiple de 4, plus un.
