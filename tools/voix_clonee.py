@@ -112,20 +112,22 @@ def dire_tout(pieces, langue="fr"):
         demande = {"modele": MODELE, "langue": langue,
                    "pieces": [{k: p[k] for k in ("texte", "extrait", "sortie")}
                               for p in a_faire]}
-        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False,
-                                         encoding="utf-8") as f:
-            f.write(PROGRAMME)
-            script = f.name
+        # Le programme est ecrit a cote du cache, a un endroit stable :
+        # un fichier jete dans le dossier temporaire du systeme s est revele
+        # peu fiable, et surtout on ne voyait rien quand il echouait.
+        script = CACHE / "_dire.py"
+        script.write_text(PROGRAMME, encoding="utf-8")
+        trace = CACHE / "_dernier.log"
         try:
-            subprocess.run([str(MOTEUR), script, json.dumps(demande)],
-                           capture_output=True, timeout=3600)
-        except Exception:
-            pass
-        finally:
-            try:
-                os.unlink(script)
-            except Exception:
-                pass
+            r = subprocess.run([str(MOTEUR), "-u", str(script),
+                                json.dumps(demande)],
+                               capture_output=True, text=True,
+                               encoding="utf-8", errors="replace",
+                               timeout=3600)
+            trace.write_text((r.stdout or "") + "\n--- erreurs ---\n"
+                             + (r.stderr or ""), encoding="utf-8")
+        except Exception as souci:
+            trace.write_text("echec : %r" % (souci,), encoding="utf-8")
         for p in a_faire:
             garde = Path(p["sortie"])
             if garde.exists():
