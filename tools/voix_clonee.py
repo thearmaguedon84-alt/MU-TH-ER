@@ -69,16 +69,46 @@ def pret():
     return MOTEUR.exists()
 
 
+# Ce qui parle sous un tissu. La valeur est celle qu on a mesuree sur la
+# serie : le centre spectral de Kenny tombe a 1780 hertz quand celui des
+# autres enfants tient les 3000.
+ETOUFFES = {"kenny": 1780.0}
+
 PROGRAMME = """
-import sys, json, os
+import sys, json, os, wave
 os.environ.setdefault("COQUI_TOS_AGREED", "1")
+import numpy as np
 demande = json.loads(sys.argv[1])
 from TTS.api import TTS
 moteur = TTS(demande["modele"]).to(demande.get("carte", "cuda"))
+
+
+def etouffer(chemin, vise):
+    \"\"\"Remet la parka : on coupe les aigus jusqu a retrouver la mesure.\"\"\"
+    import librosa, scipy.signal as sig
+    y, sr = librosa.load(chemin, sr=None, mono=True)
+    for coupure in (3000, 2600, 2300, 2000, 1750, 1500, 1200):
+        b, a = sig.butter(4, coupure / (sr / 2), btype="low")
+        z = sig.filtfilt(b, a, y).astype(np.float32)
+        centre = float(librosa.feature.spectral_centroid(y=z, sr=sr).mean())
+        if centre <= vise:
+            break
+    z = z / (np.abs(z).max() + 1e-6) * 0.95
+    with wave.open(chemin, "wb") as f:
+        f.setnchannels(1); f.setsampwidth(2); f.setframerate(sr)
+        f.writeframes((z * 32767).astype("<i2").tobytes())
+    return centre
+
+
 for piece in demande["pieces"]:
     moteur.tts_to_file(text=piece["texte"], speaker_wav=piece["extrait"],
                        language=demande.get("langue", "fr"),
-                       file_path=piece["sortie"], split_sentences=False)
+                       file_path=piece["sortie"], split_sentences=False,
+                       gpt_cond_len=60, gpt_cond_chunk_len=6)
+    if piece.get("etouffe"):
+        print("etouffe %s -> %.0f Hz"
+              % (os.path.basename(piece["sortie"]),
+                 etouffer(piece["sortie"], piece["etouffe"])))
 print("fait")
 """
 
@@ -110,8 +140,8 @@ def dire_tout(pieces, langue="fr"):
         # Ce qui est dit une fois n est pas redit : on garde sous l empreinte
         # du texte, de la voix et de l extrait qui l a produite.
         cle = hashlib.sha1(
-            ("%s|%s|%s|%d" % (_plat(personnage), texte, langue,
-                              extrait.stat().st_size)).encode("utf-8")
+            ("%s|%s|%s|%d|v3" % (_plat(personnage), texte, langue,
+                                 extrait.stat().st_size)).encode("utf-8")
         ).hexdigest()[:16]
         garde = CACHE / (cle + ".wav")
         if garde.exists():
@@ -119,11 +149,13 @@ def dire_tout(pieces, langue="fr"):
             resultats[str(sortie)] = str(sortie)
             continue
         a_faire.append({"texte": texte, "extrait": str(extrait),
-                        "sortie": str(garde), "vise": str(sortie)})
+                        "sortie": str(garde), "vise": str(sortie),
+                        "etouffe": ETOUFFES.get(_plat(personnage))})
 
     if a_faire:
         demande = {"modele": MODELE, "langue": langue,
-                   "pieces": [{k: p[k] for k in ("texte", "extrait", "sortie")}
+                   "pieces": [{k: p[k] for k in
+                                ("texte", "extrait", "sortie", "etouffe")}
                               for p in a_faire]}
         # Le programme est ecrit a cote du cache, a un endroit stable :
         # un fichier jete dans le dossier temporaire du systeme s est revele

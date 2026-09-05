@@ -452,19 +452,22 @@ def _cutout(nom, description=""):
 
 
 
-def _fond_dominant(a):
-    """La couleur du fond : la plus repandue de l image.
+def _fond_dominant(a, marge=4):
+    """La couleur du fond : celle qui domine le pourtour de l image.
 
-    Prendre celle des bords semblait plus sur ; c est faux. Sur sa planche le
-    bord vaut 223 et l interieur 216 — sept points d ecart, assez pour que la
-    moitie du fond passe pour du dessin. La couleur la plus frequente, elle,
-    est le fond par definition : c est lui qui occupe le plus de place.
+    Ni la mediane des bords, qui rate un fond legerement irregulier, ni la
+    couleur la plus repandue de l image, qui prend la peau d un personnage
+    pour un fond des lors qu il occupe le cadre. Le fond se definit par sa
+    position, pas par sa quantite : il touche le bord, et un personnage cadre
+    ne fait pas le tour de son image.
     """
     import numpy as np
-    grossier = (a.reshape(-1, 3) // 8 * 8).astype(np.int16)
+    bords = np.concatenate([
+        a[:marge].reshape(-1, 3), a[-marge:].reshape(-1, 3),
+        a[:, :marge].reshape(-1, 3), a[:, -marge:].reshape(-1, 3)])
+    grossier = (bords // 8 * 8).astype(np.int16)
     vues, comptes = np.unique(grossier, axis=0, return_counts=True)
     return vues[int(np.argmax(comptes))].astype(np.int16) + 4
-
 
 def _enregistrer(nom, morceau, alpha):
     """Range un decoupage sous son nom, avec le repere de sa bouche."""
@@ -674,18 +677,62 @@ def decouper_planche(planche, noms, tolerance=24, colonnes=0):
 
 
 def detourer_personnage(image, nom, tolerance=24):
-    """Un seul personnage dans un fichier : on retire son fond."""
+    """Un seul personnage dans un fichier : on retire son fond.
+
+    Un dessin livre avec un fond transparent est deja detoure : son canal
+    alpha dit exactement ou il s arrete, et chercher une couleur de fond qui
+    n existe pas ne ferait que degrader ce qu on nous donne.
+    """
     import numpy as np
     from PIL import Image
 
-    a = np.asarray(Image.open(image).convert("RGB")).astype(np.int16)
-    masque = np.abs(a - _fond_dominant(a)).max(axis=2) > tolerance
+    ouverte = Image.open(image)
+    rgba = np.asarray(ouverte.convert("RGBA"))
+    a = rgba[..., :3].astype(np.int16)
+
+    # Deux fonds peuvent coexister : celui que le canal alpha declare, et
+    # celui qui est peint dans l image — un blanc, ou le damier que certains
+    # exports laissent en dur sous un alpha pourtant opaque. On exige donc
+    # les deux : est du dessin ce qui est a la fois opaque et different du
+    # fond peint.
+    masque = (rgba[..., 3] > 128)
+    masque &= np.abs(a - _fond_dominant(a)).max(axis=2) > tolerance
+    if masque.mean() > 0.02:
+        return _ranger_detourage(nom, a, masque)
     etiquettes, taches = _taches(masque)
     if not taches:
         return None
     gros = max(t[0] for t in taches)
     graines = {t[3] for t in taches if t[0] >= gros * 0.10}
     zone = _silhouette(etiquettes, graines, masque)
+    ys, xs = np.where(zone)
+    if len(xs) < 150:
+        return None
+    y1, y2 = int(ys.min()), int(ys.max()) + 1
+    x1, x2 = int(xs.min()), int(xs.max()) + 1
+    return _enregistrer(nom, a[y1:y2, x1:x2].astype("uint8"),
+                        np.where(zone[y1:y2, x1:x2], 255, 0).astype("uint8"))
+
+
+def _ranger_detourage(nom, a, masque):
+    """Enregistre un dessin isole, resserre sur ce qu il contient.
+
+    Le fond n est pas ce qui a la couleur du fond : c est ce que le bord de
+    l image peut atteindre. La distinction compte pour la toque blanche de
+    Chef sur un fond blanc — elle a la couleur du fond mais elle est enfermee
+    dans son contour, donc le bord ne l atteint pas, donc elle est a lui.
+    """
+    import numpy as np
+    from scipy import ndimage
+
+    creux = ~masque
+    marques, n = ndimage.label(creux)
+    if n:
+        dehors = set(int(v) for v in np.concatenate([
+            marques[0], marques[-1], marques[:, 0], marques[:, -1]]) if v)
+        if dehors:
+            masque = masque | (creux & ~np.isin(marques, list(dehors)))
+    zone = _sans_miettes(ndimage.binary_fill_holes(masque))
     ys, xs = np.where(zone)
     if len(xs) < 150:
         return None
@@ -758,6 +805,57 @@ def _plat(nom):
     return re.sub(r"[^a-z0-9]+", "-", (nom or "").lower()).strip("-")
 
 
+def _enveloppe(exe, son, fps, lissage=2):
+    """L energie d une replique, image par image, ramenee entre 0 et 1.
+
+    C est ce relevé qui ouvrira la bouche. On decode en PCM brut avec ffmpeg
+    plutot que d ajouter une bibliotheque d analyse : une moyenne quadratique
+    par image suffit, et elle suit la parole de tres pres.
+    """
+    import numpy as np
+
+    try:
+        brut = subprocess.run(
+            [exe, "-v", "quiet", "-i", str(son), "-f", "s16le", "-ac", "1",
+             "-ar", "16000", "-"], capture_output=True, timeout=300).stdout
+        x = np.frombuffer(brut, dtype="<i2").astype(np.float32) / 32768.0
+    except Exception:
+        return None
+    if x.size < 160:
+        return None
+
+    par_image = max(1, int(16000 / fps))
+    entiers = x[: (x.size // par_image) * par_image].reshape(-1, par_image)
+    niveaux = np.sqrt((entiers ** 2).mean(axis=1))
+
+    # Un lissage court : sans lui la bouche tremble sur chaque micro-attaque
+    # et l on voit le calcul plutot que la parole.
+    if lissage > 1:
+        noyau = np.ones(lissage) / lissage
+        niveaux = np.convolve(niveaux, noyau, mode="same")
+
+    fort = float(np.percentile(niveaux, 95))
+    if fort <= 1e-5:
+        return None
+    return np.clip(niveaux / fort, 0.0, 1.0)
+
+
+# Les formes de bouche, de la plus fermee a la plus ouverte. Chacune est
+# donnee en fractions de la largeur de reference : largeur, hauteur.
+FORMES = ((0.90, 0.06), (0.70, 0.30), (0.95, 0.60), (1.05, 0.95))
+
+
+def _forme_bouche(niveau):
+    """Quelle bouche, pour quelle energie."""
+    if niveau < 0.10:
+        return FORMES[0]
+    if niveau < 0.32:
+        return FORMES[1]
+    if niveau < 0.62:
+        return FORMES[2]
+    return FORMES[3]
+
+
 def _plan_papier(exe, decor, distribution, repliques, sons, cible):
     """Un plan joue par des marionnettes : elles se balancent et parlent.
 
@@ -765,6 +863,7 @@ def _plan_papier(exe, decor, distribution, repliques, sons, cible):
     ouvrir une bouche au bon moment n est pas exprimable en filtre, et le
     calcul reste negligeable a cote de tout le reste.
     """
+    import numpy as np
     from PIL import Image, ImageDraw
 
     L, H, FPS = 1280, 720, 25
@@ -774,6 +873,9 @@ def _plan_papier(exe, decor, distribution, repliques, sons, cible):
         debut_par_replique.append((horloge, horloge + _duree(s)))
         horloge += _duree(s) + silence
     duree = max(horloge + 0.4, 2.0)
+
+    # Le relevé de chaque réplique, une fois pour toutes.
+    enveloppes = [_enveloppe(exe, s, FPS) for s in sons]
 
     fond = Image.open(decor).convert("RGB").resize((L, H), Image.LANCZOS)
 
@@ -809,8 +911,13 @@ def _plan_papier(exe, decor, distribution, repliques, sons, cible):
         penchees = {a: (img if a == 0 else
                         img.rotate(a, resample=Image.BICUBIC, expand=False))
                     for a in ANGLES}
-        poses.append((nom, img, int(curseur),
-                      H - img.height - int(H * 0.08), distribution[nom][1],
+        # Un dessin coupe a la taille se pose sur le bord bas de l image :
+        # la coupe se confond alors avec le cadre, au lieu de flotter au-dessus
+        # du sol. On le reconnait a ce que son encre touche son propre bord.
+        alpha = np.asarray(img.split()[-1])
+        coupe = bool((alpha[-2:, :] > 128).mean() > 0.06)
+        pied = H - img.height + (int(H * 0.06) if coupe else -int(H * 0.08))
+        poses.append((nom, img, int(curseur), pied, distribution[nom][1],
                       penchees))
         curseur += img.width + ecart
 
@@ -821,8 +928,18 @@ def _plan_papier(exe, decor, distribution, repliques, sons, cible):
         t = n / FPS
         vue = fond.copy()
         for j, (nom, img, x, y, repere, penchees) in enumerate(poses):
-            parle = any(nom == repliques[k][0] and a <= t <= b
-                        for k, (a, b) in enumerate(debut_par_replique))
+            parle, niveau = False, 0.0
+            for k, (a, b) in enumerate(debut_par_replique):
+                if nom == repliques[k][0] and a <= t <= b:
+                    parle = True
+                    env = enveloppes[k] if k < len(enveloppes) else None
+                    if env is not None and len(env):
+                        niveau = float(env[min(len(env) - 1,
+                                               int((t - a) * FPS))])
+                    else:
+                        # Sans relevé, on retombe sur le battement d avant.
+                        niveau = 0.8 if int(t * 10) % 2 == 0 else 0.0
+                    break
 
             # Tout le monde respire, meme en silence : une scene ou seul
             # celui qui parle bouge a l air d un photomontage. Chacun sur sa
@@ -842,8 +959,9 @@ def _plan_papier(exe, decor, distribution, repliques, sons, cible):
             vue.paste(piece, (x, y - dy), piece)
 
             # La bouche est posee sur lui : elle penche avec lui. Sans cela
-            # elle glisserait hors du visage des qu il s incline.
-            if parle and repere and int(t * 10) % 2 == 0:
+            # elle glisserait hors du visage des qu il s incline. Et elle
+            # s ouvre a la mesure de ce qu il dit a cet instant.
+            if parle and repere:
                 cx, cy = img.width / 2.0, img.height / 2.0
                 px = repere["x"] * img.width - cx
                 py = repere["y"] * img.height - cy
@@ -852,10 +970,11 @@ def _plan_papier(exe, decor, distribution, repliques, sons, cible):
                 ry = -px * math.sin(rad) + py * math.cos(rad)
                 bx = x + cx + rx
                 by = y - dy + cy + ry
-                bl = max(4, repere["l"] * img.width)
+                bl = max(5, repere["l"] * img.width)
+                large, haute = _forme_bouche(niveau)
+                dx, dy = bl * large / 2, max(1.0, bl * haute / 2)
                 ImageDraw.Draw(vue).ellipse(
-                    [bx - bl / 2, by - bl * 0.42, bx + bl / 2, by + bl * 0.42],
-                    fill=(20, 20, 20))
+                    [bx - dx, by - dy, bx + dx, by + dy], fill=(20, 20, 20))
         vue.save(travail / ("%05d.png" % n))
 
     entrees = ["-framerate", str(FPS), "-i", str(travail / "%05d.png")]
