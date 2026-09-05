@@ -37,8 +37,21 @@ def extrait_de(personnage):
     cle = _plat(personnage)
     if not cle or not EXTRAITS.is_dir():
         return None
-    for f in sorted(EXTRAITS.iterdir()):
-        if f.is_file() and f.suffix.lower() in SONS and _plat(f.stem) == cle:
+    lot = [f for f in sorted(EXTRAITS.iterdir())
+           if f.is_file() and f.suffix.lower() in SONS]
+    # Le nom exact d abord.
+    for f in lot:
+        if _plat(f.stem) == cle:
+            return f
+    # Puis un fichier qui commence par ce nom : « Gerald Broflovski dans
+    # s.mp3 » est bien la voix de Gerald, et lui demander de renommer ses
+    # fichiers serait une exigence sans raison.
+    for f in lot:
+        plat = _plat(f.stem)
+        if plat.startswith(cle + "-") or plat == cle:
+            return f
+    for f in lot:
+        if cle in _plat(f.stem).split("-"):
             return f
     return None
 
