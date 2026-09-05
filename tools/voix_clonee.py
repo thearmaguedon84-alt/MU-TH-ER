@@ -28,6 +28,47 @@ CACHE = dossier("documents") / "voix" / ".dit"
 SONS = (".wav", ".mp3", ".m4a", ".flac", ".ogg", ".opus")
 
 
+def _syllabes(mot):
+    """Combien de syllabes dans un mot francais, a peu pres.
+
+    Ses groupes de voyelles, moins le « e » final qui ne se prononce pas.
+    Approximatif et suffisant : on cherche un rythme, pas une scansion.
+    """
+    sons = re.findall(r"[aeiouyàâäéèêëïîôöùûüœ]+", mot.lower())
+    combien = len(sons)
+    if combien > 1 and re.search(r"e$", mot.lower()):
+        combien -= 1
+    return max(1, combien)
+
+
+def marmonner(texte):
+    """Le rythme d une replique, sans ses mots.
+
+    Un « mmph » par syllabe, la ponctuation gardee pour que les pauses
+    tombent au meme endroit. Kenny dit donc exactement aussi longtemps que
+    les autres, et sa bouche bat au bon moment — mais il n y a rien a
+    comprendre, ce qui est tout ce qu on lui demande.
+    """
+    morceaux = []
+    for bout in re.findall(r"[^\s]+|\s+", texte or ""):
+        if bout.isspace():
+            morceaux.append(" ")
+            continue
+        mot = re.sub(r"[^\w'\u00e0-\u00ff]", "", bout)
+        ponctuation = "".join(c for c in bout if c in ",.;:!?")
+        if not mot:
+            morceaux.append(ponctuation)
+            continue
+        # Mesure : un jeton par mot, dimensionne a ses syllabes, tombe a
+        # 7,8 secondes la ou la replique dite normalement en fait 6,6. Un
+        # « mmph » par syllabe en mettait vingt-quatre — Kenny marmonnait au
+        # ralenti pendant que la scene l attendait.
+        morceaux.append(("mmh", "mmmh", "mmmmh")[min(2, _syllabes(mot) - 1)]
+                        + ponctuation)
+    rendu = "".join(morceaux).strip()
+    return rendu or "mmph mmph"
+
+
 def _plat(nom):
     return re.sub(r"[^a-z0-9]+", "-", (nom or "").lower()).strip("-")
 
@@ -69,10 +110,14 @@ def pret():
     return MOTEUR.exists()
 
 
+# Ceux qui ne prononcent pas les mots. Kenny marmonne : on ne lui donne pas
+# la replique, on lui donne son rythme.
+MARMONNENT = {"kenny"}
+
 # Ce qui parle sous un tissu. La valeur est celle qu on a mesuree sur la
 # serie : le centre spectral de Kenny tombe a 1780 hertz quand celui des
 # autres enfants tient les 3000.
-ETOUFFES = {"kenny": 1780.0}
+ETOUFFES = {"kenny": 1900.0}
 
 PROGRAMME = """
 import sys, json, os, wave
@@ -140,7 +185,7 @@ def dire_tout(pieces, langue="fr"):
         # Ce qui est dit une fois n est pas redit : on garde sous l empreinte
         # du texte, de la voix et de l extrait qui l a produite.
         cle = hashlib.sha1(
-            ("%s|%s|%s|%d|v3" % (_plat(personnage), texte, langue,
+            ("%s|%s|%s|%d|v5" % (_plat(personnage), texte, langue,
                                  extrait.stat().st_size)).encode("utf-8")
         ).hexdigest()[:16]
         garde = CACHE / (cle + ".wav")
@@ -148,6 +193,8 @@ def dire_tout(pieces, langue="fr"):
             Path(sortie).write_bytes(garde.read_bytes())
             resultats[str(sortie)] = str(sortie)
             continue
+        if _plat(personnage) in MARMONNENT:
+            texte = marmonner(texte)
         a_faire.append({"texte": texte, "extrait": str(extrait),
                         "sortie": str(garde), "vise": str(sortie),
                         "etouffe": ETOUFFES.get(_plat(personnage))})

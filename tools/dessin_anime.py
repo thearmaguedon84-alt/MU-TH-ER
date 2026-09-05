@@ -1149,6 +1149,110 @@ def _plan_papier(exe, decor, distribution, repliques, sons, cible):
     shutil.rmtree(travail, ignore_errors=True)
     return cible if cible.exists() else None
 
+
+def tenues_de(nom):
+    """Les tenues disponibles pour quelqu un, la premiere etant l ordinaire."""
+    cle = _plat(nom)
+    if not cle or not PERSONNAGES.is_dir():
+        return []
+    sortie = []
+    for f in sorted(PERSONNAGES.glob("*.png")):
+        plat = _plat(f.stem)
+        if plat == cle:
+            sortie.insert(0, ("", f))
+        elif plat.startswith(cle + "-"):
+            sortie.append((plat[len(cle) + 1:], f))
+    return sortie
+
+
+def dessin_de(nom, tenue=""):
+    """Le dessin de quelqu un dans la tenue demandee.
+
+    Faute de la tenue demandee, on rend sa tenue ordinaire : mieux vaut un
+    film ou Cartman est mal habille qu un message d erreur.
+    """
+    lot = tenues_de(nom)
+    if not lot:
+        return None
+    if tenue:
+        voulu = _plat(tenue)
+        for etiquette, f in lot:
+            if etiquette == voulu:
+                return f
+        for etiquette, f in lot:
+            if etiquette and (voulu in etiquette or etiquette in voulu):
+                return f
+    return lot[0][1]
+
+
+def catalogue(cible=None, colonnes=6, haut=210):
+    """Une planche de tout ce qui est disponible, tenue par tenue.
+
+    C est ce qu on regarde avant d ecrire un script, et c est la que se voit
+    un decoupage rate.
+    """
+    import json
+
+    from PIL import Image, ImageDraw
+
+    lot = sorted(PERSONNAGES.glob("*.png"))
+    if not lot:
+        return None
+    lignes = -(-len(lot) // colonnes)
+    planche = Image.new("RGB", (colonnes * 160, lignes * (haut + 20)),
+                        (32, 32, 38))
+    crayon = ImageDraw.Draw(planche)
+    for i, f in enumerate(lot):
+        img = Image.open(f).convert("RGBA")
+        e = min(150 / img.width, (haut - 8) / img.height)
+        vue = img.resize((max(1, int(img.width * e)),
+                          max(1, int(img.height * e))))
+        x = (i % colonnes) * 160 + (160 - vue.width) // 2
+        y = (i // colonnes) * (haut + 20) + (haut - vue.height)
+        planche.paste(vue, (x, y), vue)
+        try:
+            repere = json.loads(f.with_suffix(".json").read_text(
+                encoding="utf-8"))
+            bx = x + repere["x"] * vue.width
+            by = y + repere["y"] * vue.height
+            bl = max(5, repere["l"] * vue.width)
+            crayon.ellipse([bx - bl / 2, by - bl / 3, bx + bl / 2,
+                            by + bl / 3], outline=(255, 60, 60), width=2)
+        except Exception:
+            pass
+        crayon.text(((i % colonnes) * 160 + 5,
+                     (i // colonnes) * (haut + 20) + haut + 4),
+                    f.stem, fill=(225, 225, 130))
+    cible = Path(cible) if cible else (PERSONNAGES / "_catalogue.png")
+    planche.save(cible)
+    return cible
+
+
+@outil(
+    nom="catalogue_personnages",
+    description=(
+        "Montre tous les personnages disponibles et leurs tenues, avec le "
+        "repere de bouche. Pour 'montre-moi les personnages', 'quelles "
+        "tenues j ai', 'fais le catalogue'."
+    ),
+    parametres={"type": "object", "properties": {}, "required": []},
+)
+def catalogue_personnages() -> str:
+    lot = sorted(PERSONNAGES.glob("*.png"))
+    if not lot:
+        return ("Je n ai aucun personnage. Depose des dessins, ou donne-moi "
+                "une planche a decouper.")
+    par_personne = {}
+    for f in lot:
+        cle = _plat(f.stem).split("-")[0]
+        par_personne.setdefault(cle, []).append(f.stem)
+    fichier = catalogue()
+    detail = ", ".join(
+        "%s (%d)" % (n, len(v)) if len(v) > 1 else n
+        for n, v in sorted(par_personne.items()))
+    return ("%d dessins pour %d personnages : %s. La planche est dans %s."
+            % (len(lot), len(par_personne), detail, fichier))
+
 @outil(
     nom="dessin_anime",
     description=(
