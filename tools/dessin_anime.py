@@ -856,6 +856,128 @@ def _forme_bouche(niveau):
     return FORMES[3]
 
 
+def _dessiner_bouche(vue, bx, by, bl, niveau):
+    """Une bouche a la maniere de la serie : contour, interieur, langue.
+
+    Un ovale noir plein fait un trou dans le visage. La serie dessine un
+    contour ferme, un interieur sombre, et laisse voir la langue quand la
+    bouche s ouvre grand. Trois traits au lieu d un, et le personnage parle
+    au lieu d etre perce.
+    """
+    from PIL import ImageDraw
+    crayon = ImageDraw.Draw(vue)
+    large, haute = _forme_bouche(niveau)
+    dx = bl * large / 2
+    dy = max(1.0, bl * haute / 2)
+
+    if niveau < 0.10:
+        # Au repos, la bouche est un trait : c est ainsi qu on la dessine.
+        crayon.line([bx - dx * 0.8, by, bx + dx * 0.8, by],
+                    fill=(30, 25, 25), width=max(2, int(bl * 0.09)))
+        return
+
+    cadre = [bx - dx, by - dy, bx + dx, by + dy]
+    crayon.ellipse(cadre, fill=(38, 22, 22),
+                   outline=(20, 15, 15), width=max(1, int(bl * 0.06)))
+    if haute > 0.45:
+        # La langue : un croissant clair au fond, visible seulement quand la
+        # bouche est franchement ouverte.
+        lx, ly = dx * 0.62, dy * 0.42
+        crayon.ellipse([bx - lx, by + dy - ly * 1.7, bx + lx, by + dy - 1],
+                       fill=(150, 74, 74))
+
+
+
+# Les positions que peut prendre un bras, en degres autour de l epaule.
+BALANCEMENTS = (-14.0, -9.0, -4.5, 0.0, 4.5, 9.0, 14.0)
+
+
+def _decouper_bras(img, repere, part=0.20):
+    """Detache les deux bras du corps et rend leur pivot d epaule.
+
+    Rend (corps, bras) ou chaque bras est (image, x, y, pivot_x, pivot_y),
+    les coordonnees etant relatives au coin haut-gauche du personnage. Rend
+    (img, []) si la silhouette ne s y prete pas — un personnage vu de face,
+    bras croises, n a pas de bras a detacher.
+    """
+    import numpy as np
+    from PIL import Image
+
+    a = np.asarray(img.convert("RGBA"))
+    alpha = a[..., 3] > 128
+    H, L = alpha.shape
+
+    # Le torse commence sous la tete, et la tete finit sous la bouche.
+    y1 = int(min(H - 4, (repere.get("y", 0.3) + 0.10) * H))
+    y2 = int(H * 0.93)
+    if y2 - y1 < 12:
+        return img, []
+
+    bande = alpha[y1:y2]
+    gauches, droites = [], []
+    for ligne in bande:
+        xs = np.where(ligne)[0]
+        gauches.append(xs[0] if len(xs) else -1)
+        droites.append(xs[-1] if len(xs) else -1)
+    gauches, droites = np.array(gauches), np.array(droites)
+    larges = np.where(gauches >= 0, droites - gauches, 0)
+    if (larges > 0).sum() < 8:
+        return img, []
+
+    # Le bras s arrete aux hanches. En dessous il n y a plus que les jambes,
+    # et la silhouette y est nettement plus etroite que la ou les bras
+    # pendent : on coupe la bande des que la largeur tombe sous les deux
+    # tiers de son maximum, sans quoi on decoupe un mollet en croyant
+    # prendre une main.
+    plein = int(larges.max())
+    fin = len(larges)
+    for i in range(len(larges)):
+        if larges[i] < plein * 0.66:
+            fin = i
+            break
+    if fin < 8:
+        return img, []
+    gauches, droites, larges = gauches[:fin], droites[:fin], larges[:fin]
+    y2 = y1 + fin
+    epaisseur = max(3, int(np.median(larges[larges > 0]) * part))
+
+    bord_g = np.array(gauches)
+    bord_d = np.array(droites)
+    masque_g = np.zeros_like(alpha)
+    masque_d = np.zeros_like(alpha)
+    for i in range(len(bord_g)):
+        if bord_g[i] < 0:
+            continue
+        y = y1 + i
+        masque_g[y, bord_g[i]:bord_g[i] + epaisseur] = True
+        masque_d[y, max(0, bord_d[i] - epaisseur + 1):bord_d[i] + 1] = True
+    masque_g &= alpha
+    masque_d &= alpha
+
+    if masque_g.sum() < 40 or masque_d.sum() < 40:
+        return img, []
+
+    corps = a.copy()
+    corps[..., 3] = np.where(masque_g | masque_d, 0, a[..., 3])
+    membres = []
+    for masque, cote in ((masque_g, "g"), (masque_d, "d")):
+        ys, xs = np.where(masque)
+        bx1, bx2 = int(xs.min()), int(xs.max()) + 1
+        by1, by2 = int(ys.min()), int(ys.max()) + 1
+        # On rembourre : une piece qui tourne deborde de son cadre.
+        marge = max(8, (by2 - by1) // 2)
+        piece = np.zeros((by2 - by1 + 2 * marge, bx2 - bx1 + 2 * marge, 4),
+                         dtype="uint8")
+        bout = a[by1:by2, bx1:bx2].copy()
+        bout[..., 3] = np.where(masque[by1:by2, bx1:bx2], bout[..., 3], 0)
+        piece[marge:marge + (by2 - by1), marge:marge + (bx2 - bx1)] = bout
+        # L epaule : le coin haut, du cote du corps.
+        pivot_x = marge + ((bx2 - bx1 - 1) if cote == "g" else 0)
+        pivot_y = marge
+        membres.append((Image.fromarray(piece, "RGBA"), bx1 - marge,
+                        by1 - marge, pivot_x, pivot_y))
+    return Image.fromarray(corps, "RGBA"), membres
+
 def _plan_papier(exe, decor, distribution, repliques, sons, cible):
     """Un plan joue par des marionnettes : elles se balancent et parlent.
 
@@ -908,9 +1030,23 @@ def _plan_papier(exe, decor, distribution, repliques, sons, cible):
         # Les inclinaisons sont calculees une fois : faire tourner un
         # decoupage coute cher, et un plan de quatorze secondes compte trois
         # cent cinquante images.
-        penchees = {a: (img if a == 0 else
-                        img.rotate(a, resample=Image.BICUBIC, expand=False))
-                    for a in ANGLES}
+        # Les bras se detachent quand ils pendent le long du corps. Alors le
+        # corps ne s incline plus : deux mouvements composes se contrarient,
+        # et le balancement des bras suffit a le faire vivre.
+        corps, membres = _decouper_bras(img, distribution[nom][1])
+        if membres:
+            penchees = {0.0: corps}
+            tournes = [{b: piece.rotate(b, resample=Image.BICUBIC,
+                                        center=(px, py))
+                        for b in BALANCEMENTS}
+                       for piece, dx, dy, px, py in membres]
+            attaches = [(dx, dy) for _, dx, dy, _, _ in membres]
+        else:
+            penchees = {a: (img if a == 0 else
+                            img.rotate(a, resample=Image.BICUBIC,
+                                       expand=False))
+                        for a in ANGLES}
+            tournes, attaches = [], []
         # Un dessin coupe a la taille se pose sur le bord bas de l image :
         # la coupe se confond alors avec le cadre, au lieu de flotter au-dessus
         # du sol. On le reconnait a ce que son encre touche son propre bord.
@@ -918,7 +1054,7 @@ def _plan_papier(exe, decor, distribution, repliques, sons, cible):
         coupe = bool((alpha[-2:, :] > 128).mean() > 0.06)
         pied = H - img.height + (int(H * 0.06) if coupe else -int(H * 0.08))
         poses.append((nom, img, int(curseur), pied, distribution[nom][1],
-                      penchees))
+                      penchees, tournes, attaches))
         curseur += img.width + ecart
 
     travail = cible.parent / (cible.stem + "-images")
@@ -927,7 +1063,8 @@ def _plan_papier(exe, decor, distribution, repliques, sons, cible):
     for n in range(total):
         t = n / FPS
         vue = fond.copy()
-        for j, (nom, img, x, y, repere, penchees) in enumerate(poses):
+        for j, (nom, img, x, y, repere, penchees, tournes,
+                attaches) in enumerate(poses):
             parle, niveau = False, 0.0
             for k, (a, b) in enumerate(debut_par_replique):
                 if nom == repliques[k][0] and a <= t <= b:
@@ -953,10 +1090,25 @@ def _plan_papier(exe, decor, distribution, repliques, sons, cible):
                 saut += 5.0 * abs(math.sin(t * 5.5 + phase))
                 angle += 2.2 * math.sin(t * 4.0 + phase)
 
-            pris = min(ANGLES, key=lambda a: abs(a - angle))
-            piece = penchees[pris]
             dy = int(round(saut))
-            vue.paste(piece, (x, y - dy), piece)
+            if tournes:
+                # Le corps reste droit ; ce sont les bras qui parlent.
+                pris = 0.0
+                vue.paste(penchees[0.0], (x, y - dy), penchees[0.0])
+                geste = 4.0 * math.sin(t * 1.3 + phase)
+                if parle:
+                    geste += 9.0 * math.sin(t * 3.1 + phase) + 4.0 * niveau
+                for c, (jeu, (ax, ay)) in enumerate(zip(tournes, attaches)):
+                    vise = geste if c == 0 else -geste
+                    proche = min(BALANCEMENTS, key=lambda b: abs(b - vise))
+                    bras = jeu[proche]
+                    vue.alpha_composite(bras, (x + ax, y - dy + ay)) \
+                        if vue.mode == "RGBA" else \
+                        vue.paste(bras, (x + ax, y - dy + ay), bras)
+            else:
+                pris = min(ANGLES, key=lambda a: abs(a - angle))
+                piece = penchees[pris]
+                vue.paste(piece, (x, y - dy), piece)
 
             # La bouche est posee sur lui : elle penche avec lui. Sans cela
             # elle glisserait hors du visage des qu il s incline. Et elle
@@ -971,10 +1123,7 @@ def _plan_papier(exe, decor, distribution, repliques, sons, cible):
                 bx = x + cx + rx
                 by = y - dy + cy + ry
                 bl = max(5, repere["l"] * img.width)
-                large, haute = _forme_bouche(niveau)
-                dx, dy = bl * large / 2, max(1.0, bl * haute / 2)
-                ImageDraw.Draw(vue).ellipse(
-                    [bx - dx, by - dy, bx + dx, by + dy], fill=(20, 20, 20))
+                _dessiner_bouche(vue, bx, by, bl, niveau)
         vue.save(travail / ("%05d.png" % n))
 
     entrees = ["-framerate", str(FPS), "-i", str(travail / "%05d.png")]
