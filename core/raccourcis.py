@@ -2319,11 +2319,85 @@ def _au_ton_mere(reponse):
 
 # --------------------------------------------------------------- point d'entree
 
+
+# Une demande de dessin anime dictee, sans fichier : il faut qu on parle du
+# procede et que quelqu un parle.
+RE_ANIME_DIT = re.compile(
+    r"\b(?:dessins?\s+anim\w*|south\s*park|southpark|papier\s+decoup\w*)\b",
+    re.I)
+RE_QUI_DIT = re.compile(
+    r"\b(\w[\w'-]*)\s+(?:dit|repond|crie|hurle|chuchote|demande|lance|"
+    r"retorque|ajoute|raconte)\s+"
+    r"(?:(?:a|aux?)\s+(\w[\w'-]*)\s+)?"
+    r"(?:que\s+|qu\s+)?(.+)", re.I | re.S)
+
+
+def _connu_en_dessin(nom):
+    """Le personnage, s il a un dessin. Rien sinon."""
+    from tools.dessin_anime import PERSONNAGES, _plat as _net
+    cle = _net(nom or "")
+    if not cle or len(cle) < 3:
+        return None
+    for f in PERSONNAGES.glob("*.png"):
+        plat = _net(f.stem)
+        if plat == cle or plat.startswith(cle + "-"):
+            return cle.upper()
+    return None
+
+
+def _sans_doublons(t):
+    """Les lettres doublees ramenees a une seule, pour la reconnaissance.
+
+    Il dicte, et la dictee double des lettres : « dessin annime soouth park ».
+    Une faute de frappe ne doit pas faire partir la demande dans une autre
+    logique — celle-la a coute un rendu de vingt minutes pour rien.
+    """
+    return re.sub(r"([a-z])\1+", r"\1", t or "")
+
+
+def _dessin_anime_dicte(t):
+    """« fais un dessin anime south park ou Gerald dit a Cartman ... ».
+
+    On ecrit le script a sa place : il n y a pas de fichier, et il ne devrait
+    pas y en avoir besoin pour une replique.
+    """
+    souple = _sans_doublons(t)
+    if not RE_ANIME_DIT.search(souple):
+        return None
+    m = RE_QUI_DIT.search(t) or RE_QUI_DIT.search(souple)
+    if not m:
+        return None
+
+    qui = _connu_en_dessin(m.group(1))
+    if not qui:
+        return None
+    replique = re.sub(r"\s+", " ", (m.group(3) or "")).strip(" .,;:'\"")
+    if len(replique) < 3:
+        return None
+
+    decor = "la rue principale de South Park, montagnes du Colorado au fond"
+    lieu = re.search(r"\bdans\s+((?:un|une|le|la|les|l)\s+[^,.]{3,60})", t)
+    if lieu:
+        decor = lieu.group(1).strip()
+
+    lignes = ["DECOR: " + decor]
+    # « dit a Cartman » : l autre est en scene meme s il ne repond pas. On le
+    # fait donc parler d un mot, faute de quoi il ne serait pas la du tout.
+    autre = _connu_en_dessin(m.group(2))
+    if autre and autre != qui:
+        lignes.append("%s: Quoi ?" % autre)
+    lignes.append("%s: %s" % (qui, replique))
+
+    _tracer("_dessin_anime_dicte", t)
+    from tools.dessin_anime import dessin_anime
+    return dessin_anime(script="\n".join(lignes) + "\n", titre="South Park",
+                        papier=True)
+
 # L'ordre compte : une application CONNUE l'emporte (sinon "ouvre Prime Video"
 # partirait dans la logique film a cause du mot "video"). Un titre inconnu
 # retombe naturellement sur _film.
 ETAPES = (_mode, _extinction, _memoire, _arret_spotify, _cast,
-          _spotify_appareil, _portrait, _video_mail, _dessin_anime, _clip, _video, _musique,
+          _spotify_appareil, _portrait, _video_mail, _dessin_anime, _dessin_anime_dicte, _clip, _video, _musique,
           _spotify, _youtube, _diffuser_service, _chaine_tv, _streaming,
           _plex, _plex_sans_ecran, _musique_sans_source, _ecran_lecture,
           _specimen, _refaire_image, _transposer_visage, _remplacer_zone,
