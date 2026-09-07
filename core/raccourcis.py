@@ -2325,11 +2325,11 @@ def _au_ton_mere(reponse):
 RE_ANIME_DIT = re.compile(
     r"\b(?:dessins?\s+anim\w*|south\s*park|southpark|papier\s+decoup\w*)\b",
     re.I)
-RE_QUI_DIT = re.compile(
-    r"\b(\w[\w'-]*)\s+(?:dit|repond|crie|hurle|chuchote|demande|lance|"
-    r"retorque|ajoute|raconte)\s+"
+RE_QUI_PARLE = re.compile(
+    r"\b(\w[\w'-]*)\s+(?:dit|repond|replique|crie|hurle|chuchote|demande|"
+    r"lance|retorque|ajoute|raconte|repete|s\s*exclame)\s+"
     r"(?:(?:a|aux?)\s+(\w[\w'-]*)\s+)?"
-    r"(?:que\s+|qu\s+)?(.+)", re.I | re.S)
+    r"(?:que\s+|qu\s+|:\s*)?", re.I)
 
 
 def _connu_en_dessin(nom):
@@ -2355,24 +2355,49 @@ def _sans_doublons(t):
     return re.sub(r"([a-z])\1+", r"\1", t or "")
 
 
+def _tours_de_parole(t):
+    """Tous les tours de parole d une dictee, dans l ordre.
+
+    Un tour se signale par un nom de personnage suivi d un verbe de parole.
+    Le texte de chacun court jusqu au suivant. Le complement « a Untel » est
+    absorbe avec le verbe : il nomme celui a qui l on parle, et le prendre
+    pour un locuteur ferait heriter a Cartman la replique de Gerald.
+    """
+    tours, adresses = [], []
+    marques = []
+    for m in RE_QUI_PARLE.finditer(t):
+        qui = _connu_en_dessin(m.group(1))
+        if qui:
+            marques.append((m.start(), m.end(), qui,
+                            _connu_en_dessin(m.group(2))))
+    for i, (debut, fin, qui, a) in enumerate(marques):
+        suite = marques[i + 1][0] if i + 1 < len(marques) else len(t)
+        replique = re.sub(r"\s+", " ", t[fin:suite]).strip(" .,;:'\"")
+        # La conjonction qui amenait le tour suivant reste collee a la fin :
+        # « salut les gars et » — elle appartient a la phrase, pas au dialogue.
+        replique = re.sub(r"\s+(?:et|puis|alors|ensuite|alors\s+que)$", "",
+                          replique).strip(" .,;:")
+        if len(replique) >= 3:
+            tours.append((qui, replique))
+        if a and a != qui:
+            adresses.append(a)
+    return tours, adresses
+
+
 def _dessin_anime_dicte(t):
     """« fais un dessin anime south park ou Gerald dit a Cartman ... ».
 
     On ecrit le script a sa place : il n y a pas de fichier, et il ne devrait
-    pas y en avoir besoin pour une replique.
+    pas y en avoir besoin pour un echange de deux repliques.
     """
     souple = _sans_doublons(t)
     if not RE_ANIME_DIT.search(souple):
         return None
-    m = RE_QUI_DIT.search(t) or RE_QUI_DIT.search(souple)
-    if not m:
-        return None
 
-    qui = _connu_en_dessin(m.group(1))
-    if not qui:
-        return None
-    replique = re.sub(r"\s+", " ", (m.group(3) or "")).strip(" .,;:'\"")
-    if len(replique) < 3:
+    tours, adresses = _tours_de_parole(t)
+    if not tours:
+        tours, adresses = _tours_de_parole(souple)
+    if not tours:
         return None
 
     decor = "la rue principale de South Park, montagnes du Colorado au fond"
@@ -2381,12 +2406,15 @@ def _dessin_anime_dicte(t):
         decor = lieu.group(1).strip()
 
     lignes = ["DECOR: " + decor]
-    # « dit a Cartman » : l autre est en scene meme s il ne repond pas. On le
-    # fait donc parler d un mot, faute de quoi il ne serait pas la du tout.
-    autre = _connu_en_dessin(m.group(2))
-    if autre and autre != qui:
-        lignes.append("%s: Quoi ?" % autre)
-    lignes.append("%s: %s" % (qui, replique))
+    parlants = {qui for qui, _ in tours}
+    # Celui a qui l on parle entre en scene meme s il ne repond pas : une
+    # replique adressee a un absent n a pas de sens.
+    for a in adresses:
+        if a not in parlants:
+            lignes.append("%s: Quoi ?" % a)
+            parlants.add(a)
+    for qui, replique in tours:
+        lignes.append("%s: %s" % (qui, replique))
 
     _tracer("_dessin_anime_dicte", t)
     from tools.dessin_anime import dessin_anime
