@@ -9,6 +9,7 @@ Point d'entree unique : essayer(question) -> str | None
   - None : rien de reconnu, laisser le LLM s'en charger.
 """
 import re
+from pathlib import Path
 
 from core.util import sans_accents
 
@@ -1728,11 +1729,26 @@ def _portrait(t):
 
 # « envoie-moi la video par mail ». Sans ce raccourci, la phrase part vers le
 # modele, qui hesite entre l envoi d image et l envoi sur une television.
+# « dessin anime » manquait a cette liste : la demande tombait au raccourci
+# suivant, qui fabriquait une video neuve de cinq secondes au lieu d envoyer
+# celle qui existait deja.
+_CHOSE_FILMEE = (r"videos?|sequences?|clips?|films?"
+                 r"|dessins?\s*anim\w*|animations?")
+
 RE_VIDEO_MAIL = re.compile(
-    r"\b(?:envoie|envoyer|envoi|transmets|expedie)\b[^.]{0,40}?"
-    r"\b(?:videos?|sequences?|clips?|films?)\b[^.]{0,40}?"
+    # Un point ne coupe plus la phrase quand il est colle a des lettres :
+    # « paul@exemple.fr par mail » est une seule demande, pas deux phrases.
+    r"\b(?:envoie|envoyer|envoi|transmets|expedie)\b(?:[^.]|\.\w){0,45}?"
+    r"\b(?:%s)\b(?:[^.]|\.\w){0,45}?"
     r"\b(?:mail|courriel|e?mail)\b"
-    r"|\b(?:mail|courriel)\b[^.]{0,30}?\b(?:videos?|sequences?|clips?)\b")
+    r"|\b(?:mail|courriel)\b[^.]{0,30}?\b(?:%s)\b" % (_CHOSE_FILMEE,
+                                                        _CHOSE_FILMEE))
+
+# « le dernier », « la derniere », « celui d avant » : la demande porte sur une
+# chose qui existe deja. C est ce qui distingue « envoie-moi le dernier dessin
+# anime » de « fais une video et envoie-la ».
+RE_DEJA_FAITE = re.compile(
+    r"\b(?:derni\w+|precedent\w*|celui\s+d\s*avant|celle\s+d\s*avant)\b")
 
 
 def _video_mail(t):
@@ -1741,14 +1757,40 @@ def _video_mail(t):
         return None
     # « fais une video ... et envoie-la par mail » demande d abord une video :
     # c est la generation qui repond, et elle enverra elle-meme a la fin.
-    if RE_VIDEO.search(t):
+    # Mais « envoie-moi LE DERNIER dessin anime » ne demande rien a fabriquer,
+    # et ce garde-fou lui faisait justement fabriquer une video de cinq
+    # secondes. Le mot « dernier » tranche : la chose existe.
+    if RE_VIDEO.search(t) and not RE_DEJA_FAITE.search(t):
         return None
     destinataire = ""
     m = re.search(r"\b([\w.+-]+@[\w.-]+\.[a-z]{2,})\b", t)
     if m:
         destinataire = m.group(1)
+
+    # Un dessin anime et une video se rangent cote a cote : si la demande dit
+    # « dessin anime », on va chercher le dernier dessin anime, pas la
+    # derniere chose fabriquee quelle qu elle soit.
+    fichier = ""
+    if re.search(r"\bdessins?\s*anim\w*\b", t):
+        try:
+            from tools.dessin_anime import _DERNIER_DESSIN, DOSSIER
+            garde = _DERNIER_DESSIN.get("chemin")
+            if garde and Path(str(garde)).exists():
+                fichier = str(garde)
+            else:
+                # Jarvis vient d etre redemarre : la trace en memoire est vide.
+                # Un dessin anime laisse toujours ses sous-titres a cote ; une
+                # video generee, jamais. C est ce qui les distingue sur le
+                # disque, faute de les distinguer par leur nom.
+                lot = [f for f in DOSSIER.glob("*.mp4")
+                       if f.with_suffix(".srt").exists()]
+                if lot:
+                    fichier = str(max(lot,
+                                      key=lambda f: f.stat().st_mtime))
+        except Exception:
+            pass
     from tools.video import envoyer_video_mail
-    return envoyer_video_mail(destinataire=destinataire)
+    return envoyer_video_mail(destinataire=destinataire, fichier=fichier)
 
 
 
@@ -2323,25 +2365,52 @@ def _au_ton_mere(reponse):
 # Une demande de dessin anime dictee, sans fichier : il faut qu on parle du
 # procede et que quelqu un parle.
 RE_ANIME_DIT = re.compile(
-    r"\b(?:dessins?\s+anim\w*|south\s*park|southpark|papier\s+decoup\w*)\b",
+    r"\b(?:des+ins?\s+an+im\w*|south\s*par[ck]+k?|southpar[ck]+k?|papier\s+decoup\w*)\b",
     re.I)
 RE_QUI_PARLE = re.compile(
-    r"\b(\w[\w'-]*)\s+(?:dit|repond|replique|crie|hurle|chuchote|demande|"
+    r"\b(\w[\w'-]*)\s+(?:(?:qui|lui|leur|il|elle|y)\s+){0,2}(?:dit|repond|replique|crie|hurle|chuchote|demande|"
     r"lance|retorque|ajoute|raconte|repete|s\s*exclame)\s+"
     r"(?:(?:a|aux?)\s+(\w[\w'-]*)\s+)?"
     r"(?:que\s+|qu\s+|:\s*)?", re.I)
 
 
+# Les noms qu il emploie ne sont pas ceux sous lesquels les dessins sont
+# ranges : il dit Serviettsky, le fichier s appelle serviette. Plutot que de
+# lui demander d ecrire comme la machine range, on traduit.
+SURNOMS = {
+    "serviettesky": "serviette", "serviettsky": "serviette",
+    "servietsky": "serviette", "serviettski": "serviette",
+    "towelie": "serviette", "towely": "serviette",
+    "eric": "cartman", "ericcartman": "cartman",
+    "macron": "manu", "emmanuel": "manu",
+    "marsh": "randy", "broflovski": "gerald", "broflovsky": "gerald",
+    "mrgarrison": "garrison", "monsieurgarrison": "garrison",
+    "leChef": "chef", "tolkein": "tolkien", "token": "tolkien",
+}
+
+
 def _connu_en_dessin(nom):
-    """Le personnage, s il a un dessin. Rien sinon."""
+    """Le personnage, s il a un dessin. Rien sinon.
+
+    On essaie son mot tel quel, puis sa traduction s il emploie un surnom,
+    puis sans les lettres doublees : « serviettesky », « servietsky » et
+    « Towelie » designent tous le meme personnage.
+    """
     from tools.dessin_anime import PERSONNAGES, _plat as _net
     cle = _net(nom or "")
     if not cle or len(cle) < 3:
         return None
-    for f in PERSONNAGES.glob("*.png"):
-        plat = _net(f.stem)
-        if plat == cle or plat.startswith(cle + "-"):
-            return cle.upper()
+    essais = [cle, SURNOMS.get(cle, "")]
+    sans = _sans_doublons(cle)
+    essais += [sans, SURNOMS.get(sans, "")]
+    for essai in essais:
+        if not essai:
+            continue
+        for f in PERSONNAGES.glob("*.png"):
+            plat = _net(f.stem)
+            if (plat == essai or plat.startswith(essai + "-")
+                    or (len(plat) >= 4 and essai.startswith(plat))):
+                return plat.split("-")[0].upper()
     return None
 
 
@@ -2391,7 +2460,10 @@ def _dessin_anime_dicte(t):
     pas y en avoir besoin pour un echange de deux repliques.
     """
     souple = _sans_doublons(t)
-    if not RE_ANIME_DIT.search(souple):
+    # Dans les deux formes : « dessin » perd son double s en passant par
+    # _sans_doublons, « annime » garde le sien dans le texte brut. Aucune des
+    # deux seule ne reconnait « un dessin annime ».
+    if not (RE_ANIME_DIT.search(t) or RE_ANIME_DIT.search(souple)):
         return None
 
     tours, adresses = _tours_de_parole(t)

@@ -80,6 +80,10 @@ _VERROU = threading.Lock()
 # Dernieres lignes de transcription, rejouees a la reconnexion d'un client.
 _HISTORIQUE = deque(maxlen=40)
 
+# Longueur maximale d une commande recue. Elle valait trois cents, ce
+# qui coupait en plein mot les dialogues un peu longs sans rien dire.
+COMMANDE_MAX = 20000
+
 _SERVEUR = None
 
 # Commandes envoyees depuis un telephone, en attente de traitement.
@@ -514,11 +518,30 @@ class _Poignee(BaseHTTPRequestHandler):
             return
         try:
             taille = int(self.headers.get("Content-Length") or 0)
-            corps = self.rfile.read(min(taille, 4000)).decode("utf-8", "replace")
+            # Relever le plafond du texte sans relever cette lecture-ci
+            # n aurait fait que deplacer la coupure de trois cents a quatre
+            # mille : les deux vont ensemble.
+            corps = self.rfile.read(min(taille, 400000)).decode("utf-8",
+                                                               "replace")
             texte = json.loads(corps).get("texte", "")
         except Exception:
             texte = ""
-        texte = str(texte).strip()[:300]
+        texte = str(texte).strip()
+        # Un serveur qui lit sans borne se fait renverser par la premiere
+        # requete un peu grosse. On en garde donc une, mais assez haute pour
+        # qu une scene entiere passe : vingt mille caracteres, soit une bonne
+        # dizaine de minutes de dialogue.
+        if len(texte) > COMMANDE_MAX:
+            # Une troncature muette coute des heures a chercher du mauvais
+            # cote. Celle-ci se voit.
+            try:
+                from core.journal import obtenir
+                obtenir().warning(
+                    "commande de %d caracteres tronquee a %d",
+                    len(texte), COMMANDE_MAX)
+            except Exception:
+                pass
+            texte = texte[:COMMANDE_MAX]
 
         if not texte:
             self.send_response(400)

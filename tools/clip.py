@@ -74,6 +74,14 @@ def _resoudre(designation, dossiers, extensions):
     On accepte le nom complet comme le debut du nom : personne ne dicte
     quarante caracteres sans en oublier.
     """
+    # Le nom vient souvent avec son extension. Elle ne figure pas dans le
+    # radical des fichiers compares, et la garder faisait echouer jusqu au
+    # nom exact : « machin.mp4 » ne trouvait pas « machin ».
+    designation = str(designation or "").strip()
+    for _ext in extensions:
+        if designation.lower().endswith("." + str(_ext).lower()):
+            designation = designation[: -(len(str(_ext)) + 1)]
+            break
     cle = _reduire(designation)
     if len(cle) < 6:
         return None

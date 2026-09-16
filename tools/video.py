@@ -802,7 +802,12 @@ def envoyer_video_mail(destinataire: str = "", fichier: str = "") -> str:
         return "La messagerie n est pas configuree, je ne l ai pas envoyee."
 
     chemin = None
-    if fichier:
+    if fichier and Path(fichier).is_file():
+        # Un chemin complet plutot qu une designation a deviner : quand
+        # l appelant sait deja quel fichier il veut, le faire redeviner ne
+        # peut que mal tourner.
+        chemin = Path(fichier)
+    elif fichier:
         from tools.clip import _resoudre
         chemin = _resoudre(fichier, [dossier("videos"), dossier("clips"),
                                      Path.home() / "Videos"],

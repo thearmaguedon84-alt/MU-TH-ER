@@ -10,6 +10,7 @@ vraie animation plan par plan (sept minutes de calcul pour cinq secondes).
 """
 import math
 import re
+import unicodedata
 import shutil
 import subprocess
 import time
@@ -22,6 +23,12 @@ from core.file_gpu import enfile
 from core.registre import outil
 
 DOSSIER = dossier("videos")
+
+# Le dernier dessin anime fabrique. Les videos se rangent dans le meme
+# dossier et partagent la meme case de memoire cote video : sans trace
+# propre, « envoie-moi le dernier dessin anime » attrape la derniere
+# video, qui peut etre tout autre chose.
+_DERNIER_DESSIN = {}
 
 # Le style, tenu a part : il s applique a tous les plans, sinon le dessin
 # change d aspect d une scene a l autre et le film se defait.
@@ -801,8 +808,15 @@ GRANDEUR_ADULTE = 1.5
 
 
 def _plat(nom):
-    """Le nom reduit a ce qui compte pour le reconnaitre."""
-    return re.sub(r"[^a-z0-9]+", "-", (nom or "").lower()).strip("-")
+    """Le nom reduit a ce qui compte pour le reconnaitre.
+
+    Les accents deviennent leur lettre nue, pas un tiret : Serge ecrit
+    « Gerald » avec un accent, et le transformer en « g-ralde » le rendait
+    introuvable. Une lettre accentuee est la meme lettre.
+    """
+    nu = unicodedata.normalize("NFD", (nom or "").lower())
+    nu = "".join(c for c in nu if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9]+", "-", nu).strip("-")
 
 
 def _enveloppe(exe, son, fps, lissage=2):
@@ -1388,6 +1402,8 @@ def dessin_anime(script: str, titre: str = "", papier: bool = True,
     from tools.video import _DERNIERE
     _DERNIERE["chemin"] = cible
     _DERNIERE["demande"] = titre or "dessin anime"
+    _DERNIER_DESSIN["chemin"] = cible
+    _DERNIER_DESSIN["demande"] = titre or "dessin anime"
 
     if ecran:
         from tools.video import envoyer_video_ecran
