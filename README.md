@@ -42,10 +42,19 @@ visage est porté sur une scène inventée, ou transposé sur une image existant
 La ressemblance est *mesurée* et annoncée, pas laissée à l'appréciation : deux
 empreintes de visage, leur cosinus, et au-delà de 0,5 c'est la même personne.
 
-**Fabriquer un dessin anime** — a partir d un script ecrit dans un fichier :
-un decor par plan, une voix distincte par personnage, et les images calees sur
-la duree reelle de la parole plutot que sur un minutage decide d avance. Les
-sous-titres sortent a cote, en .srt.
+**Fabriquer un dessin animé style papier découpé** — à partir d'un script
+écrit dans un fichier ou dicté à voix haute. Le décor est généré par Flux pour
+chaque plan. Les personnages sont des marionnettes détourées sur fond
+transparent : leur bouche s'anime image par image sur l'énergie sonore de la
+réplique, leurs bras sont articulés par segments. Chaque personnage a sa voix
+attribuée de façon déterministe, et les sous-titres sortent à côté en `.srt`.
+Un mode alternatif utilise Wan 2.2 pour une animation plan par plan, plus lente
+mais où les personnages se déplacent vraiment.
+
+**Cloner une voix** — extraction des extraits propres dans une vidéo source,
+entraînement du modèle de synthèse, inférence sur un script entier, vérification
+comparative. Une fois entraîné, un personnage du dessin animé peut parler avec
+la voix clonée si un extrait est disponible.
 
 **Monter un clip** — des images ou des séquences vidéo assemblées sur un
 morceau, calées sur sa durée, enchaînées en fondu. Les séquences sont jouées
@@ -88,6 +97,7 @@ Hey Jarvis, cherche sur internet qui a gagné hier soir
 Hey Jarvis, fais-moi une image très soignée d'un phare dans la tempête
 Hey Jarvis, compose une chanson douce à la guitare
 Hey Jarvis, monte un clip avec mes vidéos de xénomorphe
+Hey Jarvis, fais un dessin animé avec Gerald et Cartman
 Hey Jarvis, mode maman
 Hey Jarvis, éteins le PC
 ```
@@ -128,6 +138,7 @@ correspondantes sont simplement absentes.
 | Une image très soignée | Flux, quantifié | 45 s ; 7 min en qualité maximale |
 | Un morceau chanté | ACE-Step 1.5 | 45 s de musique en 3 min |
 | Une vidéo | Wan 2.2 image-vers-vidéo | 5 s de vidéo en 7 min |
+| Un dessin animé (papier) | Flux + ffmpeg | quelques minutes par plan |
 | Un montage de clip | ffmpeg | quelques secondes |
 
 **Une seule chose à la fois.** Douze giga-octets ne suffisent pas à deux

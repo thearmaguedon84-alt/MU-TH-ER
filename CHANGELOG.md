@@ -4,6 +4,33 @@ Toutes les évolutions notables de Jarvis. Format inspiré de
 [Keep a Changelog](https://keepachangelog.com/fr/) ; versionnage
 [SemVer](https://semver.org/lang/fr/).
 
+## [1.2.0] — 2026-09-16
+
+Dessins animés style papier découpé, clonage de voix, et récupération de
+contexte entre sessions d'IA.
+
+### Création
+- **Dessin animé — mode papier** (`tools/dessin_anime.py`) — marionnettes
+  découpées sur fond généré par Flux. Chaque personnage a sa voix attribuée
+  de façon déterministe ; la bouche est animée image par image sur l'énergie
+  RMS du discours ; les bras sont articulés par segments. Un épisode complet
+  (décor + dialogues + sous-titres `.srt`) sort en quelques minutes sur GPU.
+- **Dessin animé — mode animation** — rendu plan par plan via Wan 2.2 ;
+  plus lent, mais les personnages se déplacent vraiment dans le décor.
+- **Clonage de voix** — pipeline complet en quatre étapes :
+  extraction d'extraits vocaux propres (`chasse_voix`), entraînement du
+  modèle de synthèse (`entrainer_voix`), inférence par lot sur un script
+  entier (`voix_clonee`, `dire_tout`), vérification comparative (`essayer_voix`).
+
+### Fonctionnement
+- **Récupération de contexte** — `CONTEXTE_CLAUDE.md` placé à la racine du
+  projet : stager ce fichier en début de session suffit à restituer en moins
+  d'une minute l'état exact du projet à un assistant IA.
+
+### Corrigé
+- Dépendance `scipy` déclarée dans `pyproject.toml` (utilisée par
+  `dessin_anime.py` pour le filtrage morphologique des masques de découpe).
+
 ## [1.1.0] — 2026-09-02
 
 Fabrication d'images, de musique et de vidéos en local, et le montage qui les
@@ -113,4 +140,6 @@ modulaire, deux modes (cloud / local hors ligne).
   quelle IA gratuite.
 - Documentation par intégration dans `docs/`, README FR (défaut) + EN.
 
-[1.0.0]: https://github.com/sosoj92/jarvis-assistant-vocal/releases/tag/v1.0.0
+[1.2.0]: https://github.com/thearmaguedon84-alt/MU-TH-ER/releases/tag/v1.2.0
+[1.1.0]: https://github.com/thearmaguedon84-alt/MU-TH-ER/releases/tag/v1.1.0
+[1.0.0]: https://github.com/thearmaguedon84-alt/MU-TH-ER/releases/tag/v1.0.0
