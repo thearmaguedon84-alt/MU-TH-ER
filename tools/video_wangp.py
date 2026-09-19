@@ -64,7 +64,8 @@ def _session():
         if args is None:
             # sdpa = scaled dot-product attention (natif PyTorch 2+, rapide).
             # profile 4 = optimise pour 8-12 Go de VRAM.
-            args = ["--attention", "sdpa", "--profile", "4"]
+            # teacache 0.2 = acceleration TeaCache (~40 % plus rapide).
+            args = ["--attention", "sdpa", "--profile", "4", "--teacache", "0.2"]
         _SESSION = init(
             root=racine,
             console_output=False,
@@ -152,6 +153,9 @@ def generer_video_wangp(description: str, image: str = "",
         )
 
     description = _en_anglais(description)
+    # Enrichir le prompt pour meilleure fidelite avec les modeles Wan
+    if not any(x in description.lower() for x in ("quality", "detailed", "cinematic")):
+        description += ", cinematic quality, detailed"
     duree = max(2, min(int(duree or 5), 30))
 
     # WanGP compte en frames a 24 fps.
@@ -174,6 +178,11 @@ def generer_video_wangp(description: str, image: str = "",
         "duration_seconds":    duree,
         "force_fps":           24,
     }
+
+    settings["negative_prompt"] = (
+        "blurry, distorted, deformed, missing subjects, wrong animal, "
+        "extra limbs, low quality, text, watermark"
+    )
 
     # ---- Image de depart (image-to-video) --------------------------------
     source_image = None
