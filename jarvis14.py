@@ -1019,6 +1019,71 @@ def _tronquer(historique):
 
 
 _CONTEXTE = None
+_CORRECTIONS_CACHE = None
+
+
+def _corrections():
+    """Dictionnaire de corrections post-transcription Whisper.
+
+    Whisper fusionne parfois deux mots courts en un seul : 'chat roux'
+    devient 'charou', 'chat blanc' devient 'chablant', etc.
+    On corrige ici les cas connus, plus ceux declares dans config.yaml
+    sous la cle whisper.corrections (un dict str -> str).
+    """
+    global _CORRECTIONS_CACHE
+    if _CORRECTIONS_CACHE is not None:
+        return _CORRECTIONS_CACHE
+
+    # Erreurs connues sur du francais quotidien avec le modele medium
+    base: dict[str, str] = {
+        # Fusions couleur + animal
+        "charou": "chat roux",
+        "charo": "chat roux",
+        "chablant": "chat blanc",
+        "chanoir": "chat noir",
+        "chagri": "chat gris",
+        "chienrou": "chien roux",
+    }
+
+    # Corrections declarees par l'utilisateur dans config.yaml
+    try:
+        extras = config.reglage("whisper.corrections", {}) or {}
+        base.update({str(k).lower(): str(v) for k, v in extras.items()})
+    except Exception:
+        pass
+
+    _CORRECTIONS_CACHE = base
+    return _CORRECTIONS_CACHE
+
+
+def _corriger(texte: str) -> str:
+    """Applique les corrections connues mot par mot et sur les paires adjacentes."""
+    if not texte:
+        return texte
+    corr = _corrections()
+    mots = texte.split()
+    resultat: list[str] = []
+    i = 0
+    while i < len(mots):
+        # Teste d'abord les paires (fusions de deux mots)
+        if i + 1 < len(mots):
+            paire = (mots[i] + " " + mots[i + 1]).lower().strip(".,!?;:")
+            if paire in corr:
+                resultat.append(corr[paire])
+                i += 2
+                continue
+        mot = mots[i]
+        mot_nu = mot.lower().strip(".,!?;:")
+        ponctu = mot[len(mot.rstrip(".,!?;:")):]
+        if mot_nu in corr:
+            resultat.append(corr[mot_nu] + ponctu)
+        else:
+            resultat.append(mot)
+        i += 1
+    corrected = " ".join(resultat)
+    if corrected != texte:
+        print(f"  [whisper corr] {texte!r} -> {corrected!r}", flush=True)
+    return corrected
 
 
 def _contexte_whisper():
@@ -1051,10 +1116,25 @@ def _contexte_whisper():
     noms.sort(key=len, reverse=True)
     noms = noms[:34]
 
+    # Mots descriptifs frequents que Whisper fusionne sur les mots courts.
+    # Les inclure ici ancre le modele et reduit les fusions du type
+    # "chat roux" -> "charou".
+    extras_utilisateur = ""
+    try:
+        mots_supp = config.reglage("whisper.vocabulaire", []) or []
+        if mots_supp:
+            extras_utilisateur = " Mots supplementaires : " + ", ".join(mots_supp) + "."
+    except Exception:
+        pass
+
     _CONTEXTE = (
         "Commandes vocales : lance, ouvre, demarre, mets, joue, arrete, pause, "
-        "monte le son, baisse le volume, film, video. "
+        "monte le son, baisse le volume, film, video, image, photo, chanson. "
+        "Couleurs : rouge, bleu, vert, blanc, noir, gris, roux, orange, jaune, rose, violet. "
+        "Animaux : chat, chien, oiseau, cheval, lapin, renard, loup, lion. "
+        "Descriptions : grand, petit, vieux, nouveau, beau, rapide, lent, fort, doux. "
         "Applications et jeux : " + ", ".join(noms) + "."
+        + extras_utilisateur
     )
     return _CONTEXTE
 
@@ -1066,9 +1146,12 @@ def traiter(audio, whisper, historique, flux, reveil):
     _dur = len(audio) / TAUX
     print(f"  [debug] durée={_dur:.1f}s  RMS={_rms:.5f}", flush=True)
     segments, _info = whisper.transcribe(
-        audio, language="fr", beam_size=5, initial_prompt=_contexte_whisper())
+        audio, language="fr", beam_size=5,
+        initial_prompt=_contexte_whisper(),
+        condition_on_previous_text=False)
     segs = list(segments)
     _brut = " ".join(s.text for s in segs).strip()
+    _brut = _corriger(_brut)
     print(f"  [debug] whisper brut={_brut!r}", flush=True)
 
     # Rejets avant toute interpretation : sous le seuil de silence il n'y avait
