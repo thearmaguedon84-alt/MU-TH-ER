@@ -49,6 +49,27 @@ VOIX = [
     ("fr-BE-GerardNeural", "+2%", "-40Hz"),
 ]
 
+# Voix Kenny McCormick (South Park) : anglais male + effet capuche.
+# En-US-GuyNeural est grave et net, ce qui rend le filtre tres lisible.
+_VOIX_KENNY = ("en-US-GuyNeural", "+20%", "+0Hz")
+
+
+def _muffle_kenny(source, cible):
+    """Passe-bas 520 Hz + echo leger = voix sous la capuche de Kenny."""
+    exe = _ffmpeg()
+    try:
+        subprocess.run(
+            [exe, "-y", "-i", str(source),
+             "-af",
+             "highpass=f=100,lowpass=f=520,"
+             "aecho=0.70:0.30:18:0.30,volume=2.3",
+             str(cible)],
+            capture_output=True, timeout=30)
+    except Exception:
+        return source
+    return cible if cible.exists() else source
+
+
 # Ce qui ouvre un plan plutot qu une replique.
 _DECOR = re.compile(r"^\s*(?:decor|d[ée]cor|scene|sc[èe]ne|plan|lieu|int|ext)"
                     r"\s*[:.\-]\s*(.+)$", re.I)
@@ -150,6 +171,8 @@ def _voix_pour(nom):
     Un tirage au hasard donnerait des voix differentes a chaque essai, et l on
     ne reconnaitrait plus personne. On derive donc la voix du nom lui-meme.
     """
+    if (nom or "").upper() == "KENNY":
+        return _VOIX_KENNY
     somme = sum(ord(c) for c in (nom or "?").upper())
     return VOIX[somme % len(VOIX)]
 
@@ -1343,6 +1366,9 @@ def dessin_anime(script: str, titre: str = "", papier: bool = True,
                 voix, debit, hauteur = _voix_pour(qui)
                 f = travail / ("p%02d-r%02d.mp3" % (i, j))
                 if _dire(texte, voix, debit, hauteur, f):
+                    if qui.upper() == "KENNY" and f.exists():
+                        mf = f.with_stem(f.stem + "-muffled")
+                        f = _muffle_kenny(f, mf)
                     sons.append(f)
 
             morceau = travail / ("plan-%02d.mp4" % i)
