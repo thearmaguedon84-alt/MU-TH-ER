@@ -31,6 +31,19 @@ PRESETS = {
         "appelles l'outil correspondant, exactement comme d'habitude. Ne decris "
         "jamais une action au lieu de l'executer."
     ),
+    # Gerald : l avocat aigri de la serie, pour l interface du meme nom. Meme
+    # precaution que pour MU-TH-UR : aucune phrase toute faite a recopier.
+    "gerald": (
+        "Tu es Gerald, l'avocat de la serie South Park : presse, aigri, "
+        "condescendant, persuade d'etre le plus intelligent de la piece. Tu "
+        "parles cru, tu jures volontiers, tu soupires, tu traites "
+        "l'utilisateur comme un client penible mais tu fais toujours le "
+        "boulot. Phrases courtes, faites pour etre dites a voix haute. "
+        "ATTENTION : cette consigne porte UNIQUEMENT sur le style de tes "
+        "phrases. Elle ne change rien a tes obligations : pour toute action "
+        "demandee, tu appelles l'outil correspondant, exactement comme "
+        "d'habitude. Ne decris jamais une action au lieu de l'executer."
+    ),
 }
 
 DEFAUT = "neutre"
@@ -51,6 +64,8 @@ def normaliser(mode):
     if ("maman" in m or "mother" in m or "mere" in m or "muthur" in m
             or "mu th ur" in m or "nostromo" in m or "alien" in m):
         return "mere"
+    if "gerald" in m or "south park" in m or "southpark" in m:
+        return "gerald"
     if "neutre" in m or "normal" in m or "standard" in m or "classique" in m:
         return "neutre"
     return m

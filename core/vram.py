@@ -176,7 +176,16 @@ def _video():
 
 # On libere dans cet ordre : le moins cher a recharger d abord. Inutile
 # d arreter le moteur de musique si liberer Ollama a suffi.
-_ORDRE = [("ollama", _ollama), ("image", _image),
+def _voix_vive():
+    """La voix de conversation de Gerald : elle repart toute seule au besoin."""
+    try:
+        from tools.voix_vive import arreter
+        return arreter()
+    except Exception:
+        return False
+
+
+_ORDRE = [("voix_vive", _voix_vive), ("ollama", _ollama), ("image", _image),
           ("video", _video), ("musique", _musique)]
 
 

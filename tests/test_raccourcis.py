@@ -65,6 +65,7 @@ PHRASES = {
     "montre moi kyle": "_reglage_personnage",
     "entraine la voix de serviettesky hors ligne": "_entrainement_nuit",
     "bloque les bras de garrison": "_reglage_personnage",
+    "mode gerald": "_mode",
     "les bras de kyle mobiles": "_reglage_personnage",
     # Une replique dictee n est jamais un ordre.
     "fais un dessin anime south park ou cartman dit publie le south park":

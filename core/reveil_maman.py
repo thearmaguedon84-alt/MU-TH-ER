@@ -48,6 +48,11 @@ class DetecteurMaman:
                  blocs_silence=6):
         self.actif = bool(actif)
         self.mots = tuple(m.lower() for m in mots)
+        # Troisieme nom : « Gerald » (ou « Hey Gerald »), pour l interface du
+        # meme nom. On retient qui a ete appele : la boucle choisit l ecran.
+        self.mots_gerald = ("gerald", "geralde", "jerald", "gerold", "djerald",
+                            "jeralde")
+        self.qui = "maman"
         self.seuil_voix = float(seuil_voix)
         self.duree_min = float(duree_min)
         self.duree_max = float(duree_max)
@@ -149,7 +154,14 @@ class DetecteurMaman:
 
                 # Le mot de reveil doit ouvrir le segment : « maman » au milieu
                 # d'une phrase ("j'ai appele ma maman") ne doit rien declencher.
-                if mots[0] not in self.mots:
+                if mots[0] in self.mots:
+                    self.qui = "maman"
+                elif mots[0] in self.mots_gerald or (
+                        len(mots) > 1 and mots[0] in ("hey", "he", "eh", "hei",
+                                                      "et", "e", "ai")
+                        and mots[1] in self.mots_gerald):
+                    self.qui = "gerald"
+                else:
                     continue
 
                 self._dernier = time.time()

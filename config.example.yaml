@@ -173,3 +173,4 @@ south_park_du_jour:            # un episode parodique de l actualite chaque mati
   heure: 7                     # pas avant cette heure (ou au premier allumage du PC apres)
   modele: sonnet               # le scenariste (abonnement Claude ; repli sur Ollama)
   instagram: ""                # nom d un compte de instagram.comptes pour publier ; vide = envoi par mail
+  ton: 2                       # 0 = tout public, 1 = familier, 2 = cru comme la serie

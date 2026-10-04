@@ -100,7 +100,8 @@ def _distribution():
 
 SYSTEME = """Tu es scenariste pour une parodie francaise dans l esprit de South Park.
 On te donne la une du Monde du jour. Tu ecris un episode tres court, drole,
-mordant mais jamais haineux, en francais.
+mordant mais jamais haineux, en francais, dans l esprit irreverencieux de
+la serie.
 
 Regles absolues :
 - Choisis UN sujet de la une, de preference politique, economique, societal ou
@@ -113,7 +114,10 @@ Regles absolues :
   jamais d annonce, de promesse ou d aveu qui pourrait passer pour une vraie
   declaration, et elle ne parle que de sujets reellement a la une.
 - N invente aucun fait sur une personne reelle : l humour vient des reactions
-  et des theories absurdes des personnages, pas de fausses nouvelles.
+  et des theories absurdes des personnages, pas de fausses nouvelles. Une
+  personne reelle n appelle personne, ne demande rien, ne dit rien d invente
+  (« Untel m a appele », « Untel a dit que » sont interdits) ; seuls ses actes
+  publics reels, tels qu ils sont a la une, peuvent etre cites et moques.
 - Pas d insulte visant une origine, une religion, un handicap, une orientation.
 - 2 ou 3 plans, 10 a 14 repliques en tout, 20 mots maximum par replique.
 - Ecris les nombres en toutes lettres et evite les sigles (les voix les lisent).
@@ -143,6 +147,38 @@ deplacement s ecrit seule sur sa ligne entre parentheses.
 """
 
 
+# Le registre des dialogues, regle par south_park_du_jour.ton :
+# 0 = tout public, 1 = familier, 2 = cru comme la serie (par defaut).
+TONS = {
+    0: "Registre tout public : pas de gros mots.",
+    1: "Registre familier : quelques jurons (merde, putain), sans plus.",
+    2: ("Registre CRU, comme la vraie serie : les personnages jurent sans "
+        "arret (putain, merde, bordel, connard, enfoire, ta gueule, va te "
+        "faire foutre), s insultent entre eux avec mauvaise foi, humour "
+        "pipi-caca et absurde assume. Cartman est odieux, egoiste et "
+        "manipulateur, Kyle s enerve et le traite de gros lard, Randy "
+        "s emballe et jure, Kenny dit des horreurs incomprehensibles, Mr "
+        "Garrison est aigri et cynique. Il faut que ca jure VRAIMENT : au "
+        "moins la moitie des repliques contiennent un gros mot ou une "
+        "insulte, et la chute est la plus crue. Sois FIDELE a la serie : "
+        "Cartman peut etre raciste, antisemite envers Kyle, de mauvaise foi "
+        "sur tout, comme dans l original, a condition que ce soit lui le "
+        "ridicule (Kyle le remet a sa place, la chute se retourne contre "
+        "lui) et jamais le groupe vise. Seules limites : pas d insulte "
+        "raciale ou homophobe proprement dite (les mots qui font fermer un "
+        "compte), rien de sexuel impliquant les enfants, et aucune "
+        "declaration inventee d une personne reelle."),
+}
+
+
+def _systeme():
+    try:
+        ton = int(reglage("south_park_du_jour.ton", 2))
+    except Exception:
+        ton = 2
+    return SYSTEME + "\n" + TONS.get(ton, TONS[2]) + "\n"
+
+
 def _demander(prompt):
     """Le texte du scenariste : Claude par l abonnement, sinon le modele local."""
     try:
@@ -150,17 +186,20 @@ def _demander(prompt):
         p = AgentSDKProvider()
         p.modele = reglage("south_park_du_jour.modele", "sonnet")
         p.delai = 300
-        return p._appeler(prompt, systeme=SYSTEME)
+        texte = p._appeler(prompt, systeme=_systeme())
+        LOG.info("south park du jour: script ecrit par Claude (%s)", p.modele)
+        return texte
     except Exception as e:
         LOG.warning("south park du jour: Claude indisponible (%s), repli local", e)
     import requests
     hote = reglage("ollama.hote", "http://localhost:11434").rstrip("/")
     r = requests.post(hote + "/api/chat", timeout=300, json={
         "model": reglage("ollama.modele", "qwen2.5:7b"), "stream": False,
-        "messages": [{"role": "system", "content": SYSTEME},
+        "messages": [{"role": "system", "content": _systeme()},
                      {"role": "user", "content": prompt}],
         "options": {"temperature": 0.8}})
     r.raise_for_status()
+    LOG.warning("south park du jour: script ecrit par le modele LOCAL")
     return (r.json().get("message") or {}).get("content", "")
 
 
@@ -235,7 +274,9 @@ def _accentuer(script):
     corriges = {int(m.group(1)): m.group(2).strip()
                 for m in re.finditer(r"^\s*(\d+)\s*\|\s*(.+)$", rendu, re.M)}
     for i, (tete, texte) in repliques.items():
-        nouveau = corriges.get(i, "")
+        # Le correcteur souligne parfois ses corrections en gras (**mot**) :
+        # les sous-titres l afficheraient tel quel.
+        nouveau = re.sub(r"\*\*|__|`", "", corriges.get(i, "")).strip()
         # Une correction qui change trop le texte n est plus une correction.
         if nouveau and abs(len(nouveau) - len(texte)) <= max(8, len(texte) // 5):
             lignes[i] = tete + nouveau

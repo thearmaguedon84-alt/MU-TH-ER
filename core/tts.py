@@ -239,6 +239,14 @@ class EdgeTTSProvider(ProviderTTS):
         """Voix et prosodie selon la personnalite active, relue a chaque phrase."""
         if reglage("assistant.personnalite", "") == "mere":
             return self.voix_mere, self.debit_mere, self.hauteur_mere
+        if reglage("assistant.personnalite", "") == "gerald":
+            # Sa voix de dessin anime, en attendant (ou a defaut de) sa voix
+            # clonee : la meme que dans les films, pour qu on le reconnaisse.
+            try:
+                from tools.dessin_anime import _voix_pour
+                return _voix_pour("GERALD")
+            except Exception:
+                return "fr-FR-HenriNeural", "+6%", "-30Hz"
         return self.voix, "+0%", "+0Hz"
 
     def disponible(self):

@@ -95,6 +95,9 @@ DUREE_SUITE = config.reglage("assistant.duree_suite", 10)
 
 LOG = journal.obtenir()
 
+# L ecran qui va avec chaque personnalite ; les autres gardent celui de Jarvis.
+_ECRAN_DE = {"mere": "mother", "gerald": "gerald"}
+
 # Sentinel renvoye par repondre() quand une action attend une confirmation vocale.
 SENTINEL_CONFIRM = "__confirmation__"
 
@@ -342,7 +345,21 @@ def dire(texte, interruptible=True):
     if _INTERRUPTION.is_set():
         return
     from core.tts import tts
-    resultat = tts().synthetiser(texte)
+    # Gerald parle avec sa voix clonee des que son serveur est pret ; le
+    # premier coup, il le demarre et dit la phrase avec la voix de synthese.
+    resultat = None
+    try:
+        from tools import voix_vive
+        if config.reglage("assistant.personnalite", "") == "gerald":
+            resultat = voix_vive.synthetiser("gerald", texte)
+            if resultat is None:
+                voix_vive.demarrer("gerald")
+        else:
+            voix_vive.arreter()
+    except Exception:
+        resultat = None
+    if resultat is None:
+        resultat = tts().synthetiser(texte)
 
     # L'ecran commence a ecrire AVANT que la voix ne parte, et connait la duree
     # exacte de la phrase : il peut donc finir sa frappe en meme temps qu'elle.
@@ -417,6 +434,8 @@ RESIDUS = (
     # Second mot de reveil : sans ca, dire "Maman" pendant la fenetre
     # d ecoute est pris pour une commande (et finit en remember()).
     "maman", "mamans", "mamant", "manman", "mamane", "hey maman",
+    # Troisieme nom de reveil, pour l interface Gerald.
+    "gerald", "hey gerald", "geralde", "jerald", "eh gerald", "et gerald",
     # Variantes entendues a l'usage, qui arrivaient jusqu au modele et le
     # laissaient inventer une intention.
     "jervis", "gervis", "jarvice", "jarviss",
@@ -1455,7 +1474,8 @@ def main():
 
     def _bascule_depuis_page(voulu):
         """Le bouton d'une interface a demande un changement de mode."""
-        cible = "mere" if voulu == "mother" else _persona_normale
+        cible = {"mother": "mere", "gerald": "gerald"}.get(voulu,
+                                                            _persona_normale)
         if config.reglage("assistant.personnalite", "") != cible:
             config.definir("assistant.personnalite", cible)
             _refaire_systeme(memoire.charger())
@@ -1467,8 +1487,8 @@ def main():
         except Exception:
             pass
 
-    _hud("interface", "mother"
-         if config.reglage("assistant.personnalite", "") == "mere" else "jarvis")
+    _hud("interface", _ECRAN_DE.get(config.reglage("assistant.personnalite", ""),
+                                    "jarvis"))
     _mots_reveil = 'Hey Jarvis' + (' ou Maman' if maman.actif else '')
     print(f'\nPret. Dites "{_mots_reveil}". Ctrl+C pour quitter.\n')
     print('Vous pouvez le couper en redisant "Hey Jarvis" pendant qu\'il parle.\n')
@@ -1530,13 +1550,15 @@ def main():
                 # Reveil par « Hey Jarvis » : on revient a la personnalite
                 # habituelle. Rien n'est ecrit si le mode est deja le bon.
                 if _bascule_persona:
-                    _voulue = "mere" if par_maman else _persona_normale
+                    # « Maman » ouvre MU-TH-UR, « Gerald » son interface.
+                    _voulue = (("gerald" if maman.qui == "gerald" else "mere")
+                               if par_maman else _persona_normale)
                     if config.reglage("assistant.personnalite", "") != _voulue:
                         config.definir("assistant.personnalite", _voulue)
                         _refaire_systeme(memoire.charger())
                     # L'ecran suit le mode, meme si le mode n'a pas change
                     # (onglet ouvert apres coup, ou page rechargee).
-                    _hud("interface", "mother" if _voulue == "mere" else "jarvis")
+                    _hud("interface", _ECRAN_DE.get(_voulue, "jarvis"))
                 if par_maman:
                     print("  [micro] Reveil par Maman.")
 

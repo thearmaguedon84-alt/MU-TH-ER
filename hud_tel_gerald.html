@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Gérald</title>
+<link rel="manifest" href="/manifest-gerald.webmanifest">
+<link rel="icon" href="/icone-gerald-192.png">
+<meta name="theme-color" content="#000000">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Permanent+Marker&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:'Anton',Impact,sans-serif;-webkit-user-select:none;user-select:none}
+.fond{position:absolute;inset:-4%;background-size:cover;background-position:center;opacity:0;transition:opacity 1.2s ease}
+.fond.vu{opacity:1;animation:travelling 18s ease-in-out infinite alternate}
+@keyframes travelling{from{transform:scale(1.02) translate(-1%,0)}to{transform:scale(1.12) translate(1.5%,-1%)}}
+.voile{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.55));pointer-events:none}
+#gerald{position:absolute;left:4vw;bottom:-2vh;height:62vh;transform-origin:bottom center}
+#gerald img{height:100%;display:block;filter:drop-shadow(6px 6px 0 rgba(0,0,0,.35))}
+#bouche{position:absolute;background:#2a0b0b;border-radius:0 0 50% 50%/0 0 100% 100%;transform:translate(-50%,-50%);height:3px;transition:height .06s}
+.sous{position:absolute;left:50%;transform:translateX(-50%);text-align:center;color:#fff;line-height:1.15;text-transform:uppercase;letter-spacing:.02em;
+ text-shadow:-3px -3px 0 #000,3px -3px 0 #000,-3px 3px 0 #000,3px 3px 0 #000,0 4px 0 #000,0 -4px 0 #000,4px 0 0 #000,-4px 0 0 #000}
+#sous{bottom:9vh;width:78vw;font-size:5.2vh}
+#vous{top:10vh;width:70vw;font-size:3vh;color:#ffd400;opacity:0;transition:opacity .4s}
+#vous.vu{opacity:1}
+.carton{position:absolute;border:4px solid #000;padding:.4vh 1.2vw;font-family:'Permanent Marker'}
+#etat{top:2.5vh;left:2.5vw;background:#fff;color:#c00;font-size:2.8vh;transform:rotate(-3deg)}
+#travail{top:2.5vh;right:2.5vw;background:#ffd400;color:#000;font-size:2.4vh;transform:rotate(2deg);display:none;max-width:40vw}
+#saisie{position:absolute;left:50%;bottom:1.5vh;transform:translateX(-50%);display:flex;gap:6px;width:min(560px,70vw)}
+#saisie input{flex:1;font-family:'Permanent Marker';font-size:16px;border:3px solid #000;padding:6px 10px;background:#fff;outline:none}
+#saisie button,#micro{font-family:'Permanent Marker';font-size:16px;border:3px solid #000;background:#ffd400;padding:6px 12px;cursor:pointer}
+#micro{display:none}
+#micro.actif{background:#c00;color:#fff}
+.secoue{animation:secoue .35s linear 3}
+@keyframes secoue{0%,100%{transform:translate(0,0)}25%{transform:translate(-6px,3px)}75%{transform:translate(6px,-3px)}}
+body.tel #gerald{height:42vh;left:2vw}
+body.tel #sous{bottom:16vh;width:92vw;font-size:3.6vh}
+body.tel #saisie{width:94vw;bottom:2vh}
+body.tel #micro{display:block}
+body.tel #travail{max-width:55vw;font-size:2vh}
+#redemarrer{display:none;top:2.5vh;right:2.5vw;background:#c00;color:#fff;font-size:1.8vh;transform:rotate(2deg);cursor:pointer}
+body.tel #redemarrer{display:block}
+body.tel #travail{top:9vh}
+</style></head>
+<body>
+<div class="fond" id="f1"></div><div class="fond" id="f2"></div><div class="voile"></div>
+<div class="carton" id="etat">EN VEILLE</div>
+<div class="carton" id="travail"></div>
+<div class="sous" id="vous"></div>
+<div id="gerald"><img id="gimg" src="/gerald/gerald.png" alt="Gérald"><div id="bouche"></div></div>
+<div class="sous" id="sous"></div>
+<form id="saisie" autocomplete="off">
+ <button type="button" id="micro" aria-label="Parler">MICRO</button>
+ <input id="entree" placeholder="Dis un truc à Gérald…" maxlength="400">
+ <button type="submit">ENVOIE</button>
+</form>
+<button id="redemarrer" class="carton">REDÉMARRER L'IA</button>
+<script>
+// Une seule page pour le PC et le telephone : le chemin decide.
+const TEL = location.pathname.startsWith("/tel");
+if (TEL) document.body.classList.add("tel");
+
+const LIBELLES = {veille:"EN VEILLE", ecoute:"J'ÉCOUTE", reflexion:"JE RÉFLÉCHIS",
+  parole:"JE CAUSE", generation:"ÇA CALCULE", erreur:"ERREUR", blague:"HOWDY HO"};
+let SCENES = {}, VEILLE = [], REP = {x:0.5, y:0.353, l:0.13};
+let face = 0, sceneCourante = "", travailEnCours = false, rotation = 0, etatCourant = "veille";
+const f = [document.getElementById("f1"), document.getElementById("f2")];
+
+function fond(nom) {
+  if (!nom || nom === sceneCourante) return;
+  sceneCourante = nom;
+  const n = f[1 - face];
+  n.style.backgroundImage = "url('/gerald/decors/" + encodeURIComponent(nom) + "')";
+  n.classList.add("vu"); f[face].classList.remove("vu"); face = 1 - face;
+}
+function scene(etat) {
+  etatCourant = etat;
+  if (etat === "veille" && VEILLE.length) fond(VEILLE[rotation % VEILLE.length]);
+  else if (SCENES[etat]) fond(SCENES[etat]);
+  document.getElementById("etat").textContent = LIBELLES[etat] || etat.toUpperCase();
+}
+
+// La bouche se pose sur le repere du decoupage, un peu plus bas : sur cette
+// image de Gerald, le repere des dessins animes tombe 2 % trop haut.
+function placerBouche() {
+  const g = document.getElementById("gimg"), b = document.getElementById("bouche");
+  b.style.left = (REP.x * g.clientWidth) + "px";
+  b.style.top = ((REP.y + 0.02) * g.clientHeight) + "px";
+  b.style.width = (REP.l * g.clientWidth) + "px";
+}
+let parleTic = null;
+function parler(texte, duree) {
+  const s = document.getElementById("sous"), b = document.getElementById("bouche"),
+        g = document.getElementById("gimg");
+  s.textContent = "";
+  clearInterval(parleTic);
+  const total = Math.max(0.8, Number(duree) || texte.length / 14) * 1000;
+  const pas = Math.max(20, total / Math.max(1, texte.length));
+  let i = 0;
+  parleTic = setInterval(() => {
+    if (i < texte.length) {
+      const c = texte[i++];
+      s.textContent += c;
+      b.style.height = (/[aeiouyéèêàâîôû]/i.test(c) ? Math.max(6, g.clientHeight * 0.035) : 3) + "px";
+    } else {
+      clearInterval(parleTic); b.style.height = "3px";
+    }
+  }, pas);
+}
+
+// Ce que dit Gerald choisit parfois la scene : un echec l envoie en enfer,
+// une histoire de chiottes fait sortir Mr Hankey.
+const ERREUR = /(échec|echec|erreur|n'ai pas réussi|n ai pas reussi|impossible|a échoué|plant)/i;
+const BLAGUE = /(chasse|merde|caca|chiotte|toilette|hankey)/i;
+
+function appliquer(ev) {
+  switch (ev.t) {
+    case "etat":
+      if (ev.v === "parole") { document.getElementById("etat").textContent = LIBELLES.parole; break; }
+      if (ev.v === "veille" && travailEnCours) { scene("generation"); break; }
+      if (ev.v === "veille" && (etatCourant === "erreur" || etatCourant === "blague")) {
+        // La scene du gag reste quelques secondes avant le retour au calme.
+        setTimeout(() => { if (etatCourant === "erreur" || etatCourant === "blague") scene("veille"); }, 6000);
+        break;
+      }
+      scene(ev.v);
+      break;
+    case "vous": {
+      const v = document.getElementById("vous");
+      v.textContent = "TOI : " + ev.texte; v.classList.add("vu");
+      setTimeout(() => v.classList.remove("vu"), 6000);
+      break;
+    }
+    case "jarvis":
+      if (ERREUR.test(ev.texte || "")) {
+        scene("erreur");
+        const ge = document.getElementById("gerald");
+        ge.classList.remove("secoue"); void ge.offsetWidth; ge.classList.add("secoue");
+      } else if (BLAGUE.test(ev.texte || "")) {
+        scene("blague");
+      }
+      parler(ev.texte || "", ev.duree);
+      break;
+    case "avancement": {
+      const t = document.getElementById("travail");
+      if (ev.v === null || ev.v === undefined) {
+        travailEnCours = false; t.style.display = "none";
+        if (etatCourant === "generation") scene("veille");
+      } else {
+        travailEnCours = true; t.style.display = "block";
+        t.textContent = (ev.nom || "TRAVAIL").toUpperCase() + " — " + (ev.v | 0) + " %";
+        if (etatCourant === "veille") scene("generation");
+      }
+      break;
+    }
+    case "interface":
+      if (ev.v !== "gerald") {
+        const cible = {mother: TEL ? "/tel/mother" : "/mother", jarvis: TEL ? "/tel" : "/"};
+        location.href = cible[ev.v] || "/";
+      }
+      break;
+    case "voix":
+      // Au telephone, la voix est jouee ici : le PC est loin.
+      if (TEL) { try { new Audio(ev.url).play().catch(() => {}); } catch (e) {} }
+      break;
+  }
+}
+
+async function demarrer() {
+  try {
+    const d = await (await fetch("/gerald/decors.json")).json();
+    SCENES = d.scenes || {}; VEILLE = d.veille || [];
+  } catch (e) {}
+  try { REP = await (await fetch("/gerald/repere.json")).json(); } catch (e) {}
+  const g = document.getElementById("gimg");
+  if (g.complete) placerBouche(); else g.addEventListener("load", placerBouche);
+  scene("veille");
+  // Pendant la veille, les decors defilent.
+  setInterval(() => {
+    if (etatCourant === "veille" && VEILLE.length > 1) { rotation++; scene("veille"); }
+  }, 20000);
+  let source;
+  try { source = new EventSource("/flux"); } catch (e) { return; }
+  source.onmessage = (m) => { try { appliquer(JSON.parse(m.data)); } catch (e) {} };
+}
+window.addEventListener("resize", placerBouche);
+
+// Ecrire a Gerald : meme route que la voix.
+document.getElementById("saisie").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const champ = document.getElementById("entree"), texte = champ.value.trim();
+  if (!texte) return;
+  champ.value = "";
+  try {
+    await fetch("/commande", {method: "POST", headers: {"Content-Type": "application/json"},
+                              body: JSON.stringify({texte})});
+  } catch (err) { scene("erreur"); parler("Le PC répond plus. Super.", 2); }
+});
+
+// Le micro du telephone : on enregistre, le PC transcrit.
+let enregistreur = null, morceaux = [];
+document.getElementById("micro").addEventListener("click", async () => {
+  const m = document.getElementById("micro");
+  if (enregistreur && enregistreur.state === "recording") { enregistreur.stop(); return; }
+  let flux;
+  try { flux = await navigator.mediaDevices.getUserMedia({audio: true}); }
+  catch (e) { parler("Micro refusé. Autorise-le, bordel.", 2); return; }
+  enregistreur = new MediaRecorder(flux); morceaux = [];
+  enregistreur.ondataavailable = (e) => { if (e.data.size) morceaux.push(e.data); };
+  enregistreur.onstop = async () => {
+    flux.getTracks().forEach((t) => t.stop()); m.classList.remove("actif");
+    const blob = new Blob(morceaux, {type: enregistreur.mimeType || "audio/ogg"});
+    if (blob.size < 1200) return;
+    try { await fetch("/audio", {method: "POST", headers: {"Content-Type": blob.type || "audio/ogg"}, body: blob}); }
+    catch (e) { parler("Le PC répond plus.", 2); }
+  };
+  enregistreur.start(); m.classList.add("actif");
+});
+
+// Redemarrer l IA depuis le telephone, comme sur les autres interfaces.
+document.getElementById("redemarrer").addEventListener("click", async () => {
+  if (!confirm("Redémarrer l'IA ?")) return;
+  try { await fetch("/redemarrer", {method: "POST"}); parler("Je redémarre. Bouge pas.", 2); }
+  catch (e) { parler("Le PC répond plus.", 2); }
+});
+
+demarrer();
+</script>
+</body></html>

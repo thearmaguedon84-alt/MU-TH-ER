@@ -379,7 +379,12 @@ def _mode(t):
                    "quitte le mode maman", "arrete le mode maman",
                    "desactive maman", "retour normal")
 
-    if _contient(t, vers_mere):
+    vers_gerald = ("mode gerald", "mode south park", "mode southpark",
+                   "passe en gerald", "deviens gerald", "interface gerald",
+                   "active gerald")
+    if _contient(t, vers_gerald):
+        cible = "gerald"
+    elif _contient(t, vers_mere):
         cible = "mere"
     elif _contient(t, vers_normal):
         cible = "neutre"
@@ -392,10 +397,12 @@ def _mode(t):
     # L'ecran suit, s'il y a un HUD.
     try:
         import hud
-        hud.interface("mother" if cible == "mere" else "jarvis")
+        hud.interface({"mere": "mother", "gerald": "gerald"}.get(cible, "jarvis"))
     except Exception:
         pass
-    return "Mode maman active." if cible == "mere" else "Mode normal active."
+    return {"mere": "Mode maman active.",
+            "gerald": "Ouais, c'est Gerald. Qu'est-ce que tu veux ?"}.get(
+        cible, "Mode normal active.")
 
 
 

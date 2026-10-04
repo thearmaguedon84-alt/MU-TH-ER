@@ -52,6 +52,12 @@ _FICHIER_MOTHER = Path(__file__).parent / "hud_mother.html"
 # Page allegee pour telephone, servie sur /tel.
 _FICHIER_TEL_MOTHER = Path(__file__).parent / "hud_tel_mother.html"
 _FICHIER_TEL = Path(__file__).parent / "hud_tel.html"
+# Interface Gerald : les decors de la serie, un par etat, et Gerald qui parle.
+# Les images ne sont pas dans le depot : elles vivent dans un dossier local.
+_FICHIER_GERALD = Path(__file__).parent / "hud_gerald.html"
+_FICHIER_TEL_GERALD = Path(__file__).parent / "hud_tel_gerald.html"
+INTERFACES = ("jarvis", "mother", "gerald")
+_PAGES_INTERFACE = {"jarvis": "/", "mother": "/mother", "gerald": "/gerald"}
 
 # Etats possibles, envoyes tels quels a la page.
 VEILLE = "veille"
@@ -278,8 +284,8 @@ def outil(nom, detail=""):
 
 
 def interface(nom):
-    """Demande aux pages ouvertes d'afficher « jarvis » ou « mother »."""
-    nom = "mother" if str(nom) == "mother" else "jarvis"
+    """Demande aux pages ouvertes d'afficher « jarvis », « mother » ou « gerald »."""
+    nom = str(nom) if str(nom) in INTERFACES else "jarvis"
     if _ETAT.get("interface") == nom:
         return
     _ETAT["interface"] = nom
@@ -297,9 +303,9 @@ def config(modele, stt):
 _ICONE = {}
 
 
-def _icone(taille=512, mother=False):
+def _icone(taille=512, mother=False, teinte=None):
     """Icone de l'application, dessinee une fois puis gardee en memoire."""
-    clef = (taille, mother)
+    clef = (taille, mother, teinte)
     if clef in _ICONE:
         return _ICONE[clef]
     try:
@@ -315,7 +321,7 @@ def _icone(taille=512, mother=False):
     # Trois cercles concentriques, comme la pastille du HUD.
     # MU-TH-UR se distingue au premier coup d oeil : vert phosphore contre
     # cyan, faute de quoi les deux icones se confondent sur l ecran d accueil.
-    teinte = (53, 255, 106) if mother else (34, 211, 238)
+    teinte = teinte or ((53, 255, 106) if mother else (34, 211, 238))
     for rayon, couleur, epaisseur in (
             (0.42, teinte + (255,), max(2, taille // 64)),
             (0.30, teinte + (130,), max(2, taille // 96)),
@@ -371,6 +377,47 @@ _MANIFESTE_MOTHER = json.dumps({
 }, ensure_ascii=False)
 
 
+_MANIFESTE_GERALD = json.dumps({
+    "name": "Gerald",
+    "short_name": "Gerald",
+    "start_url": "/tel/gerald",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#000000",
+    "theme_color": "#000000",
+    "icons": [
+        {"src": "/icone-gerald-192.png", "sizes": "192x192",
+         "type": "image/png", "purpose": "any maskable"},
+        {"src": "/icone-gerald-512.png", "sizes": "512x512",
+         "type": "image/png", "purpose": "any maskable"},
+    ],
+}, ensure_ascii=False)
+
+# Les decors de l interface Gerald : une image par etat, nommee d apres lui
+# (veille, ecoute, reflexion, generation, erreur, blague), et toutes les
+# autres en rotation pendant la veille.
+SCENES_GERALD = ("veille", "ecoute", "reflexion", "generation", "erreur",
+                 "blague")
+_IMAGES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+           ".webp": "image/webp", ".gif": "image/gif"}
+
+
+def _dossier_decors_gerald():
+    try:
+        from core.config import reglage
+        voulu = reglage("hud.decors_gerald", "")
+    except Exception:
+        voulu = ""
+    if voulu:
+        return Path(voulu)
+    try:
+        from core.dossiers import dossier
+        return Path(dossier("documents")) / "decors_gerald"
+    except Exception:
+        return Path.home() / "Documents" / "MU-TH-UR" / "decors_gerald"
+
+
 # Sans cache : cette interface commande le PC en direct, un etat garde en
 # reserve serait un etat faux.
 _OUVRIER = "self.addEventListener('fetch', () => {});"
@@ -403,6 +450,25 @@ class _Poignee(BaseHTTPRequestHandler):
         elif self.path in ("/tel/mother", "/telmother", "/mother/tel",
                            "/maman/tel"):
             self._page(_FICHIER_TEL_MOTHER)
+        elif self.path in ("/gerald", "/gerald.html"):
+            self._page(_FICHIER_GERALD)
+        elif self.path in ("/tel/gerald", "/gerald/tel", "/telgerald"):
+            self._page(_FICHIER_TEL_GERALD)
+        elif self.path.startswith("/gerald/"):
+            self._gerald(self.path[len("/gerald/"):])
+        elif self.path == "/manifest-gerald.webmanifest":
+            self._brut(_MANIFESTE_GERALD.encode("utf-8"),
+                       "application/manifest+json")
+        elif self.path.startswith("/icone-gerald-"):
+            try:
+                taille = int(self.path.split("-")[2].split(".")[0])
+            except Exception:
+                taille = 512
+            image = _icone(taille, teinte=(240, 140, 40))
+            if image is None:
+                self.send_error(404)
+            else:
+                self._brut(image, "image/png")
         elif self.path == "/voix.wav":
             if _VOIX["donnees"]:
                 self._brut(_VOIX["donnees"], "audio/wav")
@@ -634,9 +700,56 @@ class _Poignee(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(corps)
 
+    def _gerald(self, reste):
+        """Ce dont la page Gerald a besoin : decors, decoupage, repere de bouche."""
+        import urllib.parse
+        reste = urllib.parse.unquote(reste)
+        dossier = _dossier_decors_gerald()
+        if reste == "decors.json":
+            images = sorted(f.name for f in dossier.glob("*")
+                            if f.suffix.lower() in _IMAGES) \
+                if dossier.is_dir() else []
+            scenes = {}
+            for etat in SCENES_GERALD:
+                trouve = next((n for n in images
+                               if Path(n).stem.lower() == etat), None)
+                if trouve:
+                    scenes[etat] = trouve
+            veille = [n for n in images if Path(n).stem.lower()
+                      not in SCENES_GERALD or Path(n).stem.lower() == "veille"]
+            corps = json.dumps({"scenes": scenes, "veille": veille},
+                               ensure_ascii=False).encode("utf-8")
+            self._brut(corps, "application/json")
+            return
+        if reste.startswith("decors/"):
+            nom = Path(reste[len("decors/"):]).name   # jamais de ../
+            fichier = dossier / nom
+            if fichier.suffix.lower() in _IMAGES and fichier.is_file():
+                self._brut(fichier.read_bytes(), _IMAGES[fichier.suffix.lower()])
+            else:
+                self.send_error(404)
+            return
+        try:
+            from tools.dessin_anime import PERSONNAGES, repere_de
+        except Exception:
+            self.send_error(404)
+            return
+        if reste == "gerald.png":
+            fichier = PERSONNAGES / "gerald.png"
+            if fichier.is_file():
+                self._brut(fichier.read_bytes(), "image/png")
+            else:
+                self.send_error(404)
+            return
+        if reste == "repere.json":
+            self._brut(json.dumps(repere_de("gerald")).encode("utf-8"),
+                       "application/json")
+            return
+        self.send_error(404)
+
     def _mode(self, voulu):
         """Bascule demandee par un bouton de l'interface."""
-        voulu = "mother" if voulu == "mother" else "jarvis"
+        voulu = voulu if voulu in INTERFACES else "jarvis"
         if _SUR_MODE is not None:
             try:
                 _SUR_MODE(voulu)
@@ -646,7 +759,7 @@ class _Poignee(BaseHTTPRequestHandler):
             interface(voulu)
         # On renvoie vers la page correspondante
         self.send_response(303)
-        self.send_header("Location", "/mother" if voulu == "mother" else "/")
+        self.send_header("Location", _PAGES_INTERFACE[voulu])
         self.send_header("Content-Length", "0")
         self.end_headers()
 
