@@ -1,0 +1,62 @@
+.venv/
+__pycache__/
+*.pyc
+.cache_films.json
+*.bak
+*.zip
+config.yaml
+hud_cert.pem
+.chrome_jarvis/
+
+recettes/
+
+.cache_canal.json
+
+ts_cert.pem
+ts_key.pem
+
+# Donnees personnelles : index, jetons, journaux — jamais distribues.
+.cache_plex.json
+logs/
+google_token.json
+google_credentials.json
+*.session
+paquet/
+jarvis-installation-*.zip
+gold.*.log
+network.*.log
+*.log
+voix/
+mic_test_*.wav
+mic_test_out.txt
+
+# Genere par l installateur, contient des chemins propres a la machine.
+lancer_jarvis.bat
+telecharger_modele.py
+images/
+
+# Jeton de la file d attente : etat local, jamais partage
+.gpu_travail.json
+
+# Fichiers d essai laisses par les mises au point : scripts jetables lances
+# en arriere-plan et leurs sorties. Ils ne servent qu une fois et portent des
+# chemins personnels.
+*.out
+*.log
+bout.py
+cl.py
+fl.py
+fl2.py
+fx.py
+rp.py
+sr.py
+tc.py
+tl.py
+b2.py
+vg.py
+tmp_out.txt
+py_test.txt
+mic2_out.txt
+
+# Brouillons, essais et anciennes copies (range le 24/09/2026)
+archives_brouillons/
